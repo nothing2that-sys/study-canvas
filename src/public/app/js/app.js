@@ -122,10 +122,14 @@ const submitPracticeBtn = document.querySelector("#submitPracticeBtn");
 const penToolbar = document.querySelector("#penToolbar");
 const colorChips = document.querySelectorAll(".color-chip-btn");
 const widthChips = document.querySelectorAll(".width-chip-btn");
+const pencilOnlyToggleBtn = document.querySelector("#pencilOnlyToggleBtn");
+const pencilModeText = document.querySelector("#pencilModeText");
 const eraserToggleBtn = document.querySelector("#eraserToggleBtn");
 const undoBtn = document.querySelector("#undoBtn");
 const redoBtn = document.querySelector("#redoBtn");
 const clearAllCanvasBtn = document.querySelector("#clearAllCanvasBtn");
+
+let currentPencilOnly = localStorage.getItem("math_canvas_pencil_only") === "true";
 
 // 3. 채점자 평가 뷰 요소
 const gradedCountText = document.querySelector("#gradedCountText");
@@ -1018,6 +1022,7 @@ function renderCurrentWorksheetPage() {
         color: currentPenColor,
         width: currentPenWidth,
         isEraser: currentIsEraser,
+        pencilOnly: currentPencilOnly,
         onStrokeChange: (strokes) => {
           questionStrokesMap.set(q.id, strokes);
           lastActiveCanvasId = q.id;
@@ -1080,6 +1085,25 @@ function autoFitProblemStages() {
 // ----------------------------------------------------
 // 펜 도구바 핸들러
 // ----------------------------------------------------
+function updatePencilModeUI() {
+  if (pencilOnlyToggleBtn) {
+    pencilOnlyToggleBtn.classList.toggle("active", currentPencilOnly);
+  }
+  if (pencilModeText) {
+    pencilModeText.textContent = currentPencilOnly ? "✏️ 펜슬 전용" : "🖐️ 손+펜 공용";
+  }
+}
+
+function handlePencilOnlyToggle() {
+  currentPencilOnly = !currentPencilOnly;
+  try {
+    localStorage.setItem("math_canvas_pencil_only", String(currentPencilOnly));
+  } catch (_) {}
+
+  updatePencilModeUI();
+  activeCanvasInstances.forEach((inst) => inst.setPencilOnly(currentPencilOnly));
+}
+
 function handleColorSelect(btn) {
   currentPenColor = btn.dataset.color;
   currentIsEraser = false;
@@ -1623,6 +1647,7 @@ widthChips.forEach((btn) => {
   btn.addEventListener("click", () => handleWidthSelect(btn));
 });
 
+if (pencilOnlyToggleBtn) pencilOnlyToggleBtn.addEventListener("click", handlePencilOnlyToggle);
 if (eraserToggleBtn) eraserToggleBtn.addEventListener("click", handleEraserToggle);
 if (undoBtn) undoBtn.addEventListener("click", handleUndo);
 if (redoBtn) redoBtn.addEventListener("click", handleRedo);
@@ -1807,6 +1832,7 @@ setupKeyboardShortcuts({
   },
   onPrevPage: handlePrevPage,
   onNextPage: handleNextPage,
+  onTogglePencilOnly: handlePencilOnlyToggle,
   onToggleEraser: handleEraserToggle,
   onSelectColor: (idx) => {
     if (colorChips[idx]) handleColorSelect(colorChips[idx]);
@@ -1834,6 +1860,7 @@ updateModeInput();
 updateNetworkState();
 loadDashboardStats();
 updateSoundUI();
+updatePencilModeUI();
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));

@@ -230,6 +230,11 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     if (settings.readOnly) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
 
+    // 애플 펜슬 전용 모드일 때: 손가락 터치는 필기하지 않고 화면 스크롤 허용
+    if (settings.pencilOnly && (e.pointerType === "touch" || (e.touches && e.pointerType === undefined))) {
+      return;
+    }
+
     if (e.cancelable) e.preventDefault();
 
     if (canvasElement.width === 0 || canvasElement.height === 0) {
@@ -279,6 +284,10 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   function onPointerMove(e) {
     if (!isDrawing) return;
     if (activePointerId !== null && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
+
+    if (settings.pencilOnly && (e.pointerType === "touch" || (e.touches && e.pointerType === undefined))) {
+      return;
+    }
 
     if (e.cancelable) e.preventDefault();
 
@@ -338,16 +347,16 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
   // iOS Safari TouchEvents 백업 등록 (PointerEvents 미동작 방지)
   canvasElement.addEventListener("touchstart", (e) => {
-    if (e.pointerType === undefined) onPointerDown(e);
+    if (!settings.pencilOnly && e.pointerType === undefined) onPointerDown(e);
   }, { passive: false });
   canvasElement.addEventListener("touchmove", (e) => {
-    if (e.pointerType === undefined) onPointerMove(e);
+    if (!settings.pencilOnly && e.pointerType === undefined) onPointerMove(e);
   }, { passive: false });
   canvasElement.addEventListener("touchend", (e) => {
-    if (e.pointerType === undefined) onPointerUp(e);
+    if (!settings.pencilOnly && e.pointerType === undefined) onPointerUp(e);
   }, { passive: false });
   canvasElement.addEventListener("touchcancel", (e) => {
-    if (e.pointerType === undefined) onPointerCancel(e);
+    if (!settings.pencilOnly && e.pointerType === undefined) onPointerCancel(e);
   }, { passive: false });
 
   // ResizeObserver로 캔버스 크기 변화 감지
@@ -377,6 +386,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     setEraser(enabled, type = "stroke") {
       settings.isEraser = Boolean(enabled);
       settings.eraserType = type;
+    },
+    setPencilOnly(enabled) {
+      settings.pencilOnly = Boolean(enabled);
     },
     setReadOnly(readOnly) {
       settings.readOnly = Boolean(readOnly);

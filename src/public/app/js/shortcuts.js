@@ -33,6 +33,9 @@ export function setupKeyboardShortcuts(handlers = {}) {
       } else if (key === "e" || key === "E") {
         event.preventDefault();
         if (handlers.onToggleEraser) handlers.onToggleEraser();
+      } else if (key === "p" || key === "P") {
+        event.preventDefault();
+        if (handlers.onTogglePencilOnly) handlers.onTogglePencilOnly();
       } else if (key === "1" || key === "2" || key === "3" || key === "4") {
         event.preventDefault();
         const colorIdx = Number(key) - 1;

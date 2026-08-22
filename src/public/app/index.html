@@ -17,7 +17,7 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon.svg">
-    <link rel="stylesheet" href="./css/app.css?v=20260822_30">
+    <link rel="stylesheet" href="./css/app.css?v=20260822_31">
   </head>
   <body>
     <div class="app-shell">
@@ -387,6 +387,9 @@
             </div>
 
             <div class="tool-group actions-group">
+              <button type="button" class="tool-action-btn pencil-mode-btn" id="pencilOnlyToggleBtn" title="애플 펜슬 전용 필기 모드 토글 (켜면 펜슬로만 써지고 손가락 터치는 화면 스크롤 허용)">
+                <span class="tool-icon">✏️</span><span class="tool-text" id="pencilModeText">손+펜 공용</span>
+              </button>
               <button type="button" class="tool-action-btn" id="eraserToggleBtn" title="획 지우개 토글">
                 <span class="tool-icon">🧹</span><span class="tool-text">지우개</span>
               </button>
@@ -594,6 +597,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./js/app.js?v=20260822_30"></script>
+    <script type="module" src="./js/app.js?v=20260822_31"></script>
   </body>
 </html>
