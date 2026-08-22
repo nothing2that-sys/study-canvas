@@ -85,33 +85,49 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     ctx.restore();
   }
 
+  function getGridBoundingInfo() {
+    const parent = canvasElement.parentElement;
+    const gridEl = parent ? (parent.querySelector(".math-grid-container, .div-grid-container") || parent) : canvasElement;
+    const canvasRect = canvasElement.getBoundingClientRect();
+    const gridRect = gridEl ? gridEl.getBoundingClientRect() : canvasRect;
+
+    return {
+      gridLeft: Math.max(0, gridRect.left - canvasRect.left),
+      gridTop: Math.max(0, gridRect.top - canvasRect.top),
+      gridWidth: Math.max(20, gridRect.width),
+      gridHeight: Math.max(20, gridRect.height)
+    };
+  }
+
   function drawStroke(stroke) {
     if (!stroke.points || stroke.points.length === 0) return;
 
-    const rect = canvasElement.getBoundingClientRect();
-    const currentW = rect.width;
-    const currentH = rect.height;
+    const canvasRect = canvasElement.getBoundingClientRect();
+    const currentGrid = getGridBoundingInfo();
 
-    const baseW = stroke.baseWidth || currentW;
-    const baseH = stroke.baseHeight || currentH;
+    const baseGridW = stroke.gridWidth || stroke.baseWidth || currentGrid.gridWidth;
+    const baseGridH = stroke.gridHeight || stroke.baseHeight || currentGrid.gridHeight;
+    const scale = (baseGridW > 0 && currentGrid.gridWidth > 0) ? (currentGrid.gridWidth / baseGridW) : 1;
 
-    // 수식 텍스트의 중심점과 일치하도록 중심 기준 좌표 매핑
-    const scaleX = (baseW > 0 && currentW > 0) ? (currentW / baseW) : 1;
-    const scaleY = (baseH > 0 && currentH > 0) ? (currentH / baseH) : 1;
-    const scaleAvg = (scaleX + scaleY) / 2;
+    // 수식 모눈 박스 기준 정규화 좌표(0.0~1.0)를 현재 수식 박스 픽셀로 1:1 완벽 매핑
+    const mapX = (pt) => {
+      if (pt.relX !== undefined) {
+        return currentGrid.gridLeft + (pt.relX * currentGrid.gridWidth);
+      }
+      return (pt.x * (canvasRect.width / (stroke.baseWidth || canvasRect.width || 1)));
+    };
 
-    const baseCenterX = baseW / 2;
-    const baseCenterY = baseH / 2;
-    const currentCenterX = currentW / 2;
-    const currentCenterY = currentH / 2;
-
-    const mapX = (x) => currentCenterX + (x - baseCenterX) * scaleX;
-    const mapY = (y) => currentCenterY + (y - baseCenterY) * scaleY;
+    const mapY = (pt) => {
+      if (pt.relY !== undefined) {
+        return currentGrid.gridTop + (pt.relY * currentGrid.gridHeight);
+      }
+      return (pt.y * (canvasRect.height / (stroke.baseHeight || canvasRect.height || 1)));
+    };
 
     ctx.save();
     ctx.strokeStyle = stroke.color || settings.color;
     ctx.fillStyle = stroke.color || settings.color;
-    ctx.lineWidth = (stroke.width || settings.width) * scaleAvg;
+    ctx.lineWidth = Math.max(1.5, (stroke.width || settings.width) * scale);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
@@ -119,25 +135,23 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
     if (pts.length <= 2) {
       ctx.beginPath();
-      ctx.arc(mapX(pts[0].x), mapY(pts[0].y), Math.max(1, ctx.lineWidth / 2), 0, Math.PI * 2);
+      ctx.arc(mapX(pts[0]), mapY(pts[0]), Math.max(1, ctx.lineWidth / 2), 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
       return;
     }
 
     ctx.beginPath();
-    ctx.moveTo(mapX(pts[0].x), mapY(pts[0].y));
+    ctx.moveTo(mapX(pts[0]), mapY(pts[0]));
 
     for (let i = 1; i < pts.length - 1; i++) {
-      const midRawX = (pts[i].x + pts[i + 1].x) / 2;
-      const midRawY = (pts[i].y + pts[i + 1].y) / 2;
-      const midX = mapX(midRawX);
-      const midY = mapY(midRawY);
-      ctx.quadraticCurveTo(mapX(pts[i].x), mapY(pts[i].y), midX, midY);
+      const midRawX = (mapX(pts[i]) + mapX(pts[i + 1])) / 2;
+      const midRawY = (mapY(pts[i]) + mapY(pts[i + 1])) / 2;
+      ctx.quadraticCurveTo(mapX(pts[i]), mapY(pts[i]), midRawX, midRawY);
     }
 
     const last = pts[pts.length - 1];
-    ctx.lineTo(mapX(last.x), mapY(last.y));
+    ctx.lineTo(mapX(last), mapY(last));
     ctx.stroke();
     ctx.restore();
   }
@@ -231,7 +245,10 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       }
     } catch (_) {}
 
+    const gridInfo = getGridBoundingInfo();
     const pt = getCanvasPoint(e);
+    pt.relX = (pt.x - gridInfo.gridLeft) / gridInfo.gridWidth;
+    pt.relY = (pt.y - gridInfo.gridTop) / gridInfo.gridHeight;
 
     if (settings.isEraser) {
       eraseStrokesAtPoint(pt);
@@ -248,6 +265,10 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       isEraser: false,
       baseWidth: rect.width || 300,
       baseHeight: rect.height || 260,
+      gridWidth: gridInfo.gridWidth,
+      gridHeight: gridInfo.gridHeight,
+      gridLeft: gridInfo.gridLeft,
+      gridTop: gridInfo.gridTop,
       points: [pt],
       timestamp: Date.now()
     };
@@ -261,7 +282,10 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
     if (e.cancelable) e.preventDefault();
 
+    const gridInfo = getGridBoundingInfo();
     const pt = getCanvasPoint(e);
+    pt.relX = (pt.x - gridInfo.gridLeft) / gridInfo.gridWidth;
+    pt.relY = (pt.y - gridInfo.gridTop) / gridInfo.gridHeight;
 
     if (settings.isEraser) {
       eraseStrokesAtPoint(pt);

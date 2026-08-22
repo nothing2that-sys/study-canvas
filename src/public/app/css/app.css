@@ -855,67 +855,80 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
   --box-font-size: 26px;
 }
 
-/* 화면 문제 수 밀도별 동적 폰트 & 셀 크기 자동 스케일링 */
+/* 화면 문제 수 밀도별 동적 폰트 & 셀 크기 자동 스케일링 (1문제 초대형 전면 칠판 모드!) */
 .worksheet-grid.density-1x1 .card-problem-body {
-  min-height: 480px;
+  min-height: 520px;
 }
 .worksheet-grid.density-1x1 {
-  --grid-cell-w: 68px;
-  --grid-cell-h: 76px;
-  --grid-font-size: 52px;
-  --carry-cell-w: 58px;
-  --carry-cell-h: 44px;
-  --carry-font-size: 26px;
-  --box-cell-w: 64px;
-  --box-cell-h: 72px;
-  --box-font-size: 46px;
+  --grid-cell-w: 74px;
+  --grid-cell-h: 82px;
+  --grid-font-size: 58px;
+  --carry-cell-w: 64px;
+  --carry-cell-h: 48px;
+  --carry-font-size: 28px;
+  --box-cell-w: 70px;
+  --box-cell-h: 78px;
+  --box-font-size: 52px;
 }
 
-.worksheet-grid.density-1x2 .card-problem-body,
-.worksheet-grid.density-2x2 .card-problem-body {
-  min-height: 380px;
+.worksheet-grid.density-1x2 .card-problem-body {
+  min-height: 420px;
 }
-.worksheet-grid.density-1x2,
+.worksheet-grid.density-1x2 {
+  --grid-cell-w: 58px;
+  --grid-cell-h: 66px;
+  --grid-font-size: 46px;
+  --carry-cell-w: 50px;
+  --carry-cell-h: 38px;
+  --carry-font-size: 24px;
+  --box-cell-w: 54px;
+  --box-cell-h: 60px;
+  --box-font-size: 40px;
+}
+
+.worksheet-grid.density-2x2 .card-problem-body {
+  min-height: 350px;
+}
 .worksheet-grid.density-2x2 {
-  --grid-cell-w: 52px;
-  --grid-cell-h: 58px;
-  --grid-font-size: 40px;
-  --carry-cell-w: 46px;
-  --carry-cell-h: 36px;
-  --carry-font-size: 22px;
-  --box-cell-w: 50px;
-  --box-cell-h: 54px;
-  --box-font-size: 36px;
+  --grid-cell-w: 48px;
+  --grid-cell-h: 54px;
+  --grid-font-size: 38px;
+  --carry-cell-w: 42px;
+  --carry-cell-h: 34px;
+  --carry-font-size: 20px;
+  --box-cell-w: 46px;
+  --box-cell-h: 50px;
+  --box-font-size: 34px;
 }
 
 .worksheet-grid.density-2x3 .card-problem-body {
-  min-height: 310px;
+  min-height: 290px;
 }
 .worksheet-grid.density-2x3 {
-  --grid-cell-w: 42px;
-  --grid-cell-h: 48px;
-  --grid-font-size: 32px;
-  --carry-cell-w: 38px;
-  --carry-cell-h: 30px;
-  --carry-font-size: 18px;
-  --box-cell-w: 40px;
-  --box-cell-h: 44px;
-  --box-font-size: 28px;
+  --grid-cell-w: 40px;
+  --grid-cell-h: 46px;
+  --grid-font-size: 30px;
+  --carry-cell-w: 36px;
+  --carry-cell-h: 28px;
+  --carry-font-size: 16px;
+  --box-cell-w: 38px;
+  --box-cell-h: 42px;
+  --box-font-size: 26px;
 }
 
 .worksheet-grid.density-2x5 .card-problem-body {
-  min-height: 250px;
+  min-height: 240px;
 }
 .worksheet-grid.density-2x5 {
-  --grid-cell-w: 34px;
-  --grid-cell-h: 38px;
-  --grid-font-size: 24px;
-  --carry-cell-w: 30px;
-  --carry-cell-h: 24px;
-  --carry-font-size: 14px;
-  --box-cell-w: 32px;
-  --box-cell-h: 34px;
-  --box-font-size: 22px;
+  --grid-cell-w: 32px;
+  --grid-cell-h: 36px;
+  --grid-font-size: 22px;
+  --carry-cell-w: 28px;
+  --carry-cell-h: 22px;
+  --carry-font-size: 13px;
+  --box-cell-w: 30px;
+  --box-cell-h: 32px;
+  --box-font-size: 20px;
 }
 
 .math-grid-container, .div-grid-container {
