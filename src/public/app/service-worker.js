@@ -1,4 +1,4 @@
-const CACHE_NAME = "math-canvas-pro-v20260822_27";
+const CACHE_NAME = "math-canvas-pro-v20260822_32";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
