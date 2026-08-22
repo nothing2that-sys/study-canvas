@@ -17,7 +17,7 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon.svg">
-    <link rel="stylesheet" href="./css/app.css?v=20260822_32">
+    <link rel="stylesheet" href="./css/app.css?v=20260822_33">
   </head>
   <body>
     <div class="app-shell">
@@ -179,6 +179,15 @@
                 </div>
               </fieldset>
 
+              <!-- 수식 표기 방식 (세로셈 / 가로셈) -->
+              <fieldset class="setting-card">
+                <legend>수식 표기 방식 (세로셈 / 가로셈)</legend>
+                <div class="choice-chips two-col" role="radiogroup" aria-label="수식 표기 방식">
+                  <label><input type="radio" name="mathFormat" value="vertical" checked><span>📊 세로셈 (풀이 모눈 포함)</span></label>
+                  <label><input type="radio" name="mathFormat" value="horizontal"><span>🧮 가로셈 (암산 바로 쓰기)</span></label>
+                </div>
+              </fieldset>
+
               <!-- 전체 문제 수 (기본 프리셋 + 직접 입력) -->
               <fieldset class="setting-card">
                 <legend>몇 문제를 풀까요? (총 문제 수)</legend>
@@ -296,6 +305,38 @@
                 <span class="dash-stat-label">복습할 오답</span>
                 <strong class="dash-stat-val" id="dashMistakeCount">0개</strong>
                 <small class="dash-stat-sub">취약 유형</small>
+              </div>
+            </div>
+
+            <!-- 📅 월간 학습 달력 & 연속 학습 스트릭 -->
+            <div class="study-calendar-card" id="studyCalendarCard">
+              <div class="calendar-header-row">
+                <div class="calendar-title-wrap">
+                  <span class="calendar-badge">📅 학습 달력</span>
+                  <h3 id="calendarMonthTitle">2026년 8월</h3>
+                </div>
+                <div class="streak-pill" id="streakPill">
+                  <span class="streak-icon">🔥</span>
+                  <strong id="currentStreakText">0일 연속 열공 중!</strong>
+                </div>
+                <div class="calendar-nav-group">
+                  <button type="button" class="cal-nav-btn" id="calPrevMonthBtn" title="이전 달">◀</button>
+                  <button type="button" class="cal-nav-btn" id="calTodayBtn" title="오늘">오늘</button>
+                  <button type="button" class="cal-nav-btn" id="calNextMonthBtn" title="다음 달">▶</button>
+                </div>
+              </div>
+              <div class="calendar-weekdays-row">
+                <span class="sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span class="sat">토</span>
+              </div>
+              <div class="calendar-days-grid" id="calendarDaysGrid">
+                <!-- 자바스크립트로 날짜들이 렌더링됩니다 -->
+              </div>
+              <div class="calendar-selected-details" id="calendarSelectedDetails" hidden>
+                <div class="selected-day-header">
+                  <h4 id="selectedDayTitle">8월 22일 학습 기록</h4>
+                  <button type="button" class="close-day-btn" id="closeDayDetailsBtn">닫기 ✕</button>
+                </div>
+                <div class="selected-day-sessions" id="selectedDaySessionsList"></div>
               </div>
             </div>
 
@@ -597,6 +638,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./js/app.js?v=20260822_32"></script>
+    <script type="module" src="./js/app.js?v=20260822_33"></script>
   </body>
 </html>

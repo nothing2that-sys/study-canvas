@@ -3,7 +3,7 @@ import { createSession, SessionState } from "./sessionEngine.js";
 import { createQuestionTimer, formatTime } from "./timer.js";
 import { getMultiplicationSteps, getDivisionSteps } from "./explainer.js";
 import { createDrawingCanvas } from "./canvasEngine.js";
-import { saveSessionRecord, getRecentSessions, getMistakeQuestions, getLearningStats, getCurriculumProgress, clearAllData } from "./storage.js";
+import { saveSessionRecord, getRecentSessions, getMistakeQuestions, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, clearAllData } from "./storage.js";
 import { playCorrectSound, playWrongSound, playFanfareSound, playClickSound, toggleSound, isSoundMuted } from "./sound.js";
 import { launchConfetti } from "./confetti.js";
 import { applyTheme, cycleTheme, getCurrentTheme, getThemeInfo } from "./theme.js";
@@ -25,6 +25,21 @@ const shortcutsHelpBtn = document.querySelector("#shortcutsHelpBtn");
 const shortcutsModal = document.querySelector("#shortcutsModal");
 const shortcutsCloseBtn = document.querySelector("#shortcutsCloseBtn");
 const confettiCanvas = document.querySelector("#confettiCanvas");
+
+// 달력 & 스트릭 DOM 요소
+const calendarMonthTitle = document.querySelector("#calendarMonthTitle");
+const currentStreakText = document.querySelector("#currentStreakText");
+const calPrevMonthBtn = document.querySelector("#calPrevMonthBtn");
+const calTodayBtn = document.querySelector("#calTodayBtn");
+const calNextMonthBtn = document.querySelector("#calNextMonthBtn");
+const calendarDaysGrid = document.querySelector("#calendarDaysGrid");
+const calendarSelectedDetails = document.querySelector("#calendarSelectedDetails");
+const selectedDayTitle = document.querySelector("#selectedDayTitle");
+const selectedDaySessionsList = document.querySelector("#selectedDaySessionsList");
+const closeDayDetailsBtn = document.querySelector("#closeDayDetailsBtn");
+
+let currentCalYear = new Date().getFullYear();
+let currentCalMonth = new Date().getMonth(); // 0-indexed
 
 // 1. 설정 뷰 요소
 const form = document.querySelector("#practiceForm");
@@ -220,9 +235,12 @@ function getFormConfig() {
     pageSize = cols * rows;
   }
 
+  const mathFormat = selectedValue("mathFormat") || "vertical";
+
   const options = {
     operation,
     difficulty,
+    mathFormat,
     countPreset,
     customCount: customCountVal,
     count,
@@ -290,6 +308,10 @@ function restoreFormSettings() {
     // 2. 단계 선택
     if (config.difficulty && form.elements["difficulty"]) {
       form.elements["difficulty"].value = config.difficulty;
+    }
+    // 2-1. 수식 표기 방식 선택 (세로셈 / 가로셈)
+    if (config.mathFormat && form.elements["mathFormat"]) {
+      form.elements["mathFormat"].value = config.mathFormat;
     }
     // 3. 총 문제 수 프리셋 및 직접 입력
     if (config.countPreset && form.elements["countPreset"]) {
@@ -559,9 +581,116 @@ async function loadDashboardStats() {
 
     // 🌟 6단계 교육과정 로드맵 트래커 렌더링
     await renderCurriculumRoadmap(currentRoadmapOp);
+
+    // 🌟 월간 학습 달력 & 연속 열공 스트릭 트래커 렌더링
+    const streakInfo = await getCurrentStreak();
+    if (currentStreakText) {
+      if (streakInfo.currentStreak > 0) {
+        currentStreakText.textContent = `${streakInfo.currentStreak}일 연속 열공 중! 🔥`;
+      } else {
+        currentStreakText.textContent = "오늘 첫 연습을 시작해보세요! 🚀";
+      }
+    }
+    await renderStudyCalendar(currentCalYear, currentCalMonth);
   } catch (e) {
     console.error("대시보드 통계 로드 실패:", e);
   }
+}
+
+async function renderStudyCalendar(year = currentCalYear, month = currentCalMonth) {
+  currentCalYear = year;
+  currentCalMonth = month;
+
+  if (!calendarDaysGrid || !calendarMonthTitle) return;
+
+  calendarMonthTitle.textContent = `${year}년 ${month + 1}월`;
+
+  const dailyMap = await getDailyLearningMap();
+
+  // 이번 달의 첫 날 요일과 총 일수 계산
+  const firstDayOfWeek = new Date(year, month, 1).getDay(); // 0(일) ~ 6(토)
+  const lastDate = new Date(year, month + 1, 0).getDate(); // 28 ~ 31
+
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+  const todayDate = today.getDate();
+
+  let daysHtml = "";
+
+  // 1. 첫 날 앞 빈 칸
+  for (let i = 0; i < firstDayOfWeek; i++) {
+    daysHtml += `<div class="calendar-day empty-day"></div>`;
+  }
+
+  // 2. 1일부터 말일까지
+  for (let d = 1; d <= lastDate; d++) {
+    const monthStr = String(month + 1).padStart(2, "0");
+    const dayStr = String(d).padStart(2, "0");
+    const dateKey = `${year}-${monthStr}-${dayStr}`;
+
+    const isToday = isCurrentMonth && d === todayDate;
+    const entry = dailyMap.get(dateKey);
+    const hasStudy = Boolean(entry && entry.sessionCount > 0);
+
+    const studyBadgeHtml = hasStudy
+      ? `<div class="cal-study-badge" title="${entry.totalQuestions}문제 (${entry.accuracy}% 정답)">
+           <span class="cal-dot"></span>
+           <span class="cal-q-count">${entry.totalQuestions}개</span>
+         </div>`
+      : "";
+
+    daysHtml += `
+      <div class="calendar-day ${hasStudy ? "has-study" : ""} ${isToday ? "is-today" : ""}" data-date="${dateKey}" ${hasStudy ? 'title="클릭하여 이 날의 학습 기록 보기"' : ""}>
+        <span class="day-num">${d}</span>
+        ${studyBadgeHtml}
+      </div>
+    `;
+  }
+
+  calendarDaysGrid.innerHTML = daysHtml;
+
+  // 날짜 클릭 이벤트 바인딩
+  calendarDaysGrid.querySelectorAll(".calendar-day.has-study").forEach((dayEl) => {
+    dayEl.addEventListener("click", () => {
+      const dateKey = dayEl.getAttribute("data-date");
+      const entry = dailyMap.get(dateKey);
+      if (entry) {
+        showCalendarDayDetails(dateKey, entry);
+      }
+    });
+  });
+}
+
+function showCalendarDayDetails(dateKey, entry) {
+  if (!calendarSelectedDetails || !selectedDayTitle || !selectedDaySessionsList) return;
+
+  const parts = dateKey.split("-").map(Number);
+  selectedDayTitle.textContent = `📅 ${parts[1]}월 ${parts[2]}일 학습 기록 (${entry.sessionCount}회 · ${entry.totalQuestions}문제)`;
+
+  selectedDaySessionsList.innerHTML = entry.sessions.map((s, idx) => {
+    const timeStr = new Date(s.completedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+    const op = s.operation === "div" ? "나눗셈" : "곱셈";
+    return `
+      <div class="day-session-card">
+        <div class="day-session-info">
+          <strong>${op} ${s.totalQuestions}문제 (<span class="day-acc-rate ${s.accuracyRate >= 80 ? "high" : "low"}">${s.accuracyRate}% 정답</span>)</strong>
+          <small>${timeStr} · 풀이 시간 ${formatTime(s.totalSolveTimeMs, "korean")}</small>
+        </div>
+        <button type="button" class="view-session-btn" data-session-idx="${idx}">🔍 상세보기</button>
+      </div>
+    `;
+  }).join("");
+
+  selectedDaySessionsList.querySelectorAll(".view-session-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.getAttribute("data-session-idx"));
+      if (entry.sessions[idx]) {
+        showSessionDetail(entry.sessions[idx]);
+      }
+    });
+  });
+
+  calendarSelectedDetails.hidden = false;
 }
 
 let currentModalSession = null;
@@ -608,7 +737,7 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
         <!-- 학생 필기 및 빨간 펜 첨삭 복원 영역 -->
         <div class="detail-review-stage">
           <div class="problem-canvas-stage">
-            ${renderVerticalMathGrid(r, { showGuides: false })}
+            ${renderProblemStageContent(r, { showGuides: false })}
             <canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>
           </div>
         </div>
@@ -937,6 +1066,40 @@ function renderVerticalMathGrid(q, options = {}) {
   `;
 }
 
+function renderHorizontalMathGrid(q, options = {}) {
+  const showGuides = Boolean(options.showGuides);
+  const symbol = q.operation === "div" ? "÷" : "×";
+  const ansStr = String(q.answer);
+
+  let answerBoxesHtml = "";
+  for (let i = 0; i < ansStr.length; i++) {
+    const digit = ansStr[i];
+    answerBoxesHtml += `<div class="grid-cell box-cell accent-box"><span class="guide-digit">${digit}</span></div>`;
+  }
+
+  return `
+    <div class="horizontal-math-container math-grid-container ${showGuides ? "show-guides" : ""}">
+      <div class="horizontal-math-equation">
+        <span class="h-operand">${Number(q.operandA).toLocaleString()}</span>
+        <span class="h-symbol">${symbol}</span>
+        <span class="h-operand">${Number(q.operandB).toLocaleString()}</span>
+        <span class="h-equals">=</span>
+      </div>
+      <div class="horizontal-answer-row">
+        ${answerBoxesHtml}
+      </div>
+    </div>
+  `;
+}
+
+function renderProblemStageContent(q, options = {}) {
+  const mathFormat = q.mathFormat || currentSession?.mathFormat || (currentResultSummary?.mathFormat) || (currentModalSession?.mathFormat) || "vertical";
+  if (mathFormat === "horizontal") {
+    return renderHorizontalMathGrid(q, options);
+  }
+  return renderVerticalMathGrid(q, options);
+}
+
 // ----------------------------------------------------
 // 워크시트 세션 풀이 흐름
 // ----------------------------------------------------
@@ -1005,7 +1168,7 @@ function renderCurrentWorksheetPage() {
       </div>
       <div class="card-problem-body" id="problemBody_${q.id}">
         <div class="problem-canvas-stage">
-          ${renderVerticalMathGrid(q, { showGuides: false })}
+          ${renderProblemStageContent(q, { showGuides: false })}
           <canvas class="drawing-canvas worksheet-problem-canvas" id="canvas_${q.id}"></canvas>
         </div>
       </div>
@@ -1234,7 +1397,7 @@ function renderGradingView() {
           <div class="card-problem-body student-body" id="gradingStudentBody_${q.id}">
             <div class="problem-canvas-stage">
               <span class="red-pen-guide-tag">✏️ 빨간펜 첨삭 영역</span>
-              ${renderVerticalMathGrid(q, { showGuides: false })}
+              ${renderProblemStageContent(q, { showGuides: false })}
               <canvas class="drawing-canvas grading-red-pen-canvas" id="gradingCanvas_${q.id}" title="빨간 펜으로 직접 첨삭(동그라미, 밑줄 등)을 작성하세요"></canvas>
             </div>
           </div>
@@ -1245,7 +1408,7 @@ function renderGradingView() {
           <div class="col-badge answer-badge">🎯 모범 정답 & 단계별 풀이 (자리올림 포함)</div>
           <div class="card-problem-body model-answer-body">
             <div class="problem-canvas-stage">
-              ${renderVerticalMathGrid(q, { showGuides: true })}
+              ${renderProblemStageContent(q, { showGuides: true })}
             </div>
           </div>
         </div>
@@ -1483,7 +1646,7 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
       <!-- 학생 필기 및 빨간 펜 첨삭 복원 영역 -->
       <div class="detail-review-stage">
         <div class="problem-canvas-stage">
-          ${renderVerticalMathGrid(r, { showGuides: false })}
+          ${renderProblemStageContent(r, { showGuides: false })}
           <canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>
         </div>
       </div>
@@ -1588,7 +1751,7 @@ function handlePrintWorksheet(isAnswerKey = false) {
               <span class="card-level">${q.level}</span>
             </div>
             <div class="card-problem-body">
-              ${renderVerticalMathGrid(q, { showGuides: isAnswerKey })}
+              ${renderProblemStageContent(q, { showGuides: isAnswerKey })}
             </div>
           </div>
         `).join("")}
@@ -1810,6 +1973,40 @@ if (modalViewCompactBtn) {
 if (modalViewDetailBtn) {
   modalViewDetailBtn.addEventListener("click", () => {
     if (currentModalSession) renderModalDetailItems(currentModalSession, "detail");
+  });
+}
+
+if (calPrevMonthBtn) {
+  calPrevMonthBtn.addEventListener("click", () => {
+    currentCalMonth -= 1;
+    if (currentCalMonth < 0) {
+      currentCalMonth = 11;
+      currentCalYear -= 1;
+    }
+    renderStudyCalendar(currentCalYear, currentCalMonth);
+  });
+}
+if (calNextMonthBtn) {
+  calNextMonthBtn.addEventListener("click", () => {
+    currentCalMonth += 1;
+    if (currentCalMonth > 11) {
+      currentCalMonth = 0;
+      currentCalYear += 1;
+    }
+    renderStudyCalendar(currentCalYear, currentCalMonth);
+  });
+}
+if (calTodayBtn) {
+  calTodayBtn.addEventListener("click", () => {
+    const today = new Date();
+    currentCalYear = today.getFullYear();
+    currentCalMonth = today.getMonth();
+    renderStudyCalendar(currentCalYear, currentCalMonth);
+  });
+}
+if (closeDayDetailsBtn) {
+  closeDayDetailsBtn.addEventListener("click", () => {
+    if (calendarSelectedDetails) calendarSelectedDetails.hidden = true;
   });
 }
 

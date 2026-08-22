@@ -341,6 +341,127 @@ export async function getCurriculumProgress() {
 }
 
 /**
+ * 날짜별(YYYY-MM-DD) 학습 데이터 및 잔디 집계
+ */
+export async function getDailyLearningMap() {
+  const sessions = await getRecentSessions(200);
+  const map = new Map();
+
+  sessions.forEach((s) => {
+    const d = new Date(s.completedAt);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    const dateKey = `${year}-${month}-${day}`;
+
+    if (!map.has(dateKey)) {
+      map.set(dateKey, {
+        date: dateKey,
+        sessionCount: 0,
+        totalQuestions: 0,
+        correctQuestions: 0,
+        totalSolveTimeMs: 0,
+        sessions: []
+      });
+    }
+
+    const entry = map.get(dateKey);
+    entry.sessionCount += 1;
+    entry.totalQuestions += s.totalQuestions || 0;
+    entry.correctQuestions += s.correctCount || 0;
+    entry.totalSolveTimeMs += s.totalSolveTimeMs || 0;
+    entry.sessions.push(s);
+  });
+
+  // 정답률 계산
+  map.forEach((entry) => {
+    entry.accuracy = entry.totalQuestions > 0 ? Math.round((entry.correctQuestions / entry.totalQuestions) * 100) : 0;
+  });
+
+  return map;
+}
+
+/**
+ * 연속 학습 일수 (Streak) 계산
+ */
+export async function getCurrentStreak() {
+  const dailyMap = await getDailyLearningMap();
+  if (dailyMap.size === 0) return { currentStreak: 0, maxStreak: 0, todayActive: false };
+
+  const today = new Date();
+  const formatYmd = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  const todayKey = formatYmd(today);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayKey = formatYmd(yesterday);
+
+  const todayActive = dailyMap.has(todayKey);
+  const yesterdayActive = dailyMap.has(yesterdayKey);
+
+  if (!todayActive && !yesterdayActive) {
+    return { currentStreak: 0, maxStreak: calculateMaxStreak(dailyMap), todayActive: false };
+  }
+
+  // 오늘 또는 어제부터 시작해서 과거로 거슬러 올라가며 연속 일수 계산
+  let streak = 0;
+  let checkDate = new Date(todayActive ? today : yesterday);
+
+  while (true) {
+    const key = formatYmd(checkDate);
+    if (dailyMap.has(key)) {
+      streak += 1;
+      checkDate.setDate(checkDate.getDate() - 1);
+    } else {
+      break;
+    }
+  }
+
+  return {
+    currentStreak: streak,
+    maxStreak: Math.max(streak, calculateMaxStreak(dailyMap)),
+    todayActive
+  };
+}
+
+function calculateMaxStreak(dailyMap) {
+  const sortedDates = Array.from(dailyMap.keys()).sort();
+  if (sortedDates.length === 0) return 0;
+
+  let max = 1;
+  let current = 1;
+
+  for (let i = 1; i < sortedDates.length; i++) {
+    const prev = new Date(sortedDates[i - 1]);
+    const curr = new Date(sortedDates[i]);
+    const diffDays = Math.round((curr - prev) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 1) {
+      current += 1;
+      if (current > max) max = current;
+    } else if (diffDays > 1) {
+      current = 1;
+    }
+  }
+
+  return max;
+}
+
+/**
+ * 특정 날짜에 완료된 세션 목록 반환
+ */
+export async function getSessionsByDate(dateKey) {
+  const dailyMap = await getDailyLearningMap();
+  const entry = dailyMap.get(dateKey);
+  return entry ? entry.sessions : [];
+}
+
+/**
  * 저장소 전체 초기화
  */
 export async function clearAllData() {
