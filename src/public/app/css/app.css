@@ -789,12 +789,87 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
 .worksheet-container { margin-top: 20px; width: 100%; box-sizing: border-box; }
 .worksheet-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; width: 100%; box-sizing: border-box; }
 
-.worksheet-card { background: var(--paper); border: 1px solid rgba(25, 52, 45, 0.12); border-radius: 22px; padding: 22px; box-shadow: 0 10px 30px rgba(36, 57, 49, 0.05); display: flex; flex-direction: column; position: relative; overflow: hidden; min-width: 0; box-sizing: border-box; width: 100%; }
+.worksheet-card {
+  background: var(--paper);
+  border: 1.5px solid rgba(25, 52, 45, 0.12);
+  border-radius: 22px;
+  padding: 20px 22px 22px;
+  box-shadow: 0 10px 30px rgba(36, 57, 49, 0.05);
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+  box-sizing: border-box;
+  width: 100%;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
 .worksheet-card::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: repeating-linear-gradient(transparent 0 35px, rgba(64, 116, 154, 0.06) 36px); pointer-events: none; }
 
-.card-header { display: flex; justify-content: space-between; align-items: center; position: relative; z-index: 1; }
-.card-order { font-weight: 800; font-size: 14px; color: var(--accent); }
+.worksheet-card.active-focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3.5px rgba(228, 123, 79, 0.35), 0 14px 36px rgba(228, 123, 79, 0.18);
+  transform: translateY(-2px);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-order { font-weight: 800; font-size: 14.5px; color: var(--accent); }
 .card-level { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--cream); color: var(--muted); font-weight: 700; }
+
+.card-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--ink);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.card-mini-btn:hover {
+  background: var(--cream);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: scale(1.05);
+}
+
+.card-mini-btn:active {
+  transform: scale(0.95);
+}
+
+.card-mini-btn.danger:hover {
+  background: var(--wrong-bg);
+  border-color: var(--wrong);
+  color: var(--wrong);
+}
 
 /* 카드 내부 문제 본체 & 캔버스 스테이지 (카드 전체 어디서나 100% 필기 가능) */
 .card-problem-body, .grading-card-body {
@@ -814,6 +889,9 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .problem-canvas-stage {
@@ -827,6 +905,8 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
   padding: 12px;
   box-sizing: border-box;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .problem-canvas-stage .drawing-canvas {
@@ -840,6 +920,9 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
   cursor: crosshair;
   touch-action: none;
   box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 /* 세로셈 모눈 자릿수 그리드 (Fluid Dynamic Digit Grid) */
@@ -2479,5 +2562,221 @@ footer { min-height: 90px; display: flex; align-items: center; justify-content: 
 .view-session-btn:hover {
   background: var(--accent);
   color: white;
+}
+
+/* ==================================================== */
+/* 🌟 스크롤 따라오는 스마트 플로팅 퀵 액션 바 (Floating Quick Action Bar) */
+/* ==================================================== */
+.floating-quick-bar {
+  position: fixed;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  right: 24px;
+  z-index: 900;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1.5px solid rgba(25, 52, 45, 0.14);
+  border-radius: 999px;
+  padding: 6px 10px;
+  box-shadow: 0 12px 36px rgba(25, 52, 45, 0.18), 0 4px 12px rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1), opacity .25s ease;
+}
+
+.float-btn-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.float-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  transition: all .15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.float-btn:hover {
+  background: var(--cream);
+  border-color: var(--line);
+  transform: translateY(-2px);
+}
+
+.float-btn:active {
+  transform: scale(0.92);
+}
+
+.float-btn.active {
+  background: var(--green-soft);
+  color: var(--green);
+  border-color: var(--green);
+  font-weight: 800;
+}
+
+.float-btn.danger:hover {
+  background: var(--wrong-bg);
+  color: var(--wrong);
+  border-color: var(--wrong);
+}
+
+.float-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.float-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  margin-top: 2px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.float-btn.active .float-label {
+  color: var(--green);
+}
+
+.float-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--line);
+  margin: 0 4px;
+}
+
+/* ==================================================== */
+/* 🌟 문제 단위 원터치 스무스 스크롤 네비게이터 (Problem Step Navigator) */
+/* ==================================================== */
+.problem-step-navigator {
+  position: fixed;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  left: 24px;
+  z-index: 850;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1.5px solid rgba(25, 52, 45, 0.14);
+  border-radius: 999px;
+  padding: 6px 12px;
+  box-shadow: 0 12px 36px rgba(25, 52, 45, 0.14), 0 4px 12px rgba(0, 0, 0, 0.05);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1), opacity .25s ease;
+}
+
+.step-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.step-nav-btn:hover {
+  background: var(--green);
+  color: white;
+  border-color: var(--green);
+  transform: translateY(-1px);
+}
+
+.step-nav-btn:active {
+  transform: scale(0.95);
+}
+
+.step-nav-status {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--accent);
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+/* 테마별 플로팅 컨트롤러 대응 */
+[data-theme="chalkboard"] .floating-quick-bar,
+[data-theme="chalkboard"] .problem-step-navigator {
+  background: rgba(15, 56, 44, 0.94);
+  border-color: #134e3f;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+}
+[data-theme="chalkboard"] .float-btn {
+  color: #f0fdf4;
+}
+[data-theme="chalkboard"] .float-btn.active {
+  background: #065f46;
+  color: #a7f3d0;
+  border-color: #34d399;
+}
+[data-theme="chalkboard"] .step-nav-btn {
+  background: #0f382c;
+  color: #f0fdf4;
+  border-color: #134e3f;
+}
+
+[data-theme="midnight"] .floating-quick-bar,
+[data-theme="midnight"] .problem-step-navigator {
+  background: rgba(21, 29, 42, 0.94);
+  border-color: #243044;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+}
+[data-theme="midnight"] .float-btn {
+  color: #f8fafc;
+}
+[data-theme="midnight"] .float-btn.active {
+  background: #334155;
+  color: #38bdf8;
+  border-color: #38bdf8;
+}
+[data-theme="midnight"] .step-nav-btn {
+  background: #151d2a;
+  color: #f8fafc;
+  border-color: #243044;
+}
+
+@media (max-width: 680px) {
+  .floating-quick-bar {
+    right: 12px;
+    bottom: 12px;
+    padding: 4px 6px;
+  }
+  .float-btn {
+    width: 38px;
+    height: 40px;
+  }
+  .float-label {
+    display: none;
+  }
+  .problem-step-navigator {
+    left: 12px;
+    bottom: 12px;
+    padding: 4px 8px;
+  }
+  .step-nav-btn {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+  .step-nav-status {
+    font-size: 11px;
+  }
 }
 

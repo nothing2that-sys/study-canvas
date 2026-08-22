@@ -87,15 +87,20 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
   function getGridBoundingInfo() {
     const parent = canvasElement.parentElement;
-    const gridEl = parent ? (parent.querySelector(".math-grid-container, .div-grid-container") || parent) : canvasElement;
+    const gridEl = parent ? (parent.querySelector(".math-grid-container, .div-grid-container, .horizontal-math-container") || parent) : canvasElement;
     const canvasRect = canvasElement.getBoundingClientRect();
     const gridRect = gridEl ? gridEl.getBoundingClientRect() : canvasRect;
 
+    const cW = canvasRect.width || 300;
+    const cH = canvasRect.height || 260;
+
     return {
-      gridLeft: Math.max(0, gridRect.left - canvasRect.left),
-      gridTop: Math.max(0, gridRect.top - canvasRect.top),
-      gridWidth: Math.max(20, gridRect.width),
-      gridHeight: Math.max(20, gridRect.height)
+      gridLeft: gridRect.left - canvasRect.left,
+      gridTop: gridRect.top - canvasRect.top,
+      gridWidth: Math.max(20, gridRect.width || cW),
+      gridHeight: Math.max(20, gridRect.height || cH),
+      canvasWidth: cW,
+      canvasHeight: cH
     };
   }
 
@@ -106,7 +111,6 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     const currentGrid = getGridBoundingInfo();
 
     const baseGridW = stroke.gridWidth || stroke.baseWidth || currentGrid.gridWidth;
-    const baseGridH = stroke.gridHeight || stroke.baseHeight || currentGrid.gridHeight;
     const scale = (baseGridW > 0 && currentGrid.gridWidth > 0) ? (currentGrid.gridWidth / baseGridW) : 1;
 
     // 수식 모눈 박스 기준 정규화 좌표(0.0~1.0)를 현재 수식 박스 픽셀로 1:1 완벽 매핑
@@ -127,7 +131,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     ctx.save();
     ctx.strokeStyle = stroke.color || settings.color;
     ctx.fillStyle = stroke.color || settings.color;
-    ctx.lineWidth = Math.max(1.5, (stroke.width || settings.width) * scale);
+    ctx.lineWidth = Math.max(1.2, (stroke.width || settings.width) * scale);
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
@@ -229,6 +233,16 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   function onPointerDown(e) {
     if (settings.readOnly) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
+
+    // 브라우저 텍스트 선택(Selection) 즉시 해제 (글씨 쓸 때 주변 숫자가 선택되는 현상 완전 방지)
+    try {
+      if (typeof window !== "undefined" && window.getSelection) {
+        const sel = window.getSelection();
+        if (sel && typeof sel.removeAllRanges === "function") {
+          sel.removeAllRanges();
+        }
+      }
+    } catch (_) {}
 
     // 애플 펜슬 전용 모드일 때: 손가락 터치는 필기하지 않고 화면 스크롤 허용
     if (settings.pencilOnly && (e.pointerType === "touch" || (e.touches && e.pointerType === undefined))) {
@@ -339,11 +353,16 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     }
   }
 
-  // PointerEvents 등록
+  // PointerEvents 및 텍스트 선택/제스처 차단 등록
   canvasElement.addEventListener("pointerdown", onPointerDown, { passive: false });
   canvasElement.addEventListener("pointermove", onPointerMove, { passive: false });
   canvasElement.addEventListener("pointerup", onPointerUp, { passive: false });
   canvasElement.addEventListener("pointercancel", onPointerCancel, { passive: false });
+
+  // 브라우저 텍스트 선택 및 드래그 방지
+  canvasElement.addEventListener("selectstart", (e) => e.preventDefault());
+  canvasElement.addEventListener("dragstart", (e) => e.preventDefault());
+  canvasElement.addEventListener("contextmenu", (e) => e.preventDefault());
 
   // iOS Safari TouchEvents 백업 등록 (PointerEvents 미동작 방지)
   canvasElement.addEventListener("touchstart", (e) => {
@@ -392,6 +411,12 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     },
     setReadOnly(readOnly) {
       settings.readOnly = Boolean(readOnly);
+    },
+    resize() {
+      resize();
+    },
+    redraw() {
+      redraw();
     },
     undo() {
       if (undoStack.length === 0) return false;

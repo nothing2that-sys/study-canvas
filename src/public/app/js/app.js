@@ -144,6 +144,23 @@ const undoBtn = document.querySelector("#undoBtn");
 const redoBtn = document.querySelector("#redoBtn");
 const clearAllCanvasBtn = document.querySelector("#clearAllCanvasBtn");
 
+// 🌟 스크롤 따라오는 스마트 플로팅 퀵 액션 바 요소
+const floatingQuickBar = document.querySelector("#floatingQuickBar");
+const floatUndoBtn = document.querySelector("#floatUndoBtn");
+const floatRedoBtn = document.querySelector("#floatRedoBtn");
+const floatEraserBtn = document.querySelector("#floatEraserBtn");
+const floatPenBtn = document.querySelector("#floatPenBtn");
+const floatPencilOnlyBtn = document.querySelector("#floatPencilOnlyBtn");
+const floatPencilLabel = document.querySelector("#floatPencilLabel");
+const floatClearBtn = document.querySelector("#floatClearBtn");
+
+// 🌟 문제 단위 스무스 스크롤 네비게이터 요소
+const problemStepNavigator = document.querySelector("#problemStepNavigator");
+const prevProblemStepBtn = document.querySelector("#prevProblemStepBtn");
+const nextProblemStepBtn = document.querySelector("#nextProblemStepBtn");
+const currentProblemStepText = document.querySelector("#currentProblemStepText");
+let currentFocusedProblemIndex = 0;
+
 let currentPencilOnly = localStorage.getItem("math_canvas_pencil_only") === "true";
 
 // 3. 채점자 평가 뷰 요소
@@ -1156,15 +1173,25 @@ function renderCurrentWorksheetPage() {
     }
   }
 
-  // 문제 카드 그리드 렌더링 (문제 영역 바로 위에 캔버스 오버레이)
-  worksheetGrid.replaceChildren(...pageData.questions.map((q) => {
+  // 문제 카드 그리드 렌더링 (문제 영역 바로 위에 캔버스 오버레이 & 인라인 퀵 액션)
+  worksheetGrid.replaceChildren(...pageData.questions.map((q, qIdx) => {
     const card = document.createElement("div");
     card.className = "worksheet-card";
+    card.id = `worksheetCard_${q.id}`;
+    if (qIdx === currentFocusedProblemIndex) {
+      card.classList.add("active-focus");
+    }
 
     card.innerHTML = `
       <div class="card-header">
-        <span class="card-order">${q.orderNumber}번 문제</span>
-        <span class="card-level">${q.level}</span>
+        <div class="card-header-left">
+          <span class="card-order">${q.orderNumber}번 문제</span>
+          <span class="card-level">${q.level}</span>
+        </div>
+        <div class="card-quick-actions">
+          <button type="button" class="card-mini-btn" data-action="undo" data-id="${q.id}" title="이 문제 되돌리기 (1획 취소)">↶</button>
+          <button type="button" class="card-mini-btn danger" data-action="clear" data-id="${q.id}" title="이 문제 필기 비우기">🗑️</button>
+        </div>
       </div>
       <div class="card-problem-body" id="problemBody_${q.id}">
         <div class="problem-canvas-stage">
@@ -1173,6 +1200,16 @@ function renderCurrentWorksheetPage() {
         </div>
       </div>
     `;
+
+    card.addEventListener("pointerdown", () => {
+      currentFocusedProblemIndex = qIdx;
+      lastActiveCanvasId = q.id;
+      document.querySelectorAll(".worksheet-card").forEach(c => c.classList.remove("active-focus"));
+      card.classList.add("active-focus");
+      if (currentProblemStepText) {
+        currentProblemStepText.textContent = `현재 ${qIdx + 1} / ${pageData.questions.length}번 (${q.orderNumber}번)`;
+      }
+    });
 
     return card;
   }));
@@ -1211,6 +1248,11 @@ function renderCurrentWorksheetPage() {
   submitPracticeBtn.style.display = pageData.isLastPage ? "inline-flex" : "none";
   pageIndicatorText.textContent = `${pageData.pageNumber} / ${pageData.totalPages} 페이지`;
 
+  currentFocusedProblemIndex = 0;
+  if (currentProblemStepText && pageData.questions.length > 0) {
+    currentProblemStepText.textContent = `현재 1 / ${pageData.questions.length}번 (${pageData.questions[0].orderNumber}번)`;
+  }
+
   requestAnimationFrame(() => {
     autoFitProblemStages();
   });
@@ -1218,12 +1260,36 @@ function renderCurrentWorksheetPage() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+// 🌟 문제 단위 스무스 스크롤 네비게이션
+function scrollToProblemStep(index) {
+  if (!currentSession) return;
+  const pageData = currentSession.getPageQuestions();
+  const total = pageData.questions.length;
+  if (total === 0) return;
+
+  currentFocusedProblemIndex = Math.max(0, Math.min(total - 1, index));
+  const targetQ = pageData.questions[currentFocusedProblemIndex];
+  if (!targetQ) return;
+
+  const cardEl = document.querySelector(`#worksheetCard_${targetQ.id}`);
+  if (cardEl) {
+    document.querySelectorAll(".worksheet-card").forEach(c => c.classList.remove("active-focus"));
+    cardEl.classList.add("active-focus");
+    cardEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    lastActiveCanvasId = targetQ.id;
+  }
+
+  if (currentProblemStepText) {
+    currentProblemStepText.textContent = `현재 ${currentFocusedProblemIndex + 1} / ${total}번 (${targetQ.orderNumber}번)`;
+  }
+}
+
 // 화면 및 카드 크기에 맞춰 문제와 정답 셀을 가로/세로 기준 꽉 차게 자동 스케일링
 function autoFitProblemStages() {
   const stages = document.querySelectorAll(".problem-canvas-stage");
   stages.forEach((stage) => {
     const cardBody = stage.closest(".card-problem-body");
-    const grid = stage.querySelector(".math-grid-container, .div-grid-container");
+    const grid = stage.querySelector(".math-grid-container, .div-grid-container, .horizontal-math-container");
     if (!cardBody || !grid) return;
 
     grid.style.transform = "none";
@@ -1255,6 +1321,22 @@ function updatePencilModeUI() {
   if (pencilModeText) {
     pencilModeText.textContent = currentPencilOnly ? "✏️ 펜슬 전용" : "🖐️ 손+펜 공용";
   }
+  if (floatPencilOnlyBtn) {
+    floatPencilOnlyBtn.classList.toggle("active", currentPencilOnly);
+  }
+  if (floatPencilLabel) {
+    floatPencilLabel.textContent = currentPencilOnly ? "펜슬만" : "손+펜";
+  }
+}
+
+function updateFloatingToolbarUI() {
+  if (floatEraserBtn) {
+    floatEraserBtn.classList.toggle("active", currentIsEraser);
+  }
+  if (floatPenBtn) {
+    floatPenBtn.classList.toggle("active", !currentIsEraser);
+  }
+  updatePencilModeUI();
 }
 
 function handlePencilOnlyToggle() {
@@ -1271,6 +1353,7 @@ function handleColorSelect(btn) {
   currentPenColor = btn.dataset.color;
   currentIsEraser = false;
   eraserToggleBtn.classList.remove("active");
+  updateFloatingToolbarUI();
 
   colorChips.forEach((b) => b.classList.toggle("active", b === btn));
   activeCanvasInstances.forEach((inst) => inst.setColor(currentPenColor));
@@ -1285,6 +1368,7 @@ function handleWidthSelect(btn) {
 function handleEraserToggle() {
   currentIsEraser = !currentIsEraser;
   eraserToggleBtn.classList.toggle("active", currentIsEraser);
+  updateFloatingToolbarUI();
   activeCanvasInstances.forEach((inst) => inst.setEraser(currentIsEraser));
 }
 
@@ -1445,6 +1529,10 @@ function renderGradingView() {
 
   // 채점 뷰에서 학생 필기 캔버스 복원 및 채점자 빨간 펜 필기 활성화
   requestAnimationFrame(() => {
+    // 1. 먼저 autoFitProblemStages를 실행하여 수식 그리드의 transform scale을 확정
+    autoFitProblemStages();
+
+    const createdGradingInstances = [];
     questions.forEach((q) => {
       const gCanvasEl = document.querySelector(`#gradingCanvas_${q.id}`);
       if (gCanvasEl) {
@@ -1460,10 +1548,18 @@ function renderGradingView() {
         if (studentStrokes.length > 0) {
           gInstance.setStrokes(studentStrokes);
         }
+        createdGradingInstances.push(gInstance);
       }
     });
 
-    autoFitProblemStages();
+    // 2. DOM 레이아웃 정착 후 2차 정밀 redraw로 1:1 완벽 정렬 보장
+    setTimeout(() => {
+      autoFitProblemStages();
+      createdGradingInstances.forEach((inst) => {
+        inst.resize();
+        inst.redraw();
+      });
+    }, 60);
   });
 
   updateGradingStatusUI();
@@ -1815,6 +1911,64 @@ if (eraserToggleBtn) eraserToggleBtn.addEventListener("click", handleEraserToggl
 if (undoBtn) undoBtn.addEventListener("click", handleUndo);
 if (redoBtn) redoBtn.addEventListener("click", handleRedo);
 if (clearAllCanvasBtn) clearAllCanvasBtn.addEventListener("click", handleClearAllCanvas);
+
+// 🌟 플로팅 퀵 액션 바 이벤트
+if (floatUndoBtn) floatUndoBtn.addEventListener("click", handleUndo);
+if (floatRedoBtn) floatRedoBtn.addEventListener("click", handleRedo);
+if (floatEraserBtn) floatEraserBtn.addEventListener("click", () => {
+  if (!currentIsEraser) handleEraserToggle();
+});
+if (floatPenBtn) floatPenBtn.addEventListener("click", () => {
+  if (currentIsEraser) handleEraserToggle();
+});
+if (floatPencilOnlyBtn) floatPencilOnlyBtn.addEventListener("click", handlePencilOnlyToggle);
+if (floatClearBtn) floatClearBtn.addEventListener("click", () => {
+  if (lastActiveCanvasId && activeCanvasInstances.has(lastActiveCanvasId)) {
+    activeCanvasInstances.get(lastActiveCanvasId).clear();
+    playClickSound();
+  } else {
+    handleClearAllCanvas();
+  }
+});
+
+// 🌟 문제 단위 스무스 스크롤 네비게이터 이벤트
+if (prevProblemStepBtn) {
+  prevProblemStepBtn.addEventListener("click", () => {
+    scrollToProblemStep(currentFocusedProblemIndex - 1);
+  });
+}
+if (nextProblemStepBtn) {
+  nextProblemStepBtn.addEventListener("click", () => {
+    scrollToProblemStep(currentFocusedProblemIndex + 1);
+  });
+}
+
+// 🌟 카드 헤더 인라인 미니 액션 버튼 (해당 문제 개별 되돌리기/지우기)
+if (worksheetGrid) {
+  worksheetGrid.addEventListener("click", (e) => {
+    const miniBtn = e.target.closest(".card-mini-btn");
+    if (!miniBtn) return;
+    const action = miniBtn.dataset.action;
+    const qId = miniBtn.dataset.id;
+    const canvasInst = activeCanvasInstances.get(qId);
+    if (!canvasInst) return;
+
+    if (action === "undo") {
+      canvasInst.undo();
+      playClickSound();
+    } else if (action === "clear") {
+      canvasInst.clear();
+      playClickSound();
+    }
+  });
+}
+
+// 🌟 불필요한 핀치 줌 / 더블 탭 확대 제스처 차단
+if (typeof document !== "undefined") {
+  document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+  document.addEventListener("gesturechange", (e) => e.preventDefault(), { passive: false });
+  document.addEventListener("gestureend", (e) => e.preventDefault(), { passive: false });
+}
 
 // 대시보드 및 오답 복습 이벤트 (Phase 4)
 if (startMistakeSessionBtn) {

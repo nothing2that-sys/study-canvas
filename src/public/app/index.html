@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#173f35">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -17,7 +17,7 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon.svg">
-    <link rel="stylesheet" href="./css/app.css?v=20260822_33">
+    <link rel="stylesheet" href="./css/app.css?v=20260822_34">
   </head>
   <body>
     <div class="app-shell">
@@ -467,6 +467,49 @@
             </button>
             <button class="nav-btn submit-btn" id="submitPracticeBtn" type="button" style="display: none;">
               <span>풀이 완료 및 제출</span><b>✓</b>
+            </button>
+          </div>
+
+          <!-- 🌟 스크롤 따라오는 스마트 플로팅 퀵 액션 바 (Floating Quick Action Bar) -->
+          <div class="floating-quick-bar" id="floatingQuickBar" aria-label="필기 플로팅 퀵 도구바">
+            <div class="float-btn-group">
+              <button type="button" class="float-btn" id="floatUndoBtn" title="되돌리기 (1획 취소)">
+                <span class="float-icon">↶</span>
+                <span class="float-label">되돌리기</span>
+              </button>
+              <button type="button" class="float-btn" id="floatRedoBtn" title="다시하기">
+                <span class="float-icon">↷</span>
+                <span class="float-label">다시하기</span>
+              </button>
+              <div class="float-divider"></div>
+              <button type="button" class="float-btn" id="floatEraserBtn" title="획 지우개 토글">
+                <span class="float-icon">🧹</span>
+                <span class="float-label">지우개</span>
+              </button>
+              <button type="button" class="float-btn active" id="floatPenBtn" title="펜으로 쓰기">
+                <span class="float-icon">✏️</span>
+                <span class="float-label">펜</span>
+              </button>
+              <div class="float-divider"></div>
+              <button type="button" class="float-btn" id="floatPencilOnlyBtn" title="애플 펜슬 전용 모드 (손가락은 화면 스크롤, 펜슬로만 필기)">
+                <span class="float-icon">🖐️</span>
+                <span class="float-label" id="floatPencilLabel">손+펜</span>
+              </button>
+              <button type="button" class="float-btn danger" id="floatClearBtn" title="현재 문제 필기 비우기">
+                <span class="float-icon">🗑️</span>
+                <span class="float-label">비우기</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 🌟 문제 단위 원터치 스무스 스크롤 네비게이터 바 (Problem Step Navigator) -->
+          <div class="problem-step-navigator" id="problemStepNavigator" aria-label="문제 단위 이동 바">
+            <button type="button" class="step-nav-btn" id="prevProblemStepBtn" title="이전 문제로 부드럽게 스크롤">
+              <span>▲ 이전 문제</span>
+            </button>
+            <span class="step-nav-status" id="currentProblemStepText">현재 1번 문제</span>
+            <button type="button" class="step-nav-btn" id="nextProblemStepBtn" title="다음 문제로 부드럽게 스크롤">
+              <span>다음 문제 ▼</span>
             </button>
           </div>
         </div>
