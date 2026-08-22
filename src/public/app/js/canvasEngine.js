@@ -1,0 +1,392 @@
+/**
+ * Math Canvas Pro - Canvas 손계산 필기 및 제스처 펜 엔진 (Phase 3)
+ * SSOT Section 23~35 명세 준수
+ * - PointerEvents 기반 멀티 인풋 (Apple Pencil, 터치, 마우스)
+ * - 팜 리젝션(Palm Rejection) 지원
+ * - Quadratic Bezier 곡선 실시간 스무딩
+ * - 획 지우개 / 픽셀 지우개
+ * - Undo / Redo 히스토리 스택
+ */
+
+export function createDrawingCanvas(canvasElement, options = {}) {
+  const ctx = canvasElement.getContext("2d", { alpha: true });
+  let strokes = []; // [{ id, color, width, isEraser, points: [{x, y}] }]
+  let undoStack = []; // 히스토리 스택
+  let redoStack = [];
+
+  let currentStroke = null;
+  let isDrawing = false;
+  let activePointerId = null;
+
+  // 기본 드로잉 설정
+  const settings = {
+    color: options.color || "#173f35",
+    width: options.width || 2.5,
+    isEraser: options.isEraser || false,
+    eraserType: options.eraserType || "stroke",
+    eraserRadius: options.eraserRadius || 14,
+    readOnly: Boolean(options.readOnly),
+    onStrokeChange: options.onStrokeChange || null
+  };
+
+  let dpr = (typeof window !== "undefined" && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+
+  function resize() {
+    const rect = canvasElement.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    dpr = (typeof window !== "undefined" && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+    canvasElement.width = Math.round(rect.width * dpr);
+    canvasElement.height = Math.round(rect.height * dpr);
+    redraw();
+  }
+
+  function getCanvasPoint(event) {
+    const rect = canvasElement.getBoundingClientRect();
+    let clientX = event.clientX;
+    let clientY = event.clientY;
+
+    if (clientX === undefined && event.touches && event.touches.length > 0) {
+      clientX = event.touches[0].clientX;
+      clientY = event.touches[0].clientY;
+    } else if (clientX === undefined && event.changedTouches && event.changedTouches.length > 0) {
+      clientX = event.changedTouches[0].clientX;
+      clientY = event.changedTouches[0].clientY;
+    }
+
+    const x = (clientX || 0) - rect.left;
+    const y = (clientY || 0) - rect.top;
+    return { x, y };
+  }
+
+  function redraw() {
+    const rect = canvasElement.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+
+    // 1. 변환 행렬을 리셋하고 전체 픽셀 버퍼를 100% 완전 투명 클리어
+    if (typeof ctx.setTransform === "function") {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+    // 2. DPR 스케일 적용 후 스트로크 렌더링
+    ctx.save();
+    if (typeof ctx.setTransform === "function") {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    for (const stroke of strokes) {
+      drawStroke(stroke);
+    }
+
+    if (currentStroke) {
+      drawStroke(currentStroke);
+    }
+    ctx.restore();
+  }
+
+  function drawStroke(stroke) {
+    if (!stroke.points || stroke.points.length === 0) return;
+
+    const rect = canvasElement.getBoundingClientRect();
+    const currentW = rect.width;
+    const currentH = rect.height;
+
+    // 스트로크의 원본 캔버스 크기 대비 현재 캔버스 크기 비율 계산
+    const baseW = stroke.baseWidth || currentW;
+    const baseH = stroke.baseHeight || currentH;
+    const scaleX = (baseW > 0 && currentW > 0) ? (currentW / baseW) : 1;
+    const scaleY = (baseH > 0 && currentH > 0) ? (currentH / baseH) : 1;
+    const scaleAvg = (scaleX + scaleY) / 2;
+
+    ctx.save();
+    ctx.strokeStyle = stroke.color || settings.color;
+    ctx.fillStyle = stroke.color || settings.color;
+    ctx.lineWidth = (stroke.width || settings.width) * scaleAvg;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    const pts = stroke.points;
+
+    if (pts.length <= 2) {
+      ctx.beginPath();
+      ctx.arc(pts[0].x * scaleX, pts[0].y * scaleY, Math.max(1, ctx.lineWidth / 2), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return;
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x * scaleX, pts[0].y * scaleY);
+
+    for (let i = 1; i < pts.length - 1; i++) {
+      const midX = ((pts[i].x + pts[i + 1].x) / 2) * scaleX;
+      const midY = ((pts[i].y + pts[i + 1].y) / 2) * scaleY;
+      ctx.quadraticCurveTo(pts[i].x * scaleX, pts[i].y * scaleY, midX, midY);
+    }
+
+    const last = pts[pts.length - 1];
+    ctx.lineTo(last.x * scaleX, last.y * scaleY);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 획 지우개(Stroke Eraser): 터치 지점과 획의 최소 거리 계산
+  function distanceToSegment(p, a, b) {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lenSq = (dx * dx) + (dy * dy);
+    if (lenSq === 0) {
+      const px = p.x - a.x;
+      const py = p.y - a.y;
+      return Math.sqrt((px * px) + (py * py));
+    }
+    const t = Math.max(0, Math.min(1, (((p.x - a.x) * dx) + ((p.y - a.y) * dy)) / lenSq));
+    const projX = a.x + (t * dx);
+    const projY = a.y + (t * dy);
+    const ex = p.x - projX;
+    const ey = p.y - projY;
+    return Math.sqrt((ex * ex) + (ey * ey));
+  }
+
+  function eraseStrokesAtPoint(point) {
+    const rect = canvasElement.getBoundingClientRect();
+    const currentW = rect.width;
+    const currentH = rect.height;
+    const eraseRadius = settings.eraserRadius;
+    const remaining = [];
+    let erasedAny = false;
+
+    for (const stroke of strokes) {
+      let hit = false;
+      const baseW = stroke.baseWidth || currentW;
+      const baseH = stroke.baseHeight || currentH;
+      const scaleX = (baseW > 0 && currentW > 0) ? (currentW / baseW) : 1;
+      const scaleY = (baseH > 0 && currentH > 0) ? (currentH / baseH) : 1;
+
+      const pts = stroke.points;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p1 = { x: pts[i].x * scaleX, y: pts[i].y * scaleY };
+        const p2 = { x: pts[i + 1].x * scaleX, y: pts[i + 1].y * scaleY };
+        if (distanceToSegment(point, p1, p2) <= eraseRadius + (stroke.width / 2)) {
+          hit = true;
+          break;
+        }
+      }
+      if (hit) {
+        erasedAny = true;
+      } else {
+        remaining.push(stroke);
+      }
+    }
+
+    if (erasedAny) {
+      saveToUndoStack();
+      strokes = remaining;
+      redraw();
+      notifyChange();
+    }
+  }
+
+  function saveToUndoStack() {
+    undoStack.push(JSON.parse(JSON.stringify(strokes)));
+    if (undoStack.length > 50) undoStack.shift();
+    redoStack = [];
+  }
+
+  function notifyChange() {
+    if (typeof settings.onStrokeChange === "function") {
+      settings.onStrokeChange(strokes);
+    }
+  }
+
+  // Pointer & Touch Event Handlers
+  function onPointerDown(e) {
+    if (settings.readOnly) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+
+    if (e.cancelable) e.preventDefault();
+
+    if (canvasElement.width === 0 || canvasElement.height === 0) {
+      resize();
+    }
+
+    isDrawing = true;
+    activePointerId = e.pointerId !== undefined ? e.pointerId : 1;
+
+    try {
+      if (typeof canvasElement.setPointerCapture === "function" && e.pointerId !== undefined) {
+        canvasElement.setPointerCapture(e.pointerId);
+      }
+    } catch (_) {}
+
+    const pt = getCanvasPoint(e);
+
+    if (settings.isEraser) {
+      eraseStrokesAtPoint(pt);
+      return;
+    }
+
+    saveToUndoStack();
+
+    const rect = canvasElement.getBoundingClientRect();
+    currentStroke = {
+      id: `stroke_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      color: settings.color,
+      width: settings.width,
+      isEraser: false,
+      baseWidth: rect.width || 300,
+      baseHeight: rect.height || 260,
+      points: [pt],
+      timestamp: Date.now()
+    };
+
+    redraw();
+  }
+
+  function onPointerMove(e) {
+    if (!isDrawing) return;
+    if (activePointerId !== null && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
+
+    if (e.cancelable) e.preventDefault();
+
+    const pt = getCanvasPoint(e);
+
+    if (settings.isEraser) {
+      eraseStrokesAtPoint(pt);
+      return;
+    }
+
+    if (currentStroke) {
+      currentStroke.points.push(pt);
+      redraw();
+    }
+  }
+
+  function onPointerUp(e) {
+    if (!isDrawing) return;
+
+    if (e.cancelable) e.preventDefault();
+
+    isDrawing = false;
+    activePointerId = null;
+
+    try {
+      if (typeof canvasElement.releasePointerCapture === "function" && e.pointerId !== undefined) {
+        canvasElement.releasePointerCapture(e.pointerId);
+      }
+    } catch (_) {}
+
+    if (currentStroke && currentStroke.points.length > 0) {
+      strokes.push(currentStroke);
+      currentStroke = null;
+      redraw();
+      notifyChange();
+    }
+  }
+
+  function onPointerCancel(e) {
+    if (isDrawing) {
+      if (e.cancelable) e.preventDefault();
+      isDrawing = false;
+      activePointerId = null;
+      currentStroke = null;
+      redraw();
+    }
+  }
+
+  // PointerEvents 등록
+  canvasElement.addEventListener("pointerdown", onPointerDown, { passive: false });
+  canvasElement.addEventListener("pointermove", onPointerMove, { passive: false });
+  canvasElement.addEventListener("pointerup", onPointerUp, { passive: false });
+  canvasElement.addEventListener("pointercancel", onPointerCancel, { passive: false });
+
+  // iOS Safari TouchEvents 백업 등록 (PointerEvents 미동작 방지)
+  canvasElement.addEventListener("touchstart", (e) => {
+    if (e.pointerType === undefined) onPointerDown(e);
+  }, { passive: false });
+  canvasElement.addEventListener("touchmove", (e) => {
+    if (e.pointerType === undefined) onPointerMove(e);
+  }, { passive: false });
+  canvasElement.addEventListener("touchend", (e) => {
+    if (e.pointerType === undefined) onPointerUp(e);
+  }, { passive: false });
+  canvasElement.addEventListener("touchcancel", (e) => {
+    if (e.pointerType === undefined) onPointerCancel(e);
+  }, { passive: false });
+
+  // ResizeObserver로 캔버스 크기 변화 감지
+  let resizeObserver = null;
+  if (typeof ResizeObserver === "function") {
+    resizeObserver = new ResizeObserver(() => {
+      resize();
+    });
+    resizeObserver.observe(canvasElement);
+  }
+
+  // 초기화 (DOM 렌더링 타이밍 보장)
+  const safeRaf = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => setTimeout(cb, 0);
+  safeRaf(() => {
+    resize();
+    setTimeout(resize, 50); // layout 완료 후 2차 resize
+  });
+
+  return {
+    setColor(color) {
+      settings.color = color;
+      settings.isEraser = false;
+    },
+    setWidth(width) {
+      settings.width = width;
+    },
+    setEraser(enabled, type = "stroke") {
+      settings.isEraser = Boolean(enabled);
+      settings.eraserType = type;
+    },
+    setReadOnly(readOnly) {
+      settings.readOnly = Boolean(readOnly);
+    },
+    undo() {
+      if (undoStack.length === 0) return false;
+      redoStack.push(JSON.parse(JSON.stringify(strokes)));
+      strokes = undoStack.pop();
+      redraw();
+      notifyChange();
+      return true;
+    },
+    redo() {
+      if (redoStack.length === 0) return false;
+      undoStack.push(JSON.parse(JSON.stringify(strokes)));
+      strokes = redoStack.pop();
+      redraw();
+      notifyChange();
+      return true;
+    },
+    clear() {
+      if (strokes.length === 0) return;
+      saveToUndoStack();
+      strokes = [];
+      redraw();
+      notifyChange();
+    },
+    getStrokes() {
+      return JSON.parse(JSON.stringify(strokes));
+    },
+    setStrokes(newStrokes) {
+      strokes = Array.isArray(newStrokes) ? JSON.parse(JSON.stringify(newStrokes)) : [];
+      undoStack = [];
+      redoStack = [];
+      redraw();
+    },
+    isEmpty() {
+      return strokes.length === 0;
+    },
+    destroy() {
+      canvasElement.removeEventListener("pointerdown", onPointerDown);
+      canvasElement.removeEventListener("pointermove", onPointerMove);
+      canvasElement.removeEventListener("pointerup", onPointerUp);
+      canvasElement.removeEventListener("pointercancel", onPointerCancel);
+      if (resizeObserver) resizeObserver.disconnect();
+    }
+  };
+}

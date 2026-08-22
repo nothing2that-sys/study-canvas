@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#173f35">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Math Canvas">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="직접 쓰고 정확하게 익히는 연산 학습 도구">
+    <meta property="og:title" content="Math Canvas Pro">
+    <meta property="og:description" content="손으로 익히는 연산">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <title>Math Canvas Pro</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="./icon.svg">
+    <link rel="stylesheet" href="./css/app.css?v=20260822_27">
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- 상단 네비게이션 바 -->
+      <header class="topbar">
+        <a class="brand" href="./" id="homeBrandLink" aria-label="Math Canvas Pro 홈">
+          <span class="brand-mark" aria-hidden="true">M</span>
+          <span><strong>Math Canvas</strong><small>손으로 익히는 연산</small></span>
+        </a>
+        <div class="top-actions">
+          <button class="icon-button theme-btn" id="themeToggleBtn" type="button" aria-label="테마 변경" title="테마 변경 (종이/칠판/미드나잇)">
+            <span id="themeIcon">📜</span>
+            <span id="themeLabel">종이 테마</span>
+          </button>
+          <button class="icon-button sound-btn" id="soundToggleBtn" type="button" aria-label="소리 켜기/끄기" title="소리 켜기/끄기">
+            <span class="sound-icon" id="soundIcon">🔊</span>
+            <span class="sound-label" id="soundLabel">소리 켬</span>
+          </button>
+          <button class="icon-button" id="shortcutsHelpBtn" type="button" aria-label="단축키 안내" title="단축키 안내 (?)">⌨️</button>
+          <span class="offline-badge" id="networkStatus"><i></i><span>오프라인 준비됨</span></span>
+          <button class="icon-button" id="abortSessionBtn" type="button" aria-label="세션 중단" title="세션 중단" hidden>나가기</button>
+        </div>
+      </header>
+
+      <main class="main-container">
+        <!-- 1. 세션 설정 뷰 (Setup View) -->
+        <div id="setupView" class="view active-view">
+          <section class="hero" aria-labelledby="heroTitle">
+            <div class="hero-copy">
+              <p class="eyebrow">오늘의 연산</p>
+              <h1 id="heroTitle">천천히 정확하게,<br><em>손으로 익혀요.</em></h1>
+              <p class="hero-description">수준에 맞는 문제를 워크시트로 만들고, 풀이 완료 후 채점 평가를 진행합니다.</p>
+              <div class="hero-summary" aria-label="학습 준비 상태">
+                <div><strong id="summaryLevel">M2</strong><span>선택 단계</span></div>
+                <div><strong id="summaryCount">20</strong><span>문제 수</span></div>
+                <div><strong id="summaryPageSize">4</strong><span>페이지당</span></div>
+              </div>
+            </div>
+            <div class="problem-card" aria-hidden="true">
+              <span class="paper-label">연습 미리보기</span>
+              <div class="vertical-math"><span>47</span><span><b>×</b> 6</span><i></i><strong>?</strong></div>
+              <div class="pencil-stroke stroke-one"></div>
+              <div class="pencil-stroke stroke-two"></div>
+              <div class="card-note">직접 계산해 보세요</div>
+            </div>
+          </section>
+
+          <section class="setup-section" aria-labelledby="setupTitle">
+            <div class="section-heading">
+              <div><p class="eyebrow">학습 로드맵 & 빠른 시작</p><h2 id="setupTitle">오늘 풀 문제를 골라요</h2></div>
+              <span class="engine-state" id="engineState">수학 엔진 준비 완료</span>
+            </div>
+
+            <!-- 🌟 6단계 연산 로드맵 마스터리 트래커 (상단 배치) -->
+            <div class="curriculum-roadmap-section" id="curriculumRoadmapSection">
+              <div class="roadmap-header">
+                <div>
+                  <span class="roadmap-tag">단계별 연산 로드맵</span>
+                  <h3>6단계 마스터리 로드맵</h3>
+                </div>
+                <div class="roadmap-op-tabs" role="tablist">
+                  <button type="button" class="roadmap-tab-btn active" id="roadmapMulTab" data-op="mul">✖ 곱셈 6단계</button>
+                  <button type="button" class="roadmap-tab-btn" id="roadmapDivTab" data-op="div">➗ 나눗셈 6단계</button>
+                </div>
+              </div>
+              <div class="roadmap-grid" id="roadmapGrid">
+                <!-- app.js에서 동적으로 6단계 카드 렌더링 -->
+              </div>
+            </div>
+
+            <form id="practiceForm" class="setup-grid">
+              <!-- 연산 종류 -->
+              <fieldset class="setting-card operation-card">
+                <legend>어떤 연산을 연습할까요?</legend>
+                <div class="segmented-control" role="radiogroup" aria-label="연산 종류">
+                  <label><input type="radio" name="operation" value="mul" checked><span><b>×</b> 곱셈</span></label>
+                  <label><input type="radio" name="operation" value="div"><span><b>÷</b> 나눗셈</span></label>
+                </div>
+              </fieldset>
+
+              <!-- 표준 레퍼런스 6단계 & 커스텀 난이도 -->
+              <fieldset class="setting-card full-width-card">
+                <legend>학습 단계 선택</legend>
+                <div class="choice-row seven-col" role="radiogroup" aria-label="표준 레퍼런스 단계">
+                  <label><input type="radio" name="difficulty" value="ref_1"><span><b>Lv.1</b><small id="refLabel1">1자리 기초</small></span></label>
+                  <label><input type="radio" name="difficulty" value="ref_2" checked><span><b>Lv.2</b><small id="refLabel2">2자리 입문</small></span></label>
+                  <label><input type="radio" name="difficulty" value="ref_3"><span><b>Lv.3</b><small id="refLabel3">3자리 기본</small></span></label>
+                  <label><input type="radio" name="difficulty" value="ref_4"><span><b>Lv.4</b><small id="refLabel4">2자리 표준</small></span></label>
+                  <label><input type="radio" name="difficulty" value="ref_5"><span><b>Lv.5</b><small id="refLabel5">3자리 심화</small></span></label>
+                  <label><input type="radio" name="difficulty" value="ref_6"><span><b>Lv.6</b><small id="refLabel6">마스터</small></span></label>
+                  <label><input type="radio" name="difficulty" value="custom"><span><b>⚙️</b><small>직접 설정</small></span></label>
+                </div>
+
+                <!-- 전체 6단계 로드맵 중 현재 수준 실시간 안내 게이지 카드 -->
+                <div class="curriculum-level-card" id="curriculumLevelCard">
+                  <div class="level-card-header">
+                    <span class="level-indicator-badge" id="levelIndicatorBadge">🌟 Lv.2 · 27 × 4</span>
+                    <span class="level-name-text" id="levelNameText">2자리 입문 세로셈</span>
+                  </div>
+                  <div class="roadmap-gauge-wrap">
+                    <div class="roadmap-gauge-bar">
+                      <div class="gauge-step" data-step="1"><span>1</span></div>
+                      <div class="gauge-step" data-step="2"><span>2</span></div>
+                      <div class="gauge-step" data-step="3"><span>3</span></div>
+                      <div class="gauge-step" data-step="4"><span>4</span></div>
+                      <div class="gauge-step" data-step="5"><span>5</span></div>
+                      <div class="gauge-step" data-step="6"><span>6</span></div>
+                      <div class="gauge-fill" id="gaugeFill" style="width: 33.33%;"></div>
+                    </div>
+                  </div>
+                  <p class="level-desc-text" id="levelDescText">두자리 × 한자리 세로셈과 올림수 1회 연습 단계입니다.</p>
+                </div>
+              </fieldset>
+
+              <!-- 자릿수 직접 선택 (custom일 때 활성화) -->
+              <fieldset class="setting-card full-width-card" id="customDigitsCard" hidden>
+                <legend id="customDigitsLegend">자릿수 직접 선택 (커스텀)</legend>
+                <div class="custom-digits-wrapper">
+                  <!-- 곱셈 자릿수 선택 -->
+                  <div class="digits-pair" id="mulDigitsPair">
+                    <div class="digit-selector-group">
+                      <span class="selector-label">곱해지는 수 (피승수)</span>
+                      <div class="choice-chips" role="radiogroup" aria-label="곱해지는 수 자릿수">
+                        <label><input type="radio" name="aDigits" value="1"><span>1자리</span></label>
+                        <label><input type="radio" name="aDigits" value="2" checked><span>2자리</span></label>
+                        <label><input type="radio" name="aDigits" value="3"><span>3자리</span></label>
+                      </div>
+                    </div>
+                    <span class="operator-symbol" aria-hidden="true">×</span>
+                    <div class="digit-selector-group">
+                      <span class="selector-label">곱하는 수 (승수)</span>
+                      <div class="choice-chips" role="radiogroup" aria-label="곱하는 수 자릿수">
+                        <label><input type="radio" name="bDigits" value="1" checked><span>1자리</span></label>
+                        <label><input type="radio" name="bDigits" value="2"><span>2자리</span></label>
+                        <label><input type="radio" name="bDigits" value="3"><span>3자리</span></label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 나눗셈 자릿수 선택 -->
+                  <div class="digits-pair" id="divDigitsPair" hidden>
+                    <div class="digit-selector-group">
+                      <span class="selector-label">나누어지는 수 (피제수)</span>
+                      <div class="choice-chips" role="radiogroup" aria-label="나누어지는 수 자릿수">
+                        <label><input type="radio" name="dividendDigits" value="2"><span>2자리</span></label>
+                        <label><input type="radio" name="dividendDigits" value="3" checked><span>3자리</span></label>
+                      </div>
+                    </div>
+                    <span class="operator-symbol" aria-hidden="true">÷</span>
+                    <div class="digit-selector-group">
+                      <span class="selector-label">나누는 수 (제수)</span>
+                      <div class="choice-chips" role="radiogroup" aria-label="나누는 수 자릿수">
+                        <label><input type="radio" name="divisorDigits" value="1" checked><span>1자리</span></label>
+                        <label><input type="radio" name="divisorDigits" value="2"><span>2자리</span></label>
+                        <label><input type="radio" name="divisorDigits" value="3"><span>3자리</span></label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </fieldset>
+
+              <!-- 전체 문제 수 (기본 프리셋 + 직접 입력) -->
+              <fieldset class="setting-card">
+                <legend>몇 문제를 풀까요? (총 문제 수)</legend>
+                <div class="count-row five-col" role="radiogroup" aria-label="전체 문제 수">
+                  <label><input type="radio" name="countPreset" value="10"><span>10문제</span></label>
+                  <label><input type="radio" name="countPreset" value="20" checked><span>20문제</span></label>
+                  <label><input type="radio" name="countPreset" value="30"><span>30문제</span></label>
+                  <label><input type="radio" name="countPreset" value="50"><span>50문제</span></label>
+                  <label><input type="radio" name="countPreset" value="custom"><span>직접 입력</span></label>
+                </div>
+                <div class="custom-input-wrap" id="customCountWrap" hidden>
+                  <label for="customCountInput">문제 수 직접 지정 (1 ~ 100문제)</label>
+                  <div class="input-with-unit">
+                    <input type="number" id="customCountInput" name="customCount" min="1" max="100" value="15" inputmode="numeric">
+                    <span class="unit-text">문제</span>
+                  </div>
+                </div>
+              </fieldset>
+
+              <!-- 한 화면/페이지당 문제 수 (기본 프리셋 + 행×열 커스텀) -->
+              <fieldset class="setting-card">
+                <legend>한 화면(페이지)에 표시할 문제 수 및 배치</legend>
+                <div class="choice-row seven-col" role="radiogroup" aria-label="한 화면 문제 수 및 배치">
+                  <label><input type="radio" name="layoutPreset" value="1x1"><span><b>1×1</b><small>1개</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="2x1"><span><b>2×1</b><small>2개</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="2x2" checked><span><b>2×2</b><small>4개</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="2x3"><span><b>2×3</b><small>6개</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="2x4"><span><b>2×4</b><small>8개</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="2x5"><span><b>2×5</b><small>10개</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="custom"><span><b>직접</b><small>행×열</small></span></label>
+                </div>
+                <div class="custom-layout-wrap" id="customLayoutWrap" hidden>
+                  <div class="custom-grid-selectors">
+                    <label>
+                      <span>가로 칸 (열)</span>
+                      <select id="customColsSelect" name="customCols">
+                        <option value="1">1열 (1칸)</option>
+                        <option value="2" selected>2열 (2칸)</option>
+                        <option value="3">3열 (3칸)</option>
+                        <option value="4">4열 (4칸)</option>
+                      </select>
+                    </label>
+                    <span class="grid-cross">×</span>
+                    <label>
+                      <span>세로 줄 (행)</span>
+                      <select id="customRowsSelect" name="customRows">
+                        <option value="1">1행 (1줄)</option>
+                        <option value="2">2행 (2줄)</option>
+                        <option value="3" selected>3행 (3줄)</option>
+                        <option value="4">4행 (4줄)</option>
+                        <option value="5">5행 (5줄)</option>
+                        <option value="6">6행 (6줄)</option>
+                      </select>
+                    </label>
+                    <div class="custom-grid-result">
+                      <strong id="customGridResultText">한 화면 6문제</strong>
+                      <small>(2열 × 3행)</small>
+                    </div>
+                  </div>
+                </div>
+              </fieldset>
+
+              <!-- 곱셈 전용 상세 옵션 -->
+              <fieldset class="setting-card advanced-card full-width-card" id="multiplyOptions">
+                <legend>곱하는 수 특별 조건</legend>
+                <div class="select-pair">
+                  <label>출제 방식
+                    <select id="multiplierMode" name="multiplierMode">
+                      <option value="random">무작위</option>
+                      <option value="fixed">특정 숫자 집중</option>
+                      <option value="multiple">특정 수의 배수</option>
+                    </select>
+                  </label>
+                  <label id="modeValueLabel" hidden><span id="modeValueText">숫자</span>
+                    <input id="modeValue" name="modeValue" type="number" min="2" max="99" value="7" inputmode="numeric">
+                  </label>
+                </div>
+              </fieldset>
+
+              <button class="primary-action" type="submit">
+                <span>워크시트 연습 시작</span><b aria-hidden="true">→</b>
+              </button>
+            </form>
+          </section>
+
+          <!-- 3. 내 학습 기록 및 오답 복습 대시보드 (Phase 4) -->
+          <section class="dashboard-section" id="dashboardSection">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">학습 기록 & 오답 복습</p>
+                <h2>나의 연산 성장 대시보드</h2>
+              </div>
+            </div>
+
+            <!-- 학습 요약 통계 그리드 -->
+            <div class="dashboard-stats-grid">
+              <div class="dash-stat-card">
+                <span class="dash-stat-label">총 푼 문제</span>
+                <strong class="dash-stat-val" id="dashTotalQuestions">0개</strong>
+                <small class="dash-stat-sub">누적 학습량</small>
+              </div>
+              <div class="dash-stat-card highlight">
+                <span class="dash-stat-label">평균 정답률</span>
+                <strong class="dash-stat-val" id="dashAvgAccuracy">0%</strong>
+                <small class="dash-stat-sub">정확도</small>
+              </div>
+              <div class="dash-stat-card">
+                <span class="dash-stat-label">누적 훈련 시간</span>
+                <strong class="dash-stat-val" id="dashTotalTime">0초</strong>
+                <small class="dash-stat-sub">집중 시간</small>
+              </div>
+              <div class="dash-stat-card warning">
+                <span class="dash-stat-label">복습할 오답</span>
+                <strong class="dash-stat-val" id="dashMistakeCount">0개</strong>
+                <small class="dash-stat-sub">취약 유형</small>
+              </div>
+            </div>
+
+            <!-- 오답 집중 다시 풀기 배너 -->
+            <div class="mistake-banner" id="mistakeBanner" hidden>
+              <div class="mistake-banner-content">
+                <span class="mistake-icon">🔥</span>
+                <div>
+                  <h3>틀렸던 오답 문제가 <span id="mistakeBadgeCount">0</span>개 모였어요!</h3>
+                  <p>완벽히 이해할 때까지 다시 풀며 연산 실수를 극복하세요.</p>
+                </div>
+              </div>
+              <button type="button" class="mistake-action-btn" id="startMistakeSessionBtn">
+                <span>오답 집중 다시 풀기</span><b>→</b>
+              </button>
+            </div>
+
+            <!-- 최근 학습 세션 목록 -->
+            <div class="recent-sessions-container">
+              <div class="recent-header">
+                <h3>최근 연습 기록</h3>
+                <button type="button" class="clear-history-btn" id="clearHistoryBtn">기록 초기화</button>
+              </div>
+              <div class="recent-sessions-list" id="recentSessionsList">
+                <div class="empty-recent-msg">아직 완료된 연습 기록이 없습니다. 새로운 연습을 시작해 보세요!</div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- 2. 워크시트 문제 풀이 뷰 (Worksheet Practice View) -->
+        <div id="practiceView" class="view" hidden>
+          <!-- A4 인쇄 전용 시험지 헤더 (@media print 전용) -->
+          <div class="print-only print-sheet-header" id="printSheetHeader">
+            <div class="print-header-top">
+              <h1 class="print-title" id="printTitleText">수학 연산 워크시트</h1>
+              <span class="print-level-tag" id="printLevelTag">단계: M2</span>
+            </div>
+            <div class="print-meta-grid">
+              <div class="print-meta-item"><span>이름:</span> <b>__________________</b></div>
+              <div class="print-meta-item"><span>날짜:</span> <b>2026. ____. ____</b></div>
+              <div class="print-meta-item"><span>걸린 시간:</span> <b>____분 ____초</b></div>
+              <div class="print-meta-item"><span>점수:</span> <b>______ / 100점</b></div>
+            </div>
+          </div>
+
+          <div class="practice-header">
+            <div class="progress-info">
+              <span class="level-badge" id="practiceLevelBadge">M2</span>
+              <span class="page-badge" id="practicePageBadge">페이지 1 / 5</span>
+              <span class="question-range" id="practiceQuestionRange">문제 1 ~ 4 / 20</span>
+            </div>
+            <div class="practice-actions">
+              <button type="button" class="print-action-btn" id="printWorksheetBtn" title="A4 시험지 인쇄 / PDF로 저장">
+                <span>🖨️ 시험지 인쇄</span>
+              </button>
+              <button type="button" class="print-action-btn" id="printAnswerKeyBtn" title="모범 정답지 인쇄">
+                <span>📝 정답지 인쇄</span>
+              </button>
+            </div>
+            <div class="timer-display" id="timerDisplay" aria-label="풀이 시간">
+              <span class="timer-icon" aria-hidden="true">⏱</span>
+              <strong id="timerText">00:00.0</strong>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar" id="sessionProgressBar" style="width: 20%;"></div>
+            </div>
+          </div>
+
+          <!-- iPad / Web 손계산 펜 도구바 (Pen Toolbar) -->
+          <div class="pen-toolbar" id="penToolbar">
+            <div class="tool-group">
+              <span class="tool-label">펜 색상</span>
+              <div class="color-chips" role="radiogroup" aria-label="펜 색상">
+                <button type="button" class="color-chip-btn active" data-color="#173f35" style="--chip-color: #173f35;" title="포레스트 그린"></button>
+                <button type="button" class="color-chip-btn" data-color="#1b4d89" style="--chip-color: #1b4d89;" title="오션 블루"></button>
+                <button type="button" class="color-chip-btn" data-color="#2c302e" style="--chip-color: #2c302e;" title="클래식 흑색"></button>
+                <button type="button" class="color-chip-btn" data-color="#c62828" style="--chip-color: #c62828;" title="레드 잉크"></button>
+              </div>
+            </div>
+
+            <div class="tool-group">
+              <span class="tool-label">굵기</span>
+              <div class="width-chips" role="radiogroup" aria-label="펜 굵기">
+                <button type="button" class="width-chip-btn" data-width="1.5">얇게</button>
+                <button type="button" class="width-chip-btn active" data-width="2.5">보통</button>
+                <button type="button" class="width-chip-btn" data-width="4.0">굵게</button>
+              </div>
+            </div>
+
+            <div class="tool-group actions-group">
+              <button type="button" class="tool-action-btn" id="eraserToggleBtn" title="획 지우개 토글">
+                <span class="tool-icon">🧹</span><span class="tool-text">지우개</span>
+              </button>
+              <button type="button" class="tool-action-btn" id="undoBtn" title="실행 취소">
+                <span class="tool-icon">↶</span><span class="tool-text">되돌리기</span>
+              </button>
+              <button type="button" class="tool-action-btn" id="redoBtn" title="다시 실행">
+                <span class="tool-icon">↷</span><span class="tool-text">다시하기</span>
+              </button>
+              <button type="button" class="tool-action-btn danger" id="clearAllCanvasBtn" title="이 페이지 필기 모두 지우기">
+                <span class="tool-icon">🗑️</span><span class="tool-text">비우기</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 워크시트 다중 문제 그리드 -->
+          <div class="worksheet-container">
+            <div class="worksheet-grid" id="worksheetGrid">
+              <!-- 문제 카드들이 자바스크립트로 렌더링됩니다 -->
+            </div>
+          </div>
+
+          <!-- 하단 페이지 네비게이션 및 제출 툴바 -->
+          <div class="worksheet-toolbar">
+            <button class="nav-btn secondary-action" id="prevPageBtn" type="button" disabled>
+              <span>← 이전 페이지</span>
+            </button>
+            <div class="page-indicator" id="pageIndicatorText">1 / 5 페이지</div>
+            <button class="nav-btn secondary-action" id="nextPageBtn" type="button">
+              <span>다음 페이지 →</span>
+            </button>
+            <button class="nav-btn pause-btn" id="pausePracticeBtn" type="button" title="현재까지 푼 내용을 보존하고 홈으로 이동">
+              <span>⏸ 다음에 풀기</span>
+            </button>
+            <button class="nav-btn submit-btn" id="submitPracticeBtn" type="button" style="display: none;">
+              <span>풀이 완료 및 제출</span><b>✓</b>
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. 채점자 평가 뷰 (Grading / Review View) [NEW] -->
+        <div id="gradingView" class="view" hidden>
+          <section class="grading-hero">
+            <div class="grading-banner">
+              <span class="grading-icon" aria-hidden="true">📝</span>
+              <div>
+                <h2>풀이가 완료되었습니다! 채점을 진행해 주세요</h2>
+                <p>각 문제의 정답을 확인하고 [맞음] 또는 [틀림]을 선택하세요.</p>
+              </div>
+            </div>
+            <div class="grading-toolbar">
+              <div class="grading-status-badge">
+                채점 완료: <strong id="gradedCountText">0 / 20</strong>
+                (<span id="gradedCorrectText">정답 0</span>, <span id="gradedWrongText">오답 0</span>)
+              </div>
+              <div class="grading-quick-actions">
+                <button class="chip-action-btn" id="toggleAnswersBtn" type="button">
+                  <span id="toggleAnswersText">정답 전체 숨기기</span>
+                </button>
+                <button class="chip-action-btn primary" id="gradeAllCorrectBtn" type="button">
+                  <span>모두 정답 처리</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <!-- 채점 문제 카드 그리드 -->
+          <div class="grading-container">
+            <div class="grading-grid" id="gradingGrid">
+              <!-- 채점 카드들이 자바스크립트로 렌더링됩니다 -->
+            </div>
+          </div>
+
+          <!-- 채점 완료 제출 버튼 -->
+          <div class="grading-footer">
+            <button class="primary-action finish-grading-btn" id="finishGradingBtn" type="button">
+              <span>채점 완료 및 결과 보기</span><b>→</b>
+            </button>
+          </div>
+        </div>
+
+        <!-- 4. 세션 결과 요약 뷰 (Session Result View) -->
+        <div id="resultView" class="view" hidden>
+          <canvas id="confettiCanvas" class="confetti-canvas" aria-hidden="true"></canvas>
+          <section class="result-hero">
+            <div class="result-badge-wrap">
+              <span class="result-trophy">🎉</span>
+            </div>
+            <p class="eyebrow">평가 완료</p>
+            <h1 id="resultTitle">채점 결과가 나왔어요!</h1>
+            <p class="result-subtitle" id="resultSubtitle">오늘의 연산 훈련 및 평가 성적표입니다.</p>
+          </section>
+
+          <div class="stats-grid">
+            <div class="stat-card highlight">
+              <span class="stat-label">정답률</span>
+              <strong class="stat-value" id="statAccuracy">90%</strong>
+              <small class="stat-sub" id="statAccuracyDetail">18 / 20 문제 정답</small>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">총 풀이 시간</span>
+              <strong class="stat-value" id="statTotalTime">2분 36초</strong>
+              <small class="stat-sub" id="statAvgTime">문제당 평균 7.8초</small>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">정답 개수</span>
+              <strong class="stat-value" id="statCorrectCount">18개</strong>
+              <small class="stat-sub">실수 없이 해결</small>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">오답 개수</span>
+              <strong class="stat-value" id="statWrongCount">2개</strong>
+              <small class="stat-sub">오답 복습 필요</small>
+            </div>
+          </div>
+
+          <!-- 채점 상세 및 빨간 펜 코멘트 리스트 -->
+          <section class="results-detail-section" id="resultsDetailSection">
+            <div class="results-section-header">
+              <h3>문제별 채점 및 피드백 내역</h3>
+              <div class="view-mode-tabs" role="tablist">
+                <button type="button" class="view-mode-tab-btn" id="resultViewCompactBtn" data-mode="compact">📋 간략히 보기</button>
+                <button type="button" class="view-mode-tab-btn active" id="resultViewDetailBtn" data-mode="detail">🔍 상세 필기/첨삭</button>
+              </div>
+            </div>
+            <div class="results-detail-list" id="resultsDetailList">
+              <!-- 채점 상세 내역이 자바스크립트로 렌더링됩니다 -->
+            </div>
+          </section>
+
+          <div class="result-actions">
+            <button class="primary-action" id="restartSessionBtn" type="button">
+              <span>같은 조건으로 다시 풀기</span><b>↻</b>
+            </button>
+            <button class="secondary-action" id="goHomeBtn" type="button">
+              <span>홈으로 돌아가기</span>
+            </button>
+          </div>
+        </div>
+      </main>
+
+      <footer>
+        <span>Math Canvas Pro</span>
+        <span>워크시트 모드 & 채점자 평가 시스템 가동 중</span>
+      </footer>
+    </div>
+
+    <!-- 확인 모달 (세션 중단 등) -->
+    <dialog id="confirmModal" class="confirm-dialog">
+      <div class="dialog-card">
+        <h3 id="modalTitle">세션을 중단할까요?</h3>
+        <p id="modalMessage">현재까지의 풀이 기록이 저장되지 않고 홈으로 이동합니다.</p>
+        <div class="dialog-actions">
+          <button type="button" class="btn-cancel" id="modalCancelBtn">계속 풀기</button>
+          <button type="button" class="btn-confirm" id="modalConfirmBtn">나가기</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 과거 학습 기록 상세 다시보기 모달 -->
+    <dialog id="sessionDetailModal" class="confirm-dialog session-detail-dialog">
+      <div class="dialog-card session-detail-card">
+        <div class="detail-modal-header">
+          <div>
+            <span class="detail-modal-tag" id="detailModalTag">2026. 08. 22 기록</span>
+            <h3 id="detailModalTitle">곱셈 20문제 풀이 결과</h3>
+          </div>
+          <button type="button" class="detail-modal-close" id="sessionDetailCloseBtn" aria-label="닫기">✕</button>
+        </div>
+        <div class="detail-modal-summary" id="detailModalSummary">
+          <!-- 정답률, 시간 등 요약 -->
+        </div>
+        <!-- 보기 모드 전환 탭 (간략히 보기 vs 상세 필기/첨삭) -->
+        <div class="modal-view-mode-row">
+          <div class="view-mode-tabs" role="tablist">
+            <button type="button" class="view-mode-tab-btn" id="modalViewCompactBtn" data-mode="compact">📋 간략히 보기</button>
+            <button type="button" class="view-mode-tab-btn active" id="modalViewDetailBtn" data-mode="detail">🔍 상세 필기/첨삭</button>
+          </div>
+        </div>
+        <div class="detail-modal-list" id="detailModalList">
+          <!-- 문제별 채점 내역 및 코멘트 렌더링 -->
+        </div>
+        <div class="dialog-actions single-action">
+          <button type="button" class="btn-cancel" id="sessionDetailCloseBtnBottom">닫기</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 단축키 안내 모달 -->
+    <dialog id="shortcutsModal" class="confirm-dialog shortcuts-dialog">
+      <div class="dialog-card shortcuts-card">
+        <h3>⌨️ 키보드 단축키 안내</h3>
+        <div class="shortcuts-table">
+          <div class="shortcut-row"><kbd>?</kbd><span>단축키 안내 창 열기/닫기</span></div>
+          <div class="shortcut-row"><kbd>[</kbd> / <kbd>]</kbd><span>이전 / 다음 페이지 이동</span></div>
+          <div class="shortcut-row"><kbd>1</kbd> ~ <kbd>4</kbd><span>펜 색상 변경 (초록/파랑/흑색/빨강)</span></div>
+          <div class="shortcut-row"><kbd>E</kbd><span>지우개 모드 켜기/끄기</span></div>
+          <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd><span>되돌리기 / 다시실행</span></div>
+          <div class="shortcut-row"><kbd>A</kbd><span>(채점) 전체 문제 정답 처리</span></div>
+          <div class="shortcut-row"><kbd>H</kbd><span>(채점) 정답 보이기/숨기기</span></div>
+        </div>
+        <div class="dialog-actions single-action">
+          <button type="button" class="btn-cancel" id="shortcutsCloseBtn">닫기 (Esc)</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script type="module" src="./js/app.js?v=20260822_27"></script>
+  </body>
+</html>

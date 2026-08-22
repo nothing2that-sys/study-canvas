@@ -1,0 +1,15 @@
+{
+  "name": "Math Canvas Pro",
+  "short_name": "Math Canvas",
+  "description": "직접 쓰고 정확하게 익히는 연산 학습 도구",
+  "lang": "ko",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5f3ee",
+  "theme_color": "#173f35",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
