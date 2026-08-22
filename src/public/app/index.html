@@ -17,7 +17,7 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon.svg">
-    <link rel="stylesheet" href="./css/app.css?v=20260822_29">
+    <link rel="stylesheet" href="./css/app.css?v=20260822_30">
   </head>
   <body>
     <div class="app-shell">
@@ -201,12 +201,14 @@
               <!-- 한 화면/페이지당 문제 수 (기본 프리셋 + 행×열 커스텀) -->
               <fieldset class="setting-card">
                 <legend>한 화면(페이지)에 표시할 문제 수 및 배치</legend>
-                <div class="choice-row seven-col" role="radiogroup" aria-label="한 화면 문제 수 및 배치">
-                  <label><input type="radio" name="layoutPreset" value="1x1"><span><b>1×1</b><small>1개</small></span></label>
-                  <label><input type="radio" name="layoutPreset" value="2x1"><span><b>2×1</b><small>2개</small></span></label>
-                  <label><input type="radio" name="layoutPreset" value="2x2" checked><span><b>2×2</b><small>4개</small></span></label>
-                  <label><input type="radio" name="layoutPreset" value="2x3"><span><b>2×3</b><small>6개</small></span></label>
-                  <label><input type="radio" name="layoutPreset" value="2x4"><span><b>2×4</b><small>8개</small></span></label>
+                <div class="choice-row eight-col" role="radiogroup" aria-label="한 화면 문제 수 및 배치">
+                  <label><input type="radio" name="layoutPreset" value="1x1"><span><b>1×1</b><small>1개(1열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="1x2"><span><b>1×2</b><small>2개(1열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="2x1"><span><b>2×1</b><small>2개(2열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="2x2" checked><span><b>2×2</b><small>4개(2열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="3x1"><span><b>3×1</b><small>3개(3열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="3x2"><span><b>3×2</b><small>6개(3열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="4x2"><span><b>4×2</b><small>8개(4열)</small></span></label>
                   <label><input type="radio" name="layoutPreset" value="2x5"><span><b>2×5</b><small>10개</small></span></label>
                   <label><input type="radio" name="layoutPreset" value="custom"><span><b>직접</b><small>행×열</small></span></label>
                 </div>
@@ -592,6 +594,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./js/app.js?v=20260822_29"></script>
+    <script type="module" src="./js/app.js?v=20260822_30"></script>
   </body>
 </html>

@@ -1043,7 +1043,38 @@ function renderCurrentWorksheetPage() {
   submitPracticeBtn.style.display = pageData.isLastPage ? "inline-flex" : "none";
   pageIndicatorText.textContent = `${pageData.pageNumber} / ${pageData.totalPages} 페이지`;
 
+  requestAnimationFrame(() => {
+    autoFitProblemStages();
+  });
+
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// 화면 및 카드 크기에 맞춰 문제와 정답 셀을 가로/세로 기준 꽉 차게 자동 스케일링
+function autoFitProblemStages() {
+  const stages = document.querySelectorAll(".problem-canvas-stage");
+  stages.forEach((stage) => {
+    const cardBody = stage.closest(".card-problem-body");
+    const grid = stage.querySelector(".math-grid-container, .div-grid-container");
+    if (!cardBody || !grid) return;
+
+    grid.style.transform = "none";
+
+    const bodyW = cardBody.clientWidth - 20;
+    const bodyH = cardBody.clientHeight - 20;
+    const gridW = grid.offsetWidth;
+    const gridH = grid.offsetHeight;
+
+    if (bodyW <= 0 || bodyH <= 0 || gridW <= 0 || gridH <= 0) return;
+
+    // 가로가 넓고 세로가 좁으면 세로 기준, 세로가 길면 가로 기준으로 최적 꽉 채움 배율 계산
+    const scaleX = bodyW / gridW;
+    const scaleY = bodyH / gridH;
+    const fitScale = Math.max(0.65, Math.min(2.2, Math.min(scaleX, scaleY) * 0.95));
+
+    grid.style.transform = `scale(${fitScale.toFixed(3)})`;
+    grid.style.transformOrigin = "center center";
+  });
 }
 
 // ----------------------------------------------------
@@ -1130,6 +1161,26 @@ function renderGradingView() {
   const questions = currentSession.questions;
 
   toggleAnswersText.textContent = hideAnswersInGrading ? "정답 전체 보이기" : "정답 전체 숨기기";
+
+  // 워크시트와 100% 동일한 열 수(cols)와 밀도 클래스 동기화 (좌우 비율 완벽 보존)
+  if (gradingGrid) {
+    const pSize = Number(currentSession.pageSize) || 4;
+    const cols = currentSession.cols || (pSize <= 2 ? pSize : 2);
+    gradingGrid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+
+    gradingGrid.classList.remove("density-1x1", "density-1x2", "density-2x2", "density-2x3", "density-2x5");
+    if (pSize === 1) {
+      gradingGrid.classList.add("density-1x1");
+    } else if (pSize === 2) {
+      gradingGrid.classList.add("density-1x2");
+    } else if (pSize <= 4) {
+      gradingGrid.classList.add("density-2x2");
+    } else if (pSize <= 6) {
+      gradingGrid.classList.add("density-2x3");
+    } else {
+      gradingGrid.classList.add("density-2x5");
+    }
+  }
 
   gradingGrid.replaceChildren(...questions.map((q, idx) => {
     const card = document.createElement("div");
@@ -1224,6 +1275,8 @@ function renderGradingView() {
         }
       }
     });
+
+    autoFitProblemStages();
   });
 
   updateGradingStatusUI();
@@ -1762,6 +1815,14 @@ setupKeyboardShortcuts({
   onRedo: handleRedo,
   onGradeAllCorrect: handleGradeAllCorrect,
   onToggleAnswers: handleToggleAnswers
+});
+
+// 화면 크기 변화 및 아이패드 가로/세로 회전 시 자동 맞춤
+window.addEventListener("resize", () => {
+  autoFitProblemStages();
+});
+window.addEventListener("orientationchange", () => {
+  setTimeout(autoFitProblemStages, 120);
 });
 
 // 초기 실행
