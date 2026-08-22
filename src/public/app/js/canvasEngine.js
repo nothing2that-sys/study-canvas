@@ -92,12 +92,21 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     const currentW = rect.width;
     const currentH = rect.height;
 
-    // 스트로크의 원본 캔버스 크기 대비 현재 캔버스 크기 비율 계산
     const baseW = stroke.baseWidth || currentW;
     const baseH = stroke.baseHeight || currentH;
+
+    // 수식 텍스트의 중심점과 일치하도록 중심 기준 좌표 매핑
     const scaleX = (baseW > 0 && currentW > 0) ? (currentW / baseW) : 1;
     const scaleY = (baseH > 0 && currentH > 0) ? (currentH / baseH) : 1;
     const scaleAvg = (scaleX + scaleY) / 2;
+
+    const baseCenterX = baseW / 2;
+    const baseCenterY = baseH / 2;
+    const currentCenterX = currentW / 2;
+    const currentCenterY = currentH / 2;
+
+    const mapX = (x) => currentCenterX + (x - baseCenterX) * scaleX;
+    const mapY = (y) => currentCenterY + (y - baseCenterY) * scaleY;
 
     ctx.save();
     ctx.strokeStyle = stroke.color || settings.color;
@@ -110,23 +119,25 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
     if (pts.length <= 2) {
       ctx.beginPath();
-      ctx.arc(pts[0].x * scaleX, pts[0].y * scaleY, Math.max(1, ctx.lineWidth / 2), 0, Math.PI * 2);
+      ctx.arc(mapX(pts[0].x), mapY(pts[0].y), Math.max(1, ctx.lineWidth / 2), 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
       return;
     }
 
     ctx.beginPath();
-    ctx.moveTo(pts[0].x * scaleX, pts[0].y * scaleY);
+    ctx.moveTo(mapX(pts[0].x), mapY(pts[0].y));
 
     for (let i = 1; i < pts.length - 1; i++) {
-      const midX = ((pts[i].x + pts[i + 1].x) / 2) * scaleX;
-      const midY = ((pts[i].y + pts[i + 1].y) / 2) * scaleY;
-      ctx.quadraticCurveTo(pts[i].x * scaleX, pts[i].y * scaleY, midX, midY);
+      const midRawX = (pts[i].x + pts[i + 1].x) / 2;
+      const midRawY = (pts[i].y + pts[i + 1].y) / 2;
+      const midX = mapX(midRawX);
+      const midY = mapY(midRawY);
+      ctx.quadraticCurveTo(mapX(pts[i].x), mapY(pts[i].y), midX, midY);
     }
 
     const last = pts[pts.length - 1];
-    ctx.lineTo(last.x * scaleX, last.y * scaleY);
+    ctx.lineTo(mapX(last.x), mapY(last.y));
     ctx.stroke();
     ctx.restore();
   }

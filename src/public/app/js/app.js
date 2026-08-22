@@ -969,10 +969,24 @@ function renderCurrentWorksheetPage() {
   const progressPercent = Math.round((pageData.endIndex / currentSession.totalQuestions) * 100);
   sessionProgressBar.style.width = `${Math.max(5, progressPercent)}%`;
 
-  // 문제 카드 그리드 열(Column) 동적 배치 적용
+  // 문제 카드 그리드 열(Column) 및 밀도별 폰트/셀 크기 동적 배치 적용
   if (worksheetGrid) {
-    const cols = currentSession.cols || (currentSession.pageSize <= 2 ? currentSession.pageSize : 2);
+    const pSize = Number(currentSession.pageSize) || 4;
+    const cols = currentSession.cols || (pSize <= 2 ? pSize : 2);
     worksheetGrid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+
+    worksheetGrid.classList.remove("density-1x1", "density-1x2", "density-2x2", "density-2x3", "density-2x5");
+    if (pSize === 1) {
+      worksheetGrid.classList.add("density-1x1");
+    } else if (pSize === 2) {
+      worksheetGrid.classList.add("density-1x2");
+    } else if (pSize <= 4) {
+      worksheetGrid.classList.add("density-2x2");
+    } else if (pSize <= 6) {
+      worksheetGrid.classList.add("density-2x3");
+    } else {
+      worksheetGrid.classList.add("density-2x5");
+    }
   }
 
   // 문제 카드 그리드 렌더링 (문제 영역 바로 위에 캔버스 오버레이)
