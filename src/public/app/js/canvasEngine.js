@@ -229,6 +229,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     }
   }
 
+  let cachedGridInfo = null;
+  let cachedCanvasRect = null;
+
   // Pointer & Touch Event Handlers
   function onPointerDown(e) {
     if (settings.readOnly) return;
@@ -264,10 +267,17 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       }
     } catch (_) {}
 
-    const gridInfo = getGridBoundingInfo();
-    const pt = getCanvasPoint(e);
-    pt.relX = (pt.x - gridInfo.gridLeft) / gridInfo.gridWidth;
-    pt.relY = (pt.y - gridInfo.gridTop) / gridInfo.gridHeight;
+    cachedCanvasRect = canvasElement.getBoundingClientRect();
+    cachedGridInfo = getGridBoundingInfo();
+
+    const clientX = e.clientX ?? (e.touches?.[0]?.clientX || 0);
+    const clientY = e.clientY ?? (e.touches?.[0]?.clientY || 0);
+    const pt = {
+      x: clientX - cachedCanvasRect.left,
+      y: clientY - cachedCanvasRect.top
+    };
+    pt.relX = (pt.x - cachedGridInfo.gridLeft) / cachedGridInfo.gridWidth;
+    pt.relY = (pt.y - cachedGridInfo.gridTop) / cachedGridInfo.gridHeight;
 
     if (settings.isEraser) {
       eraseStrokesAtPoint(pt);
@@ -276,18 +286,17 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
     saveToUndoStack();
 
-    const rect = canvasElement.getBoundingClientRect();
     currentStroke = {
       id: `stroke_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       color: settings.color,
       width: settings.width,
       isEraser: false,
-      baseWidth: rect.width || 300,
-      baseHeight: rect.height || 260,
-      gridWidth: gridInfo.gridWidth,
-      gridHeight: gridInfo.gridHeight,
-      gridLeft: gridInfo.gridLeft,
-      gridTop: gridInfo.gridTop,
+      baseWidth: cachedCanvasRect.width || 300,
+      baseHeight: cachedCanvasRect.height || 260,
+      gridWidth: cachedGridInfo.gridWidth,
+      gridHeight: cachedGridInfo.gridHeight,
+      gridLeft: cachedGridInfo.gridLeft,
+      gridTop: cachedGridInfo.gridTop,
       points: [pt],
       timestamp: Date.now()
     };
@@ -305,10 +314,19 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
     if (e.cancelable) e.preventDefault();
 
-    const gridInfo = getGridBoundingInfo();
-    const pt = getCanvasPoint(e);
-    pt.relX = (pt.x - gridInfo.gridLeft) / gridInfo.gridWidth;
-    pt.relY = (pt.y - gridInfo.gridTop) / gridInfo.gridHeight;
+    if (!cachedCanvasRect || !cachedGridInfo) {
+      cachedCanvasRect = canvasElement.getBoundingClientRect();
+      cachedGridInfo = getGridBoundingInfo();
+    }
+
+    const clientX = e.clientX ?? (e.touches?.[0]?.clientX || 0);
+    const clientY = e.clientY ?? (e.touches?.[0]?.clientY || 0);
+    const pt = {
+      x: clientX - cachedCanvasRect.left,
+      y: clientY - cachedCanvasRect.top
+    };
+    pt.relX = (pt.x - cachedGridInfo.gridLeft) / cachedGridInfo.gridWidth;
+    pt.relY = (pt.y - cachedGridInfo.gridTop) / cachedGridInfo.gridHeight;
 
     if (settings.isEraser) {
       eraseStrokesAtPoint(pt);
@@ -328,6 +346,8 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
     isDrawing = false;
     activePointerId = null;
+    cachedCanvasRect = null;
+    cachedGridInfo = null;
 
     try {
       if (typeof canvasElement.releasePointerCapture === "function" && e.pointerId !== undefined) {
@@ -348,35 +368,36 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       if (e.cancelable) e.preventDefault();
       isDrawing = false;
       activePointerId = null;
+      cachedCanvasRect = null;
+      cachedGridInfo = null;
       currentStroke = null;
       redraw();
     }
   }
 
   // PointerEvents 및 텍스트 선택/제스처 차단 등록
-  canvasElement.addEventListener("pointerdown", onPointerDown, { passive: false });
-  canvasElement.addEventListener("pointermove", onPointerMove, { passive: false });
-  canvasElement.addEventListener("pointerup", onPointerUp, { passive: false });
-  canvasElement.addEventListener("pointercancel", onPointerCancel, { passive: false });
+  const supportsPointer = typeof window !== "undefined" && window.PointerEvent;
+
+  if (supportsPointer) {
+    canvasElement.addEventListener("pointerdown", onPointerDown, { passive: false });
+    canvasElement.addEventListener("pointermove", onPointerMove, { passive: false });
+    canvasElement.addEventListener("pointerup", onPointerUp, { passive: false });
+    canvasElement.addEventListener("pointercancel", onPointerCancel, { passive: false });
+  } else {
+    // 구형 터치 전용 브라우저 fallback
+    canvasElement.addEventListener("touchstart", onPointerDown, { passive: false });
+    canvasElement.addEventListener("touchmove", onPointerMove, { passive: false });
+    canvasElement.addEventListener("touchend", onPointerUp, { passive: false });
+    canvasElement.addEventListener("touchcancel", onPointerCancel, { passive: false });
+    canvasElement.addEventListener("mousedown", onPointerDown, { passive: false });
+    canvasElement.addEventListener("mousemove", onPointerMove, { passive: false });
+    canvasElement.addEventListener("mouseup", onPointerUp, { passive: false });
+  }
 
   // 브라우저 텍스트 선택 및 드래그 방지
   canvasElement.addEventListener("selectstart", (e) => e.preventDefault());
   canvasElement.addEventListener("dragstart", (e) => e.preventDefault());
   canvasElement.addEventListener("contextmenu", (e) => e.preventDefault());
-
-  // iOS Safari TouchEvents 백업 등록 (PointerEvents 미동작 방지)
-  canvasElement.addEventListener("touchstart", (e) => {
-    if (!settings.pencilOnly && e.pointerType === undefined) onPointerDown(e);
-  }, { passive: false });
-  canvasElement.addEventListener("touchmove", (e) => {
-    if (!settings.pencilOnly && e.pointerType === undefined) onPointerMove(e);
-  }, { passive: false });
-  canvasElement.addEventListener("touchend", (e) => {
-    if (!settings.pencilOnly && e.pointerType === undefined) onPointerUp(e);
-  }, { passive: false });
-  canvasElement.addEventListener("touchcancel", (e) => {
-    if (!settings.pencilOnly && e.pointerType === undefined) onPointerCancel(e);
-  }, { passive: false });
 
   // ResizeObserver로 캔버스 크기 변화 감지
   let resizeObserver = null;

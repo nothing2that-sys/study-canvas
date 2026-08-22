@@ -1294,10 +1294,12 @@ function autoFitProblemStages() {
 
     grid.style.transform = "none";
 
-    const bodyW = cardBody.clientWidth - 20;
-    const bodyH = cardBody.clientHeight - 20;
-    const gridW = grid.offsetWidth;
-    const gridH = grid.offsetHeight;
+    const bodyRect = cardBody.getBoundingClientRect();
+    const bodyW = (cardBody.clientWidth || bodyRect.width) - 20;
+    const bodyH = (cardBody.clientHeight || bodyRect.height) - 20;
+    const gridRect = grid.getBoundingClientRect();
+    const gridW = grid.offsetWidth || gridRect.width;
+    const gridH = grid.offsetHeight || gridRect.height;
 
     if (bodyW <= 0 || bodyH <= 0 || gridW <= 0 || gridH <= 0) return;
 

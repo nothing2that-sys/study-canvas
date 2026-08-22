@@ -1406,7 +1406,7 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
 .grading-comparison-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  gap: 14px;
   align-items: stretch;
   margin: 6px 0 10px;
   width: 100%;
@@ -1414,7 +1414,15 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
   min-width: 0;
 }
 
-@media (max-width: 780px) {
+/* 태블릿 세로 모드(iPad Portrait 1024px 이하)에서는 채점 카드가 1열 전면으로 나와 좌우 비교 공간을 여유롭게 확보 */
+@media (max-width: 1024px) {
+  .grading-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* 모바일 좁은 화면(600px 이하)에서는 상하 1열로 배치 */
+@media (max-width: 600px) {
   .grading-comparison-grid {
     grid-template-columns: 1fr !important;
   }
