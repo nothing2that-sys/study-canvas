@@ -111,6 +111,9 @@ export function createQuestionTimer(options = {}) {
       if (stoppedAt > 0) {
         return Math.round(Math.max(0, stoppedAt - startedAt - accumulatedPauseMs));
       }
+      if (startedAt > 0) {
+        return Math.round(Math.max(0, getTime() - startedAt - accumulatedPauseMs));
+      }
       return 0;
     }
     const now = getTime();
@@ -119,6 +122,36 @@ export function createQuestionTimer(options = {}) {
       currentPause = Math.max(0, now - pausedAt);
     }
     return Math.round(Math.max(0, now - startedAt - accumulatedPauseMs - currentPause));
+  }
+
+  function reset() {
+    if (animFrameId && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(animFrameId);
+      animFrameId = null;
+    }
+    startedAt = 0;
+    stoppedAt = 0;
+    pausedAt = 0;
+    accumulatedPauseMs = 0;
+    isRunning = false;
+    isPaused = false;
+    if (onTick) {
+      onTick(0);
+    }
+  }
+
+  function setElapsedMs(ms) {
+    const safeMs = Math.max(0, Number(ms) || 0);
+    const now = getTime();
+    startedAt = now - safeMs;
+    stoppedAt = 0;
+    pausedAt = 0;
+    accumulatedPauseMs = 0;
+    isRunning = true;
+    isPaused = false;
+    if (onTick) {
+      onTick(safeMs);
+    }
   }
 
   function destroy() {
@@ -138,6 +171,8 @@ export function createQuestionTimer(options = {}) {
     pause,
     resume,
     stop,
+    reset,
+    setElapsedMs,
     getElapsedMs,
     destroy,
     get isRunning() { return isRunning; },

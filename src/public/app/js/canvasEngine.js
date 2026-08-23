@@ -72,13 +72,26 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
   let currentStroke = null;
   let isDrawing = false;
-  let activePointerId = null;
+  let activePenPointerId = null;
+  let activeTouchPointerId = null;
   let currentState = InputState.IDLE;
   let lastPenEndTime = 0;
   let cooldownTimer = null;
 
+  // 터치 기기 여부 판정
+  function isTouchEnvironment() {
+    return typeof navigator !== "undefined" && (navigator.maxTouchPoints > 0 || (typeof window !== "undefined" && "ontouchstart" in window));
+  }
+
   // 입력 프로필 결정
-  let currentProfile = options.profile || (options.pencilOnly ? InputProfile.IPAD_PEN_ONLY : InputProfile.DESKTOP_MOUSE_PEN);
+  let currentProfile = options.profile;
+  if (!currentProfile) {
+    if (options.pencilOnly) {
+      currentProfile = InputProfile.IPAD_PEN_ONLY;
+    } else {
+      currentProfile = isTouchEnvironment() ? InputProfile.IPAD_PEN_TOUCH : InputProfile.DESKTOP_MOUSE_PEN;
+    }
+  }
   if (options.readOnly) currentProfile = InputProfile.READ_ONLY;
 
   const settings = {
@@ -158,41 +171,43 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       gridLeft: gridRect.left - canvasRect.left,
       gridTop: gridRect.top - canvasRect.top,
       gridWidth: Math.max(20, gridRect.width || cW),
-      gridHeight: Math.max(20, gridRect.height || cH),
-      canvasWidth: cW,
-      canvasHeight: cH
+      gridHeight: Math.max(20, gridRect.height || cH)
     };
   }
 
   function mapPointToCanvas(pt, stroke) {
-    const currentGrid = getGridBoundingInfo();
-    const baseGridW = stroke.gridWidth || stroke.baseWidth || currentGrid.gridWidth;
-    const scale = (baseGridW > 0 && currentGrid.gridWidth > 0) ? (currentGrid.gridWidth / baseGridW) : 1;
+    if (!pt) return { x: 0, y: 0, scale: 1 };
+    if (!cachedCanvasRect || !cachedGridInfo) {
+      cachedCanvasRect = canvasElement.getBoundingClientRect();
+      cachedGridInfo = getGridBoundingInfo();
+    }
+    const currentGrid = cachedGridInfo;
+    const currentCanvas = cachedCanvasRect;
 
-    if (pt.relX !== undefined) {
-      return {
-        x: currentGrid.gridLeft + (pt.relX * currentGrid.gridWidth),
-        y: currentGrid.gridTop + (pt.relY * currentGrid.gridHeight),
-        scale
-      };
+    if (pt.relX !== undefined && pt.relY !== undefined && currentGrid.gridWidth > 0) {
+      const x = currentGrid.gridLeft + (pt.relX * currentGrid.gridWidth);
+      const y = currentGrid.gridTop + (pt.relY * currentGrid.gridHeight);
+      const scale = stroke.gridWidth > 0 ? (currentGrid.gridWidth / stroke.gridWidth) : 1;
+      return { x, y, scale: Math.max(0.5, Math.min(2.0, scale)) };
     }
 
-    const sLeft = stroke.gridLeft !== undefined ? stroke.gridLeft : 0;
-    const sTop = stroke.gridTop !== undefined ? stroke.gridTop : 0;
-    const normX = (pt.x - sLeft) / (baseGridW || 1);
-    const normY = (pt.y - sTop) / (stroke.gridHeight || stroke.baseHeight || 1);
-
+    const scaleX = (stroke.baseWidth && currentCanvas.width) ? (currentCanvas.width / stroke.baseWidth) : 1;
+    const scaleY = (stroke.baseHeight && currentCanvas.height) ? (currentCanvas.height / stroke.baseHeight) : 1;
+    const scale = (scaleX + scaleY) / 2;
     return {
-      x: currentGrid.gridLeft + (normX * currentGrid.gridWidth),
-      y: currentGrid.gridTop + (normY * currentGrid.gridHeight),
-      scale
+      x: pt.x * scaleX,
+      y: pt.y * scaleY,
+      scale: Math.max(0.5, Math.min(2.0, scale))
     };
   }
 
   function drawFullStroke(stroke) {
-    if (!stroke.points || stroke.points.length === 0) return;
+    if (!stroke || !stroke.points || stroke.points.length === 0) return;
 
     ctx.save();
+    if (typeof ctx.setTransform === "function") {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
     ctx.strokeStyle = stroke.color || "#173f35";
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -286,54 +301,21 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     }
   }
 
-  function distanceToSegment(p, a, b) {
-    const l2 = ((b.x - a.x) ** 2) + ((b.y - a.y) ** 2);
-    if (l2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
-    let t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2;
-    t = Math.max(0, Math.min(1, t));
-    return Math.hypot(p.x - (a.x + t * (b.x - a.x)), p.y - (a.y + t * (b.y - a.y)));
-  }
+  // 획 지우개 처리
+  function eraseStrokesAtPoint(pt) {
+    if (strokes.length === 0) return;
+    const radius = settings.eraserRadius;
+    const initialLen = strokes.length;
 
-  function eraseStrokesAtPoint(point) {
-    const eraseRadius = settings.eraserRadius || 14;
-    let erasedAny = false;
-    const remaining = [];
-    const currentGrid = getGridBoundingInfo();
+    strokes = strokes.filter((stroke) => {
+      return !stroke.points.some((p) => {
+        const mapped = mapPointToCanvas(p, stroke);
+        const dist = Math.hypot(mapped.x - pt.x, mapped.y - pt.y);
+        return dist <= radius;
+      });
+    });
 
-    for (const stroke of strokes) {
-      const baseGridW = stroke.gridWidth || stroke.baseWidth || currentGrid.gridWidth;
-      const baseGridH = stroke.gridHeight || stroke.baseHeight || currentGrid.gridHeight;
-      const scaleX = currentGrid.gridWidth / (baseGridW || 1);
-      const scaleY = currentGrid.gridHeight / (baseGridH || 1);
-
-      let hit = false;
-      const pts = stroke.points || [];
-
-      for (let i = 0; i < pts.length - 1; i++) {
-        let p1, p2;
-        if (pts[i].relX !== undefined) {
-          p1 = { x: currentGrid.gridLeft + pts[i].relX * currentGrid.gridWidth, y: currentGrid.gridTop + pts[i].relY * currentGrid.gridHeight };
-          p2 = { x: currentGrid.gridLeft + pts[i + 1].relX * currentGrid.gridWidth, y: currentGrid.gridTop + pts[i + 1].relY * currentGrid.gridHeight };
-        } else {
-          p1 = { x: pts[i].x * scaleX, y: pts[i].y * scaleY };
-          p2 = { x: pts[i + 1].x * scaleX, y: pts[i + 1].y * scaleY };
-        }
-
-        if (distanceToSegment(point, p1, p2) <= eraseRadius + (stroke.width / 2)) {
-          hit = true;
-          break;
-        }
-      }
-      if (hit) {
-        erasedAny = true;
-      } else {
-        remaining.push(stroke);
-      }
-    }
-
-    if (erasedAny) {
-      saveToUndoStack();
-      strokes = remaining;
+    if (strokes.length !== initialLen) {
       redraw();
       notifyChange();
     }
@@ -401,10 +383,11 @@ export function createDrawingCanvas(canvasElement, options = {}) {
         currentStroke = null;
       }
       currentState = InputState.PEN_DRAWING;
-      activePointerId = e.pointerId;
+      activePenPointerId = e.pointerId;
+      activeTouchPointerId = null;
     } else {
       currentState = InputState.TOUCH_DRAWING;
-      activePointerId = e.pointerId;
+      activeTouchPointerId = e.pointerId;
     }
 
     if (e.cancelable) e.preventDefault();
@@ -427,12 +410,12 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     const pts = extractPoints(e);
     if (pts.length === 0) return;
 
+    saveToUndoStack();
+
     if (settings.isEraser) {
       eraseStrokesAtPoint(pts[0]);
       return;
     }
-
-    saveToUndoStack();
 
     currentStroke = {
       id: `stroke_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -455,7 +438,12 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
   function onPointerMove(e) {
     if (!isDrawing) return;
-    if (activePointerId !== null && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
+
+    if (e.pointerType === "pen") {
+      if (activePenPointerId !== null && e.pointerId !== undefined && e.pointerId !== activePenPointerId) return;
+    } else {
+      if (activeTouchPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeTouchPointerId) return;
+    }
 
     if (!shouldAcceptPointer(e, settings.profile, currentState)) return;
 
@@ -477,13 +465,19 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
   function onPointerUp(e) {
     if (!isDrawing) return;
-    if (activePointerId !== null && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
+
+    if (e.pointerType === "pen") {
+      if (activePenPointerId !== null && e.pointerId !== undefined && e.pointerId !== activePenPointerId) return;
+    } else {
+      if (activeTouchPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeTouchPointerId) return;
+    }
 
     if (e.cancelable) e.preventDefault();
 
     isDrawing = false;
     const isPen = e.pointerType === "pen";
-    activePointerId = null;
+    activePenPointerId = null;
+    activeTouchPointerId = null;
     cachedCanvasRect = null;
     cachedGridInfo = null;
 
@@ -518,15 +512,29 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     if (!isDrawing) return;
 
     if (e.cancelable) e.preventDefault();
+
     isDrawing = false;
     const isPen = e.pointerType === "pen";
-    activePointerId = null;
+    activePenPointerId = null;
+    activeTouchPointerId = null;
     cachedCanvasRect = null;
     cachedGridInfo = null;
+
+    try {
+      if (typeof canvasElement.releasePointerCapture === "function" && e.pointerId !== undefined) {
+        canvasElement.releasePointerCapture(e.pointerId);
+      }
+    } catch (_) {}
 
     if (isPen) {
       lastPenEndTime = Date.now();
       currentState = InputState.PEN_COOLDOWN;
+      if (cooldownTimer) clearTimeout(cooldownTimer);
+      cooldownTimer = setTimeout(() => {
+        if (currentState === InputState.PEN_COOLDOWN) {
+          currentState = InputState.IDLE;
+        }
+      }, 400);
     } else {
       currentState = InputState.IDLE;
     }
@@ -544,9 +552,26 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   function onLostPointerCapture(e) {
-    if (isDrawing && (activePointerId === null || e.pointerId === activePointerId)) {
+    if (isDrawing) {
       onPointerUp(e);
     }
+  }
+
+  function resetActivePointers() {
+    if (isDrawing) {
+      if (currentStroke && currentStroke.points.length > 0) {
+        strokes.push(currentStroke);
+      }
+      currentStroke = null;
+      isDrawing = false;
+      redraw();
+      notifyChange();
+    }
+    activePenPointerId = null;
+    activeTouchPointerId = null;
+    currentState = InputState.IDLE;
+    cachedCanvasRect = null;
+    cachedGridInfo = null;
   }
 
   // ----------------------------------------------------
@@ -564,6 +589,11 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   addManagedListener(canvasElement, "pointerup", onPointerUp, { passive: false });
   addManagedListener(canvasElement, "pointercancel", onPointerCancel, { passive: false });
   addManagedListener(canvasElement, "lostpointercapture", onLostPointerCapture, { passive: false });
+
+  if (typeof window !== "undefined") {
+    addManagedListener(window, "blur", resetActivePointers);
+    addManagedListener(window, "pagehide", resetActivePointers);
+  }
 
   const preventDefaults = (e) => {
     if (e.cancelable) e.preventDefault();
@@ -597,7 +627,11 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     },
     setPencilOnly(pencilOnly) {
       settings.pencilOnly = Boolean(pencilOnly);
-      settings.profile = pencilOnly ? InputProfile.IPAD_PEN_ONLY : InputProfile.DESKTOP_MOUSE_PEN;
+      if (pencilOnly) {
+        settings.profile = InputProfile.IPAD_PEN_ONLY;
+      } else {
+        settings.profile = isTouchEnvironment() ? InputProfile.IPAD_PEN_TOUCH : InputProfile.DESKTOP_MOUSE_PEN;
+      }
       updateTouchAction();
     },
     setInputProfile(profile) {

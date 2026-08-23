@@ -218,27 +218,55 @@ const questionTimer = createQuestionTimer({
   }
 });
 
-//+_+// Draft 세션 자동 저장 디바운서
+//+_+// Draft 세션 자동 저장 계층 (Atomic Flush & Debounce)
 let draftDebounceTimer = null;
+
+export async function flushDraftSave() {
+  if (draftDebounceTimer) {
+    clearTimeout(draftDebounceTimer);
+    draftDebounceTimer = null;
+  }
+  if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) return;
+
+  try {
+    const strokesObj = {};
+    questionStrokesMap.forEach((v, k) => {
+      strokesObj[k] = v;
+    });
+    await saveDraftSession({
+      schemaVersion: 2,
+      appBuildId: "20260823_2",
+      config: lastSessionConfig || currentSession.config,
+      questions: currentQuestions,
+      currentPageIndex: currentSession.currentPageIndex,
+      strokesMap: strokesObj,
+      elapsedMs: questionTimer.getElapsedMs(),
+      pencilOnly: currentPencilOnly,
+      updatedAt: Date.now()
+    });
+  } catch (err) {
+    console.error("Draft save failed:", err);
+  }
+}
+
 export function triggerDraftSave() {
   if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) return;
   if (draftDebounceTimer) clearTimeout(draftDebounceTimer);
-  draftDebounceTimer = setTimeout(async () => {
-    try {
-      const strokesObj = {};
-      questionStrokesMap.forEach((v, k) => {
-        strokesObj[k] = v;
-      });
-      await saveDraftSession({
-        config: lastSessionConfig || currentSession.config,
-        questions: currentQuestions,
-        currentPageIndex: currentSession.currentPageIndex,
-        strokesMap: strokesObj,
-        elapsedMs: questionTimer.getElapsedMs(),
-        pencilOnly: currentPencilOnly
-      });
-    } catch (_) {}
+  draftDebounceTimer = setTimeout(() => {
+    flushDraftSave();
   }, 400);
+}
+
+// 생명주기 이벤트(hidden, pagehide) 시 즉시 flush
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => {
+    flushDraftSave();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      flushDraftSave();
+    }
+  });
 }
 
 // 뷰 전환
@@ -1158,22 +1186,25 @@ function renderProblemStageContent(q, options = {}) {
 }
 
 // ----------------------------------------------------
-// 워크시트 세션 풀이 흐름
+// 워크시트 세션 풀이 흐름 (단일 표준 진입점)
 // ----------------------------------------------------
 function startSessionWithQuestions(questions, config) {
   if (!questions || questions.length === 0) return;
   lastSessionConfig = config;
+  currentQuestions = questions;
   questionStrokesMap.clear();
+  activeCanvasInstances.forEach((instance) => instance.destroy());
+  activeCanvasInstances.clear();
+
   currentSession = createSession(config, questions);
   currentSession.start();
 
+  questionTimer.reset();
+  questionTimer.start();
+
   switchView(practiceView);
   renderCurrentWorksheetPage();
-
-  timerText.textContent = "00:00.0";
-  requestAnimationFrame(() => {
-    questionTimer.start();
-  });
+  triggerDraftSave();
 }
 
 function renderCurrentWorksheetPage() {
@@ -1443,21 +1474,24 @@ function handleClearAllCanvas() {
 }
 
 // 이전 / 다음 페이지 이동
-function handlePrevPage() {
+async function handlePrevPage() {
   if (!currentSession) return;
+  await flushDraftSave();
   currentSession.prevPage();
   renderCurrentWorksheetPage();
 }
 
-function handleNextPage() {
+async function handleNextPage() {
   if (!currentSession) return;
+  await flushDraftSave();
   currentSession.nextPage();
   renderCurrentWorksheetPage();
 }
 
 // 학생 풀이 완료 및 제출 -> 채점 모드 전환
-function handleSubmitPractice() {
+async function handleSubmitPractice() {
   if (!currentSession) return;
+  await flushDraftSave();
   const elapsedMs = questionTimer.stop();
   currentSession.submitPractice(elapsedMs);
   currentSession.startGrading();
@@ -1823,12 +1857,13 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
 function handleAbortSession() {
   if (confirmModal) {
     confirmModal.showModal();
-  } else if (confirm("세션을 중단하고 홈으로 돌아갈까요?")) {
+  } else if (confirm("세션을 중단하고 홈으로 돌아갈까요? (작성 중인 내용은 자동 저장됩니다)")) {
     terminateSession();
   }
 }
 
-function terminateSession() {
+async function terminateSession() {
+  await flushDraftSave();
   questionTimer.stop();
   currentSession = null;
   questionStrokesMap.clear();
@@ -2288,7 +2323,7 @@ async function renderAdaptiveRecommendCard() {
     }
 
     startBtn.onclick = () => {
-      startCustomSessionWithQuestions(composed.questions, {
+      startSessionWithQuestions(composed.questions, {
         operation: composed.questions[0]?.operation || "mul",
         count: composed.questions.length,
         pageSize: 4,
@@ -2299,23 +2334,6 @@ async function renderAdaptiveRecommendCard() {
       });
     };
   } catch (_) {}
-}
-
-function startCustomSessionWithQuestions(questions, config) {
-  if (!questions || questions.length === 0) return;
-  lastSessionConfig = config;
-  currentQuestions = questions;
-  currentSession = createSession(config, questions);
-  questionStrokesMap.clear();
-  activeCanvasInstances.clear();
-
-  currentSession.start();
-  questionTimer.reset();
-  questionTimer.start();
-
-  renderPracticePage();
-  switchView(practiceView);
-  triggerDraftSave();
 }
 
 // 🌟 미완료 Draft 복구 체크
@@ -2352,8 +2370,8 @@ async function checkDraftResumeOnStartup() {
           if (draft.elapsedMs) questionTimer.setElapsedMs(draft.elapsedMs);
           questionTimer.start();
 
-          renderPracticePage();
           switchView(practiceView);
+          renderCurrentWorksheetPage();
         };
       }
 
@@ -2381,20 +2399,36 @@ function setupServiceWorkerUpdates() {
     });
   }
 
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
+
   navigator.serviceWorker.register("./service-worker.js").then((reg) => {
+    function promptUser(worker) {
+      if (!worker) return;
+      if (updateBanner) updateBanner.hidden = false;
+      if (applyUpdateBtn) {
+        applyUpdateBtn.onclick = async () => {
+          await flushDraftSave();
+          worker.postMessage({ type: "SKIP_WAITING" });
+        };
+      }
+    }
+
+    if (reg.waiting) {
+      promptUser(reg.waiting);
+    }
+
     reg.addEventListener("updatefound", () => {
       const newWorker = reg.installing;
       if (!newWorker) return;
       newWorker.addEventListener("statechange", () => {
         if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-          // 새 버전 설치 완료 시 배너 표시
-          if (updateBanner) updateBanner.hidden = false;
-          if (applyUpdateBtn) {
-            applyUpdateBtn.onclick = () => {
-              newWorker.postMessage({ type: "SKIP_WAITING" });
-              location.reload();
-            };
-          }
+          promptUser(newWorker);
         }
       });
     });

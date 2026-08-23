@@ -1,4 +1,4 @@
-const CACHE_NAME = "math-canvas-pro-v20260823_1";
+const CACHE_NAME = "math-canvas-pro-v20260823_2";
 
 //+_+// PWA 오프라인 구동을 위한 필수 App Shell 자산 목록
 const APP_SHELL = [
@@ -36,11 +36,11 @@ self.addEventListener("message", (event) => {
 });
 
 self.addEventListener("install", (event) => {
-  //+_+// App Shell 사전 캐싱 완료 보장
+  //+_+// App Shell 사전 캐싱 완료 후 waiting 상태 유지 (사용자 확인 후 교체)
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(APP_SHELL);
-    }).then(() => self.skipWaiting())
+    })
   );
 });
 
