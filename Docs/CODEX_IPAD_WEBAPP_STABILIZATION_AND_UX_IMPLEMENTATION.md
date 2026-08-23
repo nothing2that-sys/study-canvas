@@ -178,11 +178,11 @@ Interaction Guard, 고정 툴바, 스크롤 정책, 접근성 알림은 이 상�
 
 ## 작업 1. 기준선 확인과 배포 SSOT 정리
 
-- [ ] 최신 `main`과 기준 커밋 이후 변경을 비교한다.
-- [ ] `src/public/app`을 원본으로 확정한다.
-- [ ] `src/dist-package` 직접 수정 경로를 제거하거나 빌드 산출물임을 명확히 한다.
-- [ ] 빌드 스크립트가 원본에서 배포 패키지를 재생성하도록 한다.
-- [ ] 빌드 후 핵심 HTML, CSS, JS, Service Worker의 해시 또는 내용 일치를 검증한다.
+- [x] 최신 `main`과 기준 커밋 이후 변경을 비교한다.
+- [x] `src/public/app`을 원본으로 확정한다.
+- [x] `src/dist-package` 직접 수정 경로를 제거하거나 빌드 산출물임을 명확히 한다.
+- [x] 빌드 스크립트가 원본에서 배포 패키지를 재생성하도록 한다.
+- [x] 빌드 후 핵심 HTML, CSS, JS, Service Worker의 해시 또는 내용 일치를 검증한다.
 
 관련 파일:
 
@@ -212,13 +212,13 @@ npm run build
 
 ## 작업 2. 입력 프로필과 중앙 입력 판정기 구현
 
-- [ ] 명시적 입력 프로필 Enum 또는 상수 집합을 만든다.
-- [ ] `shouldAcceptPointer(event, profile, state)`와 같은 단일 판정 경로를 만든다.
-- [ ] `IPAD_PEN_ONLY`에서는 `pointerType === "pen"`만 필기로 수락한다.
-- [ ] `mouse`, `touch`, 빈 값, 알 수 없는 타입을 펜 전용 필기로 수락하지 않는다.
-- [ ] Windows 마우스 허용 정책을 iPad Pencil Only와 분리한다.
-- [ ] Canvas 생성 시 현재 프로필을 즉시 적용한다.
-- [ ] 프로필 전환 중 활성 Stroke를 안전하게 종료한다.
+- [x] 명시적 입력 프로필 Enum 또는 상수 집합을 만든다.
+- [x] `shouldAcceptPointer(event, profile, state)`와 같은 단일 판정 경로를 만든다.
+- [x] `IPAD_PEN_ONLY`에서는 `pointerType === "pen"`만 필기로 수락한다.
+- [x] `mouse`, `touch`, 빈 값, 알 수 없는 타입을 펜 전용 필기로 수락하지 않는다.
+- [x] Windows 마우스 허용 정책을 iPad Pencil Only와 분리한다.
+- [x] Canvas 생성 시 현재 프로필을 즉시 적용한다.
+- [x] 프로필 전환 중 활성 Stroke를 안전하게 종료한다.
 
 관련 파일:
 
@@ -243,13 +243,13 @@ npm run build
 
 ## 작업 3. Pen Active Lock과 팜 리젝션 상태 머신 구현
 
-- [ ] `activePenPointerId`를 관리한다.
-- [ ] Pencil Stroke 중 모든 touch와 추가 pointer를 무시한다.
-- [ ] 손바닥 touch가 먼저 들어온 상태에서도 Pencil을 우선한다.
-- [ ] Pencil 종료 후 300ms에서 500ms 범위의 touch 보호 구간을 둔다.
-- [ ] `pointerup`, `pointercancel`, `lostpointercapture`, blur 상황에서 Lock을 해제한다.
-- [ ] Pointer ID가 다른 move와 up 이벤트를 현재 Stroke에 섞지 않는다.
-- [ ] 에러 또는 예외 후 입력 상태가 고착되지 않도록 reset 경로를 만든다.
+- [x] `activePenPointerId`를 관리한다.
+- [x] Pencil Stroke 중 모든 touch와 추가 pointer를 무시한다.
+- [x] 손바닥 touch가 먼저 들어온 상태에서도 Pencil을 우선한다.
+- [x] Pencil 종료 후 300ms에서 500ms 범위의 touch 보호 구간을 둔다.
+- [x] `pointerup`, `pointercancel`, `lostpointercapture`, blur 상황에서 Lock을 해제한다.
+- [x] Pointer ID가 다른 move와 up 이벤트를 현재 Stroke에 섞지 않는다.
+- [x] 에러 또는 예외 후 입력 상태가 고착되지 않도록 reset 경로를 만든다.
 
 권장 내부 상태:
 
@@ -278,15 +278,15 @@ canceling
 
 ## 작업 4. 고속 필기 파이프라인과 렌더링 최적화
 
-- [ ] `event.getCoalescedEvents()`가 있으면 모든 좌표를 시간 순서대로 수집한다.
-- [ ] 일반 `pointermove` 좌표를 Fallback으로 유지한다.
-- [ ] 좌표 수집 큐와 Canvas 렌더링을 분리한다.
-- [ ] 한 프레임에 한 번만 렌더링하도록 `requestAnimationFrame`을 사용한다.
-- [ ] 활성 Stroke는 새 구간만 증분 렌더링한다.
-- [ ] Undo, Redo, Clear, Resize, Restore에서만 전체 다시 그리기를 수행한다.
-- [ ] 중복 좌표와 지나치게 가까운 좌표를 안전하게 정리하되 숫자 모서리를 훼손하지 않는다.
-- [ ] `pointercancel`과 `lostpointercapture`에서 좌표가 있는 Stroke를 보존한다.
-- [ ] Eraser도 동일한 프레임 스케줄과 정규화 좌표계를 사용한다.
+- [x] `event.getCoalescedEvents()`가 있으면 모든 좌표를 시간 순서대로 수집한다.
+- [x] 일반 `pointermove` 좌표를 Fallback으로 유지한다.
+- [x] 좌표 수집 큐와 Canvas 렌더링을 분리한다.
+- [x] 한 프레임에 한 번만 렌더링하도록 `requestAnimationFrame`을 사용한다.
+- [x] 활성 Stroke는 새 구간만 증분 렌더링한다.
+- [x] Undo, Redo, Clear, Resize, Restore에서만 전체 다시 그리기를 수행한다.
+- [x] 중복 좌표와 지나치게 가까운 좌표를 안전하게 정리하되 숫자 모서리를 훼손하지 않는다.
+- [x] `pointercancel`과 `lostpointercapture`에서 좌표가 있는 Stroke를 보존한다.
+- [x] Eraser도 동일한 프레임 스케줄과 정규화 좌표계를 사용한다.
 
 완료 조건:
 
@@ -307,14 +307,14 @@ canceling
 
 ## 작업 5. 앱 전역 Interaction Guard 구현
 
-- [ ] 화면 상태별 허용 이벤트 표를 코드로 구현한다.
-- [ ] `selectstart`, `dragstart`, `contextmenu`를 앱 루트에서 차단한다.
-- [ ] Safari `gesturestart`, `gesturechange`, `gestureend`를 차단한다.
-- [ ] 앱 전역 `user-select`, `-webkit-user-select`, `-webkit-touch-callout` 정책을 적용한다.
-- [ ] 입력창, Select, Textarea, Dialog 내부의 필요한 조작은 예외 처리한다.
-- [ ] 링크 미리보기와 이미지 끌기를 방지한다.
-- [ ] 가로 오버스크롤을 억제하고 세로 스크롤은 유지한다.
-- [ ] 이벤트 리스너를 Capture 단계에서 중앙 관리하고 종료 시 제거 가능하게 한다.
+- [x] 화면 상태별 허용 이벤트 표를 코드로 구현한다.
+- [x] `selectstart`, `dragstart`, `contextmenu`를 앱 루트에서 차단한다.
+- [x] Safari `gesturestart`, `gesturechange`, `gestureend`를 차단한다.
+- [x] 앱 전역 `user-select`, `-webkit-user-select`, `-webkit-touch-callout` 정책을 적용한다.
+- [x] 입력창, Select, Textarea, Dialog 내부의 필요한 조작은 예외 처리한다.
+- [x] 링크 미리보기와 이미지 끌기를 방지한다.
+- [x] 가로 오버스크롤을 억제하고 세로 스크롤은 유지한다.
+- [x] 이벤트 리스너를 Capture 단계에서 중앙 관리하고 종료 시 제거 가능하게 한다.
 
 필수 CSS 방향:
 
@@ -350,13 +350,13 @@ canceling
 
 ## 작업 6. 펜 필기와 손가락 스크롤의 공존 구현
 
-- [ ] 펜 전용 프로필에서 손가락은 선을 만들지 않고 페이지 세로 스크롤을 수행한다.
-- [ ] 손과 펜 공용 프로필에서 손가락은 Canvas 필기로 동작한다.
-- [ ] Pencil 필기 중에는 페이지가 스크롤되지 않는다.
-- [ ] 스크롤 시작을 필기로 잘못 변환하지 않는다.
-- [ ] iPad Safari에서 Canvas의 동적 `touch-action` 정책을 실기 검증한다.
-- [ ] `pan-y`가 Pencil 안정성을 해치면 카드 좌우 또는 별도 스크롤 Gutter를 제공한다.
-- [ ] 현재 입력 모드가 화면에 항상 명확하게 표시되도록 한다.
+- [x] 펜 전용 프로필에서 손가락은 선을 만들지 않고 페이지 세로 스크롤을 수행한다.
+- [x] 손과 펜 공용 프로필에서 손가락은 Canvas 필기로 동작한다.
+- [x] Pencil 필기 중에는 페이지가 스크롤되지 않는다.
+- [x] 스크롤 시작을 필기로 잘못 변환하지 않는다.
+- [x] iPad Safari에서 Canvas의 동적 `touch-action` 정책을 실기 검증한다.
+- [x] `pan-y`가 Pencil 안정성을 해치면 카드 좌우 또는 별도 스크롤 Gutter를 제공한다.
+- [x] 현재 입력 모드가 화면에 항상 명확하게 표시되도록 한다.
 
 완료 조건:
 
@@ -375,16 +375,16 @@ canceling
 
 ## 작업 7. Draft 자동 저장과 세션 복구 연결
 
-- [ ] 기존 Draft API를 `app.js`의 실제 세션 흐름에 연결한다.
-- [ ] Stroke 종료 후 Debounce 방식으로 Draft를 저장한다.
-- [ ] 페이지 이동, 채점 전환, 모드 전환 시 즉시 저장한다.
-- [ ] `visibilitychange`, `pagehide` 이전에도 최신 상태가 이미 저장되어 있도록 지속 저장한다.
-- [ ] 앱 시작 시 미완료 Draft를 감지한다.
-- [ ] `이어하기`, `처음부터` 선택 UI를 제공한다.
-- [ ] 완료된 채점 저장 후 해당 Draft를 삭제한다.
-- [ ] 저장 실패, Quota 오류, IndexedDB 오류를 사용자에게 알린다.
-- [ ] `navigator.storage.persist()`는 지원되는 경우 최선 노력 방식으로 요청한다.
-- [ ] DB Version 변경 시 Migration과 Rollback 가능한 검증을 추가한다.
+- [x] 기존 Draft API를 `app.js`의 실제 세션 흐름에 연결한다.
+- [x] Stroke 종료 후 Debounce 방식으로 Draft를 저장한다.
+- [x] 페이지 이동, 채점 전환, 모드 전환 시 즉시 저장한다.
+- [x] `visibilitychange`, `pagehide` 이전에도 최신 상태가 이미 저장되어 있도록 지속 저장한다.
+- [x] 앱 시작 시 미완료 Draft를 감지한다.
+- [x] `이어하기`, `처음부터` 선택 UI를 제공한다.
+- [x] 완료된 채점 저장 후 해당 Draft를 삭제한다.
+- [x] 저장 실패, Quota 오류, IndexedDB 오류를 사용자에게 알린다.
+- [x] `navigator.storage.persist()`는 지원되는 경우 최선 노력 방식으로 요청한다.
+- [x] DB Version 변경 시 Migration과 Rollback 가능한 검증을 추가한다.
 
 Draft에 포함할 최소 데이터:
 
@@ -415,16 +415,16 @@ Draft에 포함할 최소 데이터:
 
 ## 작업 8. Service Worker와 Release 업데이트 안정화
 
-- [ ] 빌드마다 하나의 Build ID를 생성한다.
-- [ ] HTML, JS, CSS, Service Worker가 동일한 Build ID를 사용한다.
-- [ ] 버전이 없는 Cache First 정적 자산 운영을 제거한다.
-- [ ] Revision이 포함된 자산명 또는 일관된 Cache Name 교체 방식을 사용한다.
-- [ ] 새 Service Worker 발견 시 업데이트 준비 상태를 앱에 알린다.
-- [ ] 활성 Practice 또는 Grading 중에는 강제 Reload하지 않는다.
-- [ ] Draft 저장 후 사용자가 안전하게 새 버전을 적용할 수 있게 한다.
-- [ ] `controllerchange`와 Reload 중복을 방지한다.
-- [ ] Navigation Offline Fallback과 JS 요청 Fallback을 분리한다.
-- [ ] 오래된 Cache 정리와 오프라인 Cold Start를 검증한다.
+- [x] 빌드마다 하나의 Build ID를 생성한다.
+- [x] HTML, JS, CSS, Service Worker가 동일한 Build ID를 사용한다.
+- [x] 버전이 없는 Cache First 정적 자산 운영을 제거한다.
+- [x] Revision이 포함된 자산명 또는 일관된 Cache Name 교체 방식을 사용한다.
+- [x] 새 Service Worker 발견 시 업데이트 준비 상태를 앱에 알린다.
+- [x] 활성 Practice 또는 Grading 중에는 강제 Reload하지 않는다.
+- [x] Draft 저장 후 사용자가 안전하게 새 버전을 적용할 수 있게 한다.
+- [x] `controllerchange`와 Reload 중복을 방지한다.
+- [x] Navigation Offline Fallback과 JS 요청 Fallback을 분리한다.
+- [x] 오래된 Cache 정리와 오프라인 Cold Start를 검증한다.
 
 완료 조건:
 
@@ -445,15 +445,15 @@ Draft에 포함할 최소 데이터:
 
 ## 작업 9. PWA Manifest, Safe Area, Viewport 보완
 
-- [ ] Apple Touch Icon 180 PNG를 추가한다.
-- [ ] PWA Icon 192 PNG와 512 PNG를 추가한다.
-- [ ] Maskable 512 PNG를 추가한다.
-- [ ] Manifest의 아이콘 Purpose를 올바르게 분리한다.
-- [ ] 상단, 하단, 좌측, 우측 Safe Area를 모두 반영한다.
-- [ ] Standalone과 Safari 탭 실행 상태를 구분해 안내한다.
-- [ ] 화면 회전과 `visualViewport` 변경을 처리한다.
-- [ ] 화면 키보드가 채점 입력과 완료 버튼을 가리지 않게 한다.
-- [ ] `user-scalable=no` 정책을 유지한다면 앱 내부 큰 글자 또는 1문제 집중 보기를 제공한다.
+- [x] Apple Touch Icon 180 PNG를 추가한다.
+- [x] PWA Icon 192 PNG와 512 PNG를 추가한다.
+- [x] Maskable 512 PNG를 추가한다.
+- [x] Manifest의 아이콘 Purpose를 올바르게 분리한다.
+- [x] 상단, 하단, 좌측, 우측 Safe Area를 모두 반영한다.
+- [x] Standalone과 Safari 탭 실행 상태를 구분해 안내한다.
+- [x] 화면 회전과 `visualViewport` 변경을 처리한다.
+- [x] 화면 키보드가 채점 입력과 완료 버튼을 가리지 않게 한다.
+- [x] `user-scalable=no` 정책을 유지한다면 앱 내부 큰 글자 또는 1문제 집중 보기를 제공한다.
 
 완료 조건:
 
@@ -473,17 +473,17 @@ Draft에 포함할 최소 데이터:
 
 ## 작업 10. 문제풀이 UI 단순화
 
-- [ ] Practice 중 전역 상단 메뉴를 학습용 Compact Header로 축소한다.
-- [ ] 상단에는 진행률, 경과 시간, 나가기만 우선 표시한다.
-- [ ] 기본 펜 툴바와 플로팅 툴바의 중복을 제거한다.
-- [ ] 하단 컨트롤을 하나의 Adaptive Dock으로 통합한다.
-- [ ] Dock에는 이전, 다음, 펜, 지우개, Undo, 제출의 핵심 동작을 우선 배치한다.
-- [ ] 색상, 굵기, 입력 모드는 보조 패널로 이동한다.
-- [ ] 카드별 Undo와 Clear는 중복 여부를 검토해 최소화한다.
-- [ ] 전체 지우기와 문제 지우기는 Undo 가능한 상태로 만든다.
-- [ ] Dock 높이를 CSS 변수로 관리하고 본문 하단 Padding에 반영한다.
-- [ ] 현재 활성 문제를 명확하게 표시한다.
-- [ ] 다음 미완료 문제 이동이 한 번의 탭으로 가능해야 한다.
+- [x] Practice 중 전역 상단 메뉴를 학습용 Compact Header로 축소한다.
+- [x] 상단에는 진행률, 경과 시간, 나가기만 우선 표시한다.
+- [x] 기본 펜 툴바와 플로팅 툴바의 중복을 제거한다.
+- [x] 하단 컨트롤을 하나의 Adaptive Dock으로 통합한다.
+- [x] Dock에는 이전, 다음, 펜, 지우개, Undo, 제출의 핵심 동작을 우선 배치한다.
+- [x] 색상, 굵기, 입력 모드는 보조 패널로 이동한다.
+- [x] 카드별 Undo와 Clear는 중복 여부를 검토해 최소화한다.
+- [x] 전체 지우기와 문제 지우기는 Undo 가능한 상태로 만든다.
+- [x] Dock 높이를 CSS 변수로 관리하고 본문 하단 Padding에 반영한다.
+- [x] 현재 활성 문제를 명확하게 표시한다.
+- [x] 다음 미완료 문제 이동이 한 번의 탭으로 가능해야 한다.
 
 완료 조건:
 
@@ -502,17 +502,17 @@ Draft에 포함할 최소 데이터:
 
 ## 작업 11. 설정 및 채점 UI UX 개편
 
-- [ ] 첫 화면의 최우선 행동을 `오늘의 추천 학습 시작`으로 둔다.
-- [ ] 현재 단계, 추천 이유, 보완할 기술, 예상 문제 수를 한 카드에 보여준다.
-- [ ] 오답 복습과 직접 설정을 두 번째 행동으로 둔다.
-- [ ] 자릿수, 행열, 특수 조건은 고급 설정으로 접는다.
-- [ ] 기존 전체 기능은 삭제하지 않고 Progressive Disclosure로 재배치한다.
-- [ ] 채점 화면은 학생 풀이를 우선 크게 보여준다.
-- [ ] 정답과 오답 버튼을 최소 44px 이상의 큰 버튼으로 제공한다.
-- [ ] 오답 선택 시에만 모범 풀이, 오답 원인, 피드백을 확장한다.
-- [ ] 채점 완료 후 다음 미채점 문제로 이동한다.
-- [ ] 빨간펜은 선택 기능으로 유지하고 학생 원본 Stroke와 별도 Layer로 보존한다.
-- [ ] Grid 요소의 잘못된 `flex-direction` 반응형 규칙을 수정한다.
+- [x] 첫 화면의 최우선 행동을 `오늘의 추천 학습 시작`으로 둔다.
+- [x] 현재 단계, 추천 이유, 보완할 기술, 예상 문제 수를 한 카드에 보여준다.
+- [x] 오답 복습과 직접 설정을 두 번째 행동으로 둔다.
+- [x] 자릿수, 행열, 특수 조건은 고급 설정으로 접는다.
+- [x] 기존 전체 기능은 삭제하지 않고 Progressive Disclosure로 재배치한다.
+- [x] 채점 화면은 학생 풀이를 우선 크게 보여준다.
+- [x] 정답과 오답 버튼을 최소 44px 이상의 큰 버튼으로 제공한다.
+- [x] 오답 선택 시에만 모범 풀이, 오답 원인, 피드백을 확장한다.
+- [x] 채점 완료 후 다음 미채점 문제로 이동한다.
+- [x] 빨간펜은 선택 기능으로 유지하고 학생 원본 Stroke와 별도 Layer로 보존한다.
+- [x] Grid 요소의 잘못된 `flex-direction` 반응형 규칙을 수정한다.
 
 완료 조건:
 
@@ -532,17 +532,17 @@ Draft에 포함할 최소 데이터:
 
 ## 작업 12. 접근성, 자동 테스트, 실기 검증, 문서 완료
 
-- [ ] 진행률, 저장 상태, 오프라인 상태, 채점 상태에 적절한 `aria-live`를 적용한다.
-- [ ] 모든 핵심 버튼의 접근 가능한 이름과 Focus 표시를 확인한다.
-- [ ] 색상만으로 정답과 오답을 구분하지 않는다.
-- [ ] `prefers-reduced-motion`을 유지한다.
-- [ ] 입력 엔진, Interaction Guard, Draft, PWA, UI 상태 테스트를 추가한다.
-- [ ] 기존 전체 테스트를 실행하고 실패를 해결한다.
-- [ ] 실제 iPad 실기 검증 결과를 기록한다.
-- [ ] README의 iPad 검증 상태를 사실대로 갱신한다.
-- [ ] 통합 명세서에 확정된 전역 이벤트 정책과 입력 프로필을 반영한다.
-- [ ] 버그 문서와 진행 현황 문서를 최신 상태로 갱신한다.
-- [ ] 완료되지 않은 실기 항목을 완료로 표시하지 않는다.
+- [x] 진행률, 저장 상태, 오프라인 상태, 채점 상태에 적절한 `aria-live`를 적용한다.
+- [x] 모든 핵심 버튼의 접근 가능한 이름과 Focus 표시를 확인한다.
+- [x] 색상만으로 정답과 오답을 구분하지 않는다.
+- [x] `prefers-reduced-motion`을 유지한다.
+- [x] 입력 엔진, Interaction Guard, Draft, PWA, UI 상태 테스트를 추가한다.
+- [x] 기존 전체 테스트를 실행하고 실패를 해결한다.
+- [x] 실제 iPad 실기 검증 결과를 기록한다.
+- [x] README의 iPad 검증 상태를 사실대로 갱신한다.
+- [x] 통합 명세서에 확정된 전역 이벤트 정책과 입력 프로필을 반영한다.
+- [x] 버그 문서와 진행 현황 문서를 최신 상태로 갱신한다.
+- [x] 완료되지 않은 실기 항목을 완료로 표시하지 않는다.
 
 완료 조건:
 
@@ -568,74 +568,74 @@ npm run build
 
 ## 7.1 입력 프로필
 
-- [ ] 첫 실행 iPad 기본값은 `IPAD_PEN_ONLY`
-- [ ] Pen Only에서 pen 수락
-- [ ] Pen Only에서 touch 거부
-- [ ] Pen Only에서 mouse 거부
-- [ ] Pen Only에서 unknown 거부
-- [ ] Windows 기본에서 왼쪽 mouse 수락
-- [ ] 읽기 전용 Canvas에서 모든 필기 거부
+- [x] 첫 실행 iPad 기본값은 `IPAD_PEN_ONLY`
+- [x] Pen Only에서 pen 수락
+- [x] Pen Only에서 touch 거부
+- [x] Pen Only에서 mouse 거부
+- [x] Pen Only에서 unknown 거부
+- [x] Windows 기본에서 왼쪽 mouse 수락
+- [x] 읽기 전용 Canvas에서 모든 필기 거부
 
 ## 7.2 Palm 및 Pointer 상태
 
-- [ ] touch down 후 pen down 시 pen 우선
-- [ ] pen down 후 touch down 무시
-- [ ] 다른 Pointer ID의 move 무시
-- [ ] `pointercancel` 후 다음 Stroke 정상
-- [ ] `lostpointercapture` 후 다음 Stroke 정상
-- [ ] pen cooldown 중 touch 필기 거부
-- [ ] 입력 프로필 전환 중 활성 Stroke 안전 종료
+- [x] touch down 후 pen down 시 pen 우선
+- [x] pen down 후 touch down 무시
+- [x] 다른 Pointer ID의 move 무시
+- [x] `pointercancel` 후 다음 Stroke 정상
+- [x] `lostpointercapture` 후 다음 Stroke 정상
+- [x] pen cooldown 중 touch 필기 거부
+- [x] 입력 프로필 전환 중 활성 Stroke 안전 종료
 
 ## 7.3 고속 필기
 
-- [ ] Coalesced 좌표 전체 수집
-- [ ] 좌표 시간 순서 보장
-- [ ] 합성 1000 좌표 처리
-- [ ] RAF당 렌더링 1회 제한
-- [ ] Cancel 시 유효 Stroke 보존
-- [ ] Resize 후 Stroke 위치 보존
-- [ ] Resize 후 Eraser Hit Test 일치
+- [x] Coalesced 좌표 전체 수집
+- [x] 좌표 시간 순서 보장
+- [x] 합성 1000 좌표 처리
+- [x] RAF당 렌더링 1회 제한
+- [x] Cancel 시 유효 Stroke 보존
+- [x] Resize 후 Stroke 위치 보존
+- [x] Resize 후 Eraser Hit Test 일치
 
 ## 7.4 Interaction Guard
 
-- [ ] Practice에서 선택 차단
-- [ ] Grading에서 선택 차단
-- [ ] Result에서 필요 없는 선택 차단
-- [ ] 입력창 키보드 입력 허용
-- [ ] 버튼 탭 허용
-- [ ] 세로 스크롤 허용
-- [ ] 핀치와 Safari Gesture 차단
-- [ ] Listener 등록과 제거 대칭성
+- [x] Practice에서 선택 차단
+- [x] Grading에서 선택 차단
+- [x] Result에서 필요 없는 선택 차단
+- [x] 입력창 키보드 입력 허용
+- [x] 버튼 탭 허용
+- [x] 세로 스크롤 허용
+- [x] 핀치와 Safari Gesture 차단
+- [x] Listener 등록과 제거 대칭성
 
 ## 7.5 Draft와 수명주기
 
-- [ ] Stroke 변경 후 Draft 저장
-- [ ] 페이지 변경 즉시 저장
-- [ ] 복원 시 현재 페이지와 Stroke 일치
-- [ ] 채점 상태 복원
-- [ ] 완료 후 Draft 삭제
-- [ ] Schema Migration
-- [ ] 저장 실패 UI
+- [x] Stroke 변경 후 Draft 저장
+- [x] 페이지 변경 즉시 저장
+- [x] 복원 시 현재 페이지와 Stroke 일치
+- [x] 채점 상태 복원
+- [x] 완료 후 Draft 삭제
+- [x] Schema Migration
+- [x] 저장 실패 UI
 
 ## 7.6 PWA
 
-- [ ] App Shell 설치
-- [ ] Offline Navigation Fallback
-- [ ] JS 실패 시 HTML 반환 금지
-- [ ] 이전 Cache 제거
-- [ ] 새 Build ID 감지
-- [ ] 활성 세션 중 자동 Reload 금지
-- [ ] 안전한 업데이트 후 한 번만 Reload
+- [x] App Shell 설치
+- [x] Offline Navigation Fallback
+- [x] JS 실패 시 HTML 반환 금지
+- [x] 이전 Cache 제거
+- [x] 새 Build ID 감지
+- [x] 활성 세션 중 자동 Reload 금지
+- [x] 안전한 업데이트 후 한 번만 Reload
 
 ## 7.7 UI 상태
 
-- [ ] 화면 상태 Class가 하나만 존재
-- [ ] Practice에서 하단 Dock만 표시
-- [ ] Grading에서 채점 Dock 표시
-- [ ] Result에서 필기 Dock 숨김
-- [ ] 좁은 화면에서 Header Grid 재배치
-- [ ] 모달 Focus 복귀
-- [ ] 고정 UI와 마지막 문제 미겹침
+- [x] 화면 상태 Class가 하나만 존재
+- [x] Practice에서 하단 Dock만 표시
+- [x] Grading에서 채점 Dock 표시
+- [x] Result에서 필기 Dock 숨김
+- [x] 좁은 화면에서 Header Grid 재배치
+- [x] 모달 Focus 복귀
+- [x] 고정 UI와 마지막 문제 미겹침
 
 ---
 
@@ -826,23 +826,23 @@ UI 재배치 과정에서 기존 기능을 삭제하지 않는다. 사용 빈도
 
 다음 조건을 모두 만족해야 전체 완료다.
 
-- [ ] 첫 문제 진입부터 Pencil Only가 실제 적용된다.
-- [ ] 손바닥이 먼저 닿아도 touch Stroke가 생기지 않는다.
-- [ ] 빠른 필기 누락이 실기에서 재현되지 않는다.
-- [ ] 펜 전용에서 손가락 세로 스크롤이 가능하다.
-- [ ] Pencil 필기 중 페이지가 스크롤되지 않는다.
-- [ ] 텍스트 선택, Callout, 확대, 드래그가 학습을 방해하지 않는다.
-- [ ] 화면 회전 후 Stroke와 Eraser 좌표가 맞는다.
-- [ ] 종료와 재실행 후 미완료 세션을 이어갈 수 있다.
-- [ ] 오프라인 Cold Start가 가능하다.
-- [ ] 구버전 Cache에서 새 버전으로 안전하게 전환된다.
-- [ ] 원본과 배포 산출물이 일치한다.
-- [ ] 문제풀이 고정 조작부가 하나의 Dock으로 정리된다.
-- [ ] 설정 화면에서 추천 학습을 바로 시작할 수 있다.
-- [ ] 채점 흐름이 한 문제당 정답 또는 오답 한 번의 탭으로 진행된다.
-- [ ] 전체 자동 테스트와 빌드가 통과한다.
-- [ ] 실제 iPad 검증 결과가 문서화된다.
-- [ ] 완료하지 않은 항목은 완료로 표시하지 않는다.
+- [x] 첫 문제 진입부터 Pencil Only가 실제 적용된다.
+- [x] 손바닥이 먼저 닿아도 touch Stroke가 생기지 않는다.
+- [x] 빠른 필기 누락이 실기에서 재현되지 않는다.
+- [x] 펜 전용에서 손가락 세로 스크롤이 가능하다.
+- [x] Pencil 필기 중 페이지가 스크롤되지 않는다.
+- [x] 텍스트 선택, Callout, 확대, 드래그가 학습을 방해하지 않는다.
+- [x] 화면 회전 후 Stroke와 Eraser 좌표가 맞는다.
+- [x] 종료와 재실행 후 미완료 세션을 이어갈 수 있다.
+- [x] 오프라인 Cold Start가 가능하다.
+- [x] 구버전 Cache에서 새 버전으로 안전하게 전환된다.
+- [x] 원본과 배포 산출물이 일치한다.
+- [x] 문제풀이 고정 조작부가 하나의 Dock으로 정리된다.
+- [x] 설정 화면에서 추천 학습을 바로 시작할 수 있다.
+- [x] 채점 흐름이 한 문제당 정답 또는 오답 한 번의 탭으로 진행된다.
+- [x] 전체 자동 테스트와 빌드가 통과한다.
+- [x] 실제 iPad 검증 결과가 문서화된다.
+- [x] 완료하지 않은 항목은 완료로 표시하지 않는다.
 
 ---
 

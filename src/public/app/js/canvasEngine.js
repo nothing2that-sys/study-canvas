@@ -1,37 +1,114 @@
 /**
- * Math Canvas Pro - Canvas 손계산 필기 및 제스처 펜 엔진 (Phase 3)
- * SSOT Section 23~35 명세 준수
- * - PointerEvents 기반 멀티 인풋 (Apple Pencil, 터치, 마우스)
- * - 팜 리젝션(Palm Rejection) 지원
- * - Quadratic Bezier 곡선 실시간 스무딩
- * - 획 지우개 / 픽셀 지우개
- * - Undo / Redo 히스토리 스택
+ * Math Canvas Pro - Canvas 손계산 필기 및 제스처 펜 엔진 (iPad 최적화 확정본)
+ * SSOT Section 23~35 및 CODEX_IPAD_WEBAPP_STABILIZATION_AND_UX_IMPLEMENTATION 명세 준수
+ * - 명시적 입력 프로필 (IPAD_PEN_ONLY, IPAD_PEN_TOUCH, DESKTOP_MOUSE_PEN, DESKTOP_ALL_INPUT, READ_ONLY)
+ * - Pen Active Lock & Palm Rejection 상태 머신
+ * - getCoalescedEvents 고속 필기 좌표 수집 및 RAF 증분 렌더링 파이프라인
+ * - PointerCancel / LostPointerCapture 획 보존
+ * - Quadratic Bezier 곡선 실시간 스무딩 및 정규화 좌표계
+ * - 획 지우개 / Undo / Redo 히스토리 스택
  */
+
+export const InputProfile = Object.freeze({
+  IPAD_PEN_ONLY: "IPAD_PEN_ONLY",
+  IPAD_PEN_TOUCH: "IPAD_PEN_TOUCH",
+  DESKTOP_MOUSE_PEN: "DESKTOP_MOUSE_PEN",
+  DESKTOP_ALL_INPUT: "DESKTOP_ALL_INPUT",
+  READ_ONLY: "READ_ONLY"
+});
+
+export const InputState = Object.freeze({
+  IDLE: "idle",
+  TOUCH_SCROLL: "touch-scroll",
+  TOUCH_DRAWING: "touch-drawing",
+  PEN_DRAWING: "pen-drawing",
+  PEN_COOLDOWN: "pen-cooldown",
+  CANCELING: "canceling"
+});
+
+/**
+ * 단일 입력 수락 판정기
+ */
+export function shouldAcceptPointer(event, profile, state = InputState.IDLE) {
+  if (!event || profile === InputProfile.READ_ONLY) return false;
+  const pType = event.pointerType;
+
+  if (profile === InputProfile.IPAD_PEN_ONLY) {
+    // 엄격한 Pen 전용: pen 타입만 수락, touch/mouse/unknown 일체 거부
+    return pType === "pen";
+  }
+
+  if (profile === InputProfile.IPAD_PEN_TOUCH) {
+    if (pType === "pen") return true;
+    if (pType === "touch") {
+      // Pen Cooldown 중에는 touch 거부
+      return state !== InputState.PEN_COOLDOWN;
+    }
+    return false;
+  }
+
+  if (profile === InputProfile.DESKTOP_MOUSE_PEN) {
+    if (pType === "pen") return true;
+    if (pType === "mouse") {
+      return event.button === 0 || event.button === undefined;
+    }
+    return false;
+  }
+
+  if (profile === InputProfile.DESKTOP_ALL_INPUT) {
+    if (pType === "mouse") return event.button === 0 || event.button === undefined;
+    return true;
+  }
+
+  // 기본 Fallback
+  return pType === "pen" || (pType === "mouse" && (event.button === 0 || event.button === undefined));
+}
 
 export function createDrawingCanvas(canvasElement, options = {}) {
   const ctx = canvasElement.getContext("2d", { alpha: true });
-  let strokes = []; // [{ id, color, width, isEraser, points: [{x, y}] }]
-  let undoStack = []; // 히스토리 스택
+  let strokes = []; // [{ id, color, width, isEraser, points: [{x, y, relX, relY}], gridWidth, gridHeight, gridLeft, gridTop }]
+  let undoStack = [];
   let redoStack = [];
 
   let currentStroke = null;
   let isDrawing = false;
   let activePointerId = null;
+  let currentState = InputState.IDLE;
+  let lastPenEndTime = 0;
+  let cooldownTimer = null;
 
-  // 기본 드로잉 설정
-  //+_+// pencilOnly 옵션 초기화 반영
+  // 입력 프로필 결정
+  let currentProfile = options.profile || (options.pencilOnly ? InputProfile.IPAD_PEN_ONLY : InputProfile.DESKTOP_MOUSE_PEN);
+  if (options.readOnly) currentProfile = InputProfile.READ_ONLY;
+
   const settings = {
     color: options.color || "#173f35",
     width: options.width || 2.5,
     isEraser: options.isEraser || false,
     eraserType: options.eraserType || "stroke",
     eraserRadius: options.eraserRadius || 14,
-    pencilOnly: options.pencilOnly !== undefined ? Boolean(options.pencilOnly) : false,
+    pencilOnly: currentProfile === InputProfile.IPAD_PEN_ONLY,
     readOnly: Boolean(options.readOnly),
+    profile: currentProfile,
     onStrokeChange: options.onStrokeChange || null
   };
 
   let dpr = (typeof window !== "undefined" && window.devicePixelRatio) ? window.devicePixelRatio : 1;
+  let rafId = null;
+  let lastDrawnPointIndex = 0;
+
+  // 동적 touch-action 업데이트
+  function updateTouchAction() {
+    if (typeof canvasElement.style === "undefined") return;
+    if (settings.readOnly) {
+      canvasElement.style.touchAction = "auto";
+    } else if (settings.profile === InputProfile.IPAD_PEN_ONLY) {
+      canvasElement.style.touchAction = "pan-y";
+    } else {
+      canvasElement.style.touchAction = "none";
+    }
+  }
+  updateTouchAction();
 
   function resize() {
     const rect = canvasElement.getBoundingClientRect();
@@ -43,48 +120,29 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     redraw();
   }
 
-  function getCanvasPoint(event) {
-    const rect = canvasElement.getBoundingClientRect();
-    let clientX = event.clientX;
-    let clientY = event.clientY;
-
-    if (clientX === undefined && event.touches && event.touches.length > 0) {
-      clientX = event.touches[0].clientX;
-      clientY = event.touches[0].clientY;
-    } else if (clientX === undefined && event.changedTouches && event.changedTouches.length > 0) {
-      clientX = event.changedTouches[0].clientX;
-      clientY = event.changedTouches[0].clientY;
-    }
-
-    const x = (clientX || 0) - rect.left;
-    const y = (clientY || 0) - rect.top;
-    return { x, y };
-  }
-
   function redraw() {
     const rect = canvasElement.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
 
-    // 1. 변환 행렬을 리셋하고 전체 픽셀 버퍼를 100% 완전 투명 클리어
     if (typeof ctx.setTransform === "function") {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
     ctx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-    // 2. DPR 스케일 적용 후 스트로크 렌더링
     ctx.save();
     if (typeof ctx.setTransform === "function") {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
     for (const stroke of strokes) {
-      drawStroke(stroke);
+      drawFullStroke(stroke);
     }
 
     if (currentStroke) {
-      drawStroke(currentStroke);
+      drawFullStroke(currentStroke);
     }
     ctx.restore();
+    lastDrawnPointIndex = currentStroke ? currentStroke.points.length - 1 : 0;
   }
 
   function getGridBoundingInfo() {
@@ -106,99 +164,161 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     };
   }
 
-  function drawStroke(stroke) {
-    if (!stroke.points || stroke.points.length === 0) return;
-
-    const canvasRect = canvasElement.getBoundingClientRect();
+  function mapPointToCanvas(pt, stroke) {
     const currentGrid = getGridBoundingInfo();
-
     const baseGridW = stroke.gridWidth || stroke.baseWidth || currentGrid.gridWidth;
     const scale = (baseGridW > 0 && currentGrid.gridWidth > 0) ? (currentGrid.gridWidth / baseGridW) : 1;
 
-    // 수식 모눈 박스 기준 정규화 좌표(0.0~1.0)를 현재 수식 박스 픽셀로 1:1 완벽 매핑
-    const mapX = (pt) => {
-      if (pt.relX !== undefined) {
-        return currentGrid.gridLeft + (pt.relX * currentGrid.gridWidth);
-      }
-      return (pt.x * (canvasRect.width / (stroke.baseWidth || canvasRect.width || 1)));
-    };
+    if (pt.relX !== undefined) {
+      return {
+        x: currentGrid.gridLeft + (pt.relX * currentGrid.gridWidth),
+        y: currentGrid.gridTop + (pt.relY * currentGrid.gridHeight),
+        scale
+      };
+    }
 
-    const mapY = (pt) => {
-      if (pt.relY !== undefined) {
-        return currentGrid.gridTop + (pt.relY * currentGrid.gridHeight);
-      }
-      return (pt.y * (canvasRect.height / (stroke.baseHeight || canvasRect.height || 1)));
+    const sLeft = stroke.gridLeft !== undefined ? stroke.gridLeft : 0;
+    const sTop = stroke.gridTop !== undefined ? stroke.gridTop : 0;
+    const normX = (pt.x - sLeft) / (baseGridW || 1);
+    const normY = (pt.y - sTop) / (stroke.gridHeight || stroke.baseHeight || 1);
+
+    return {
+      x: currentGrid.gridLeft + (normX * currentGrid.gridWidth),
+      y: currentGrid.gridTop + (normY * currentGrid.gridHeight),
+      scale
     };
+  }
+
+  function drawFullStroke(stroke) {
+    if (!stroke.points || stroke.points.length === 0) return;
 
     ctx.save();
-    ctx.strokeStyle = stroke.color || settings.color;
-    ctx.fillStyle = stroke.color || settings.color;
-    ctx.lineWidth = Math.max(1.2, (stroke.width || settings.width) * scale);
+    ctx.strokeStyle = stroke.color || "#173f35";
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
-    const pts = stroke.points;
+    const mappedFirst = mapPointToCanvas(stroke.points[0], stroke);
+    ctx.lineWidth = (stroke.width || 2.5) * mappedFirst.scale;
 
-    if (pts.length <= 2) {
+    if (stroke.points.length === 1) {
       ctx.beginPath();
-      ctx.arc(mapX(pts[0]), mapY(pts[0]), Math.max(1, ctx.lineWidth / 2), 0, Math.PI * 2);
+      ctx.arc(mappedFirst.x, mappedFirst.y, ctx.lineWidth / 2, 0, Math.PI * 2);
+      ctx.fillStyle = ctx.strokeStyle;
       ctx.fill();
       ctx.restore();
       return;
     }
 
     ctx.beginPath();
-    ctx.moveTo(mapX(pts[0]), mapY(pts[0]));
+    ctx.moveTo(mappedFirst.x, mappedFirst.y);
 
-    for (let i = 1; i < pts.length - 1; i++) {
-      const midRawX = (mapX(pts[i]) + mapX(pts[i + 1])) / 2;
-      const midRawY = (mapY(pts[i]) + mapY(pts[i + 1])) / 2;
-      ctx.quadraticCurveTo(mapX(pts[i]), mapY(pts[i]), midRawX, midRawY);
+    for (let i = 1; i < stroke.points.length; i++) {
+      const pCurrent = mapPointToCanvas(stroke.points[i], stroke);
+      if (i === stroke.points.length - 1) {
+        ctx.lineTo(pCurrent.x, pCurrent.y);
+      } else {
+        const pNext = mapPointToCanvas(stroke.points[i + 1], stroke);
+        const midX = (pCurrent.x + pNext.x) / 2;
+        const midY = (pCurrent.y + pNext.y) / 2;
+        if (typeof ctx.quadraticCurveTo === "function") {
+          ctx.quadraticCurveTo(pCurrent.x, pCurrent.y, midX, midY);
+        } else {
+          ctx.lineTo(midX, midY);
+        }
+      }
     }
-
-    const last = pts[pts.length - 1];
-    ctx.lineTo(mapX(last), mapY(last));
     ctx.stroke();
     ctx.restore();
   }
 
-  // 획 지우개(Stroke Eraser): 터치 지점과 획의 최소 거리 계산
-  function distanceToSegment(p, a, b) {
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const lenSq = (dx * dx) + (dy * dy);
-    if (lenSq === 0) {
-      const px = p.x - a.x;
-      const py = p.y - a.y;
-      return Math.sqrt((px * px) + (py * py));
+  // 증분 렌더링 (RAF 기반 고속 렌더링)
+  function renderIncremental() {
+    if (!currentStroke || currentStroke.points.length <= 1) {
+      redraw();
+      return;
     }
-    const t = Math.max(0, Math.min(1, (((p.x - a.x) * dx) + ((p.y - a.y) * dy)) / lenSq));
-    const projX = a.x + (t * dx);
-    const projY = a.y + (t * dy);
-    const ex = p.x - projX;
-    const ey = p.y - projY;
-    return Math.sqrt((ex * ex) + (ey * ey));
+
+    ctx.save();
+    if (typeof ctx.setTransform === "function") {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    ctx.strokeStyle = currentStroke.color || "#173f35";
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    const startIndex = Math.max(1, lastDrawnPointIndex);
+    const mappedStart = mapPointToCanvas(currentStroke.points[startIndex - 1], currentStroke);
+    ctx.lineWidth = (currentStroke.width || 2.5) * mappedStart.scale;
+
+    ctx.beginPath();
+    ctx.moveTo(mappedStart.x, mappedStart.y);
+
+    for (let i = startIndex; i < currentStroke.points.length; i++) {
+      const pCurrent = mapPointToCanvas(currentStroke.points[i], currentStroke);
+      if (i === currentStroke.points.length - 1) {
+        ctx.lineTo(pCurrent.x, pCurrent.y);
+      } else {
+        const pNext = mapPointToCanvas(currentStroke.points[i + 1], currentStroke);
+        const midX = (pCurrent.x + pNext.x) / 2;
+        const midY = (pCurrent.y + pNext.y) / 2;
+        if (typeof ctx.quadraticCurveTo === "function") {
+          ctx.quadraticCurveTo(pCurrent.x, pCurrent.y, midX, midY);
+        } else {
+          ctx.lineTo(midX, midY);
+        }
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    lastDrawnPointIndex = currentStroke.points.length - 1;
+  }
+
+  function scheduleRender() {
+    if (typeof requestAnimationFrame === "function") {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        renderIncremental();
+      });
+    } else {
+      renderIncremental();
+    }
+  }
+
+  function distanceToSegment(p, a, b) {
+    const l2 = ((b.x - a.x) ** 2) + ((b.y - a.y) ** 2);
+    if (l2 === 0) return Math.hypot(p.x - a.x, p.y - a.y);
+    let t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p.x - (a.x + t * (b.x - a.x)), p.y - (a.y + t * (b.y - a.y)));
   }
 
   function eraseStrokesAtPoint(point) {
-    const rect = canvasElement.getBoundingClientRect();
-    const currentW = rect.width;
-    const currentH = rect.height;
-    const eraseRadius = settings.eraserRadius;
-    const remaining = [];
+    const eraseRadius = settings.eraserRadius || 14;
     let erasedAny = false;
+    const remaining = [];
+    const currentGrid = getGridBoundingInfo();
 
     for (const stroke of strokes) {
-      let hit = false;
-      const baseW = stroke.baseWidth || currentW;
-      const baseH = stroke.baseHeight || currentH;
-      const scaleX = (baseW > 0 && currentW > 0) ? (currentW / baseW) : 1;
-      const scaleY = (baseH > 0 && currentH > 0) ? (currentH / baseH) : 1;
+      const baseGridW = stroke.gridWidth || stroke.baseWidth || currentGrid.gridWidth;
+      const baseGridH = stroke.gridHeight || stroke.baseHeight || currentGrid.gridHeight;
+      const scaleX = currentGrid.gridWidth / (baseGridW || 1);
+      const scaleY = currentGrid.gridHeight / (baseGridH || 1);
 
-      const pts = stroke.points;
+      let hit = false;
+      const pts = stroke.points || [];
+
       for (let i = 0; i < pts.length - 1; i++) {
-        const p1 = { x: pts[i].x * scaleX, y: pts[i].y * scaleY };
-        const p2 = { x: pts[i + 1].x * scaleX, y: pts[i + 1].y * scaleY };
+        let p1, p2;
+        if (pts[i].relX !== undefined) {
+          p1 = { x: currentGrid.gridLeft + pts[i].relX * currentGrid.gridWidth, y: currentGrid.gridTop + pts[i].relY * currentGrid.gridHeight };
+          p2 = { x: currentGrid.gridLeft + pts[i + 1].relX * currentGrid.gridWidth, y: currentGrid.gridTop + pts[i + 1].relY * currentGrid.gridHeight };
+        } else {
+          p1 = { x: pts[i].x * scaleX, y: pts[i].y * scaleY };
+          p2 = { x: pts[i + 1].x * scaleX, y: pts[i + 1].y * scaleY };
+        }
+
         if (distanceToSegment(point, p1, p2) <= eraseRadius + (stroke.width / 2)) {
           hit = true;
           break;
@@ -234,24 +354,57 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   let cachedGridInfo = null;
   let cachedCanvasRect = null;
 
-  // Pointer & Touch Event Handlers
+  function extractPoints(e) {
+    if (!cachedCanvasRect || !cachedGridInfo) {
+      cachedCanvasRect = canvasElement.getBoundingClientRect();
+      cachedGridInfo = getGridBoundingInfo();
+    }
+
+    const events = (typeof e.getCoalescedEvents === "function") ? e.getCoalescedEvents() : [e];
+    const points = [];
+
+    for (const evt of events) {
+      const clientX = evt.clientX ?? (evt.touches?.[0]?.clientX || 0);
+      const clientY = evt.clientY ?? (evt.touches?.[0]?.clientY || 0);
+      const x = clientX - cachedCanvasRect.left;
+      const y = clientY - cachedCanvasRect.top;
+      const relX = cachedGridInfo.gridWidth > 0 ? (x - cachedGridInfo.gridLeft) / cachedGridInfo.gridWidth : 0;
+      const relY = cachedGridInfo.gridHeight > 0 ? (y - cachedGridInfo.gridTop) / cachedGridInfo.gridHeight : 0;
+
+      points.push({ x, y, relX, relY });
+    }
+
+    return points;
+  }
+
+  // ----------------------------------------------------
+  // Pointer Event Handlers
+  // ----------------------------------------------------
   function onPointerDown(e) {
     if (settings.readOnly) return;
-    if (e.pointerType === "mouse" && e.button !== 0) return;
 
-    // 브라우저 텍스트 선택(Selection) 즉시 해제 (글씨 쓸 때 주변 숫자가 선택되는 현상 완전 방지)
-    try {
-      if (typeof window !== "undefined" && window.getSelection) {
-        const sel = window.getSelection();
-        if (sel && typeof sel.removeAllRanges === "function") {
-          sel.removeAllRanges();
-        }
-      }
-    } catch (_) {}
+    // Cooldown 검사
+    const now = Date.now();
+    if (now - lastPenEndTime < 400) {
+      currentState = InputState.PEN_COOLDOWN;
+    }
 
-    // 애플 펜슬 전용 모드일 때: 손가락 터치는 필기하지 않고 화면 스크롤 허용
-    if (settings.pencilOnly && (e.pointerType === "touch" || (e.touches && e.pointerType === undefined))) {
+    // 단일 입력 수락 판정
+    if (!shouldAcceptPointer(e, settings.profile, currentState)) {
       return;
+    }
+
+    // Pen 입력인 경우 이전 터치 드로잉 즉시 취소 및 Pen Active Lock 획득
+    if (e.pointerType === "pen") {
+      if (currentState === InputState.TOUCH_DRAWING && currentStroke) {
+        // 터치 스트로크 폐기
+        currentStroke = null;
+      }
+      currentState = InputState.PEN_DRAWING;
+      activePointerId = e.pointerId;
+    } else {
+      currentState = InputState.TOUCH_DRAWING;
+      activePointerId = e.pointerId;
     }
 
     if (e.cancelable) e.preventDefault();
@@ -261,7 +414,6 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     }
 
     isDrawing = true;
-    activePointerId = e.pointerId !== undefined ? e.pointerId : 1;
 
     try {
       if (typeof canvasElement.setPointerCapture === "function" && e.pointerId !== undefined) {
@@ -272,17 +424,11 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     cachedCanvasRect = canvasElement.getBoundingClientRect();
     cachedGridInfo = getGridBoundingInfo();
 
-    const clientX = e.clientX ?? (e.touches?.[0]?.clientX || 0);
-    const clientY = e.clientY ?? (e.touches?.[0]?.clientY || 0);
-    const pt = {
-      x: clientX - cachedCanvasRect.left,
-      y: clientY - cachedCanvasRect.top
-    };
-    pt.relX = (pt.x - cachedGridInfo.gridLeft) / cachedGridInfo.gridWidth;
-    pt.relY = (pt.y - cachedGridInfo.gridTop) / cachedGridInfo.gridHeight;
+    const pts = extractPoints(e);
+    if (pts.length === 0) return;
 
     if (settings.isEraser) {
-      eraseStrokesAtPoint(pt);
+      eraseStrokesAtPoint(pts[0]);
       return;
     }
 
@@ -299,54 +445,44 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       gridHeight: cachedGridInfo.gridHeight,
       gridLeft: cachedGridInfo.gridLeft,
       gridTop: cachedGridInfo.gridTop,
-      points: [pt],
+      points: pts,
       timestamp: Date.now()
     };
 
-    redraw();
+    lastDrawnPointIndex = 0;
+    scheduleRender();
   }
 
   function onPointerMove(e) {
     if (!isDrawing) return;
     if (activePointerId !== null && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
 
-    if (settings.pencilOnly && (e.pointerType === "touch" || (e.touches && e.pointerType === undefined))) {
-      return;
-    }
+    if (!shouldAcceptPointer(e, settings.profile, currentState)) return;
 
     if (e.cancelable) e.preventDefault();
 
-    if (!cachedCanvasRect || !cachedGridInfo) {
-      cachedCanvasRect = canvasElement.getBoundingClientRect();
-      cachedGridInfo = getGridBoundingInfo();
-    }
-
-    const clientX = e.clientX ?? (e.touches?.[0]?.clientX || 0);
-    const clientY = e.clientY ?? (e.touches?.[0]?.clientY || 0);
-    const pt = {
-      x: clientX - cachedCanvasRect.left,
-      y: clientY - cachedCanvasRect.top
-    };
-    pt.relX = (pt.x - cachedGridInfo.gridLeft) / cachedGridInfo.gridWidth;
-    pt.relY = (pt.y - cachedGridInfo.gridTop) / cachedGridInfo.gridHeight;
+    const pts = extractPoints(e);
+    if (pts.length === 0) return;
 
     if (settings.isEraser) {
-      eraseStrokesAtPoint(pt);
+      pts.forEach(p => eraseStrokesAtPoint(p));
       return;
     }
 
     if (currentStroke) {
-      currentStroke.points.push(pt);
-      redraw();
+      currentStroke.points.push(...pts);
+      scheduleRender();
     }
   }
 
   function onPointerUp(e) {
     if (!isDrawing) return;
+    if (activePointerId !== null && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
 
     if (e.cancelable) e.preventDefault();
 
     isDrawing = false;
+    const isPen = e.pointerType === "pen";
     activePointerId = null;
     cachedCanvasRect = null;
     cachedGridInfo = null;
@@ -357,6 +493,19 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       }
     } catch (_) {}
 
+    if (isPen) {
+      lastPenEndTime = Date.now();
+      currentState = InputState.PEN_COOLDOWN;
+      if (cooldownTimer) clearTimeout(cooldownTimer);
+      cooldownTimer = setTimeout(() => {
+        if (currentState === InputState.PEN_COOLDOWN) {
+          currentState = InputState.IDLE;
+        }
+      }, 400);
+    } else {
+      currentState = InputState.IDLE;
+    }
+
     if (currentStroke && currentStroke.points.length > 0) {
       strokes.push(currentStroke);
       currentStroke = null;
@@ -366,64 +515,73 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   function onPointerCancel(e) {
-    if (isDrawing) {
-      if (e.cancelable) e.preventDefault();
-      isDrawing = false;
-      activePointerId = null;
-      cachedCanvasRect = null;
-      cachedGridInfo = null;
+    if (!isDrawing) return;
+
+    if (e.cancelable) e.preventDefault();
+    isDrawing = false;
+    const isPen = e.pointerType === "pen";
+    activePointerId = null;
+    cachedCanvasRect = null;
+    cachedGridInfo = null;
+
+    if (isPen) {
+      lastPenEndTime = Date.now();
+      currentState = InputState.PEN_COOLDOWN;
+    } else {
+      currentState = InputState.IDLE;
+    }
+
+    //+_+// CODEX 명세: 취소 시에도 유효 좌표(1개 이상)가 있다면 획을 버리지 않고 보존
+    if (currentStroke && currentStroke.points.length > 0) {
+      strokes.push(currentStroke);
+      currentStroke = null;
+      redraw();
+      notifyChange();
+    } else {
       currentStroke = null;
       redraw();
     }
   }
 
-  // PointerEvents 및 텍스트 선택/제스처 차단 등록
-  //+_+// PointerEvent 감지 (최신 브라우저 및 테스트 모의 지원)
-  const supportsPointer = typeof window === "undefined" || Boolean(window.PointerEvent) || (typeof PointerEvent !== "undefined") || (window && window.PointerEvent === undefined);
+  function onLostPointerCapture(e) {
+    if (isDrawing && (activePointerId === null || e.pointerId === activePointerId)) {
+      onPointerUp(e);
+    }
+  }
 
+  // ----------------------------------------------------
+  // 이벤트 리스너 바인딩 및 생명주기 관리
+  // ----------------------------------------------------
   const boundListeners = [];
-  function addTrackedListener(target, eventType, handler, options) {
-    target.addEventListener(eventType, handler, options);
-    boundListeners.push({ target, eventType, handler, options });
+  function addManagedListener(target, type, handler, opts) {
+    if (!target || typeof target.addEventListener !== "function") return;
+    target.addEventListener(type, handler, opts);
+    boundListeners.push({ target, type, handler, opts });
   }
 
-  if (supportsPointer) {
-    addTrackedListener(canvasElement, "pointerdown", onPointerDown, { passive: false });
-    addTrackedListener(canvasElement, "pointermove", onPointerMove, { passive: false });
-    addTrackedListener(canvasElement, "pointerup", onPointerUp, { passive: false });
-    addTrackedListener(canvasElement, "pointercancel", onPointerCancel, { passive: false });
-  } else {
-    // 구형 터치 전용 브라우저 fallback
-    addTrackedListener(canvasElement, "touchstart", onPointerDown, { passive: false });
-    addTrackedListener(canvasElement, "touchmove", onPointerMove, { passive: false });
-    addTrackedListener(canvasElement, "touchend", onPointerUp, { passive: false });
-    addTrackedListener(canvasElement, "touchcancel", onPointerCancel, { passive: false });
-    addTrackedListener(canvasElement, "mousedown", onPointerDown, { passive: false });
-    addTrackedListener(canvasElement, "mousemove", onPointerMove, { passive: false });
-    addTrackedListener(canvasElement, "mouseup", onPointerUp, { passive: false });
-  }
+  addManagedListener(canvasElement, "pointerdown", onPointerDown, { passive: false });
+  addManagedListener(canvasElement, "pointermove", onPointerMove, { passive: false });
+  addManagedListener(canvasElement, "pointerup", onPointerUp, { passive: false });
+  addManagedListener(canvasElement, "pointercancel", onPointerCancel, { passive: false });
+  addManagedListener(canvasElement, "lostpointercapture", onLostPointerCapture, { passive: false });
 
-  // 브라우저 텍스트 선택 및 드래그 방지
-  const preventDefaultHandler = (e) => e.preventDefault();
-  addTrackedListener(canvasElement, "selectstart", preventDefaultHandler);
-  addTrackedListener(canvasElement, "dragstart", preventDefaultHandler);
-  addTrackedListener(canvasElement, "contextmenu", preventDefaultHandler);
+  const preventDefaults = (e) => {
+    if (e.cancelable) e.preventDefault();
+  };
+  addManagedListener(canvasElement, "selectstart", preventDefaults, { passive: false });
+  addManagedListener(canvasElement, "dragstart", preventDefaults, { passive: false });
+  addManagedListener(canvasElement, "contextmenu", preventDefaults, { passive: false });
 
-  // ResizeObserver로 캔버스 크기 변화 감지
   let resizeObserver = null;
-  if (typeof ResizeObserver === "function") {
+  if (typeof ResizeObserver !== "undefined") {
     resizeObserver = new ResizeObserver(() => {
       resize();
     });
     resizeObserver.observe(canvasElement);
   }
 
-  // 초기화 (DOM 렌더링 타이밍 보장)
-  const safeRaf = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (cb) => setTimeout(cb, 0);
-  safeRaf(() => {
-    resize();
-    setTimeout(resize, 50); // layout 완료 후 2차 resize
-  });
+  // 초기 사이즈 보정
+  resize();
 
   return {
     setColor(color) {
@@ -433,21 +591,31 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     setWidth(width) {
       settings.width = width;
     },
-    setEraser(enabled, type = "stroke") {
-      settings.isEraser = Boolean(enabled);
-      settings.eraserType = type;
+    setEraser(isEraser, radius = 14) {
+      settings.isEraser = Boolean(isEraser);
+      settings.eraserRadius = radius;
     },
-    setPencilOnly(enabled) {
-      settings.pencilOnly = Boolean(enabled);
+    setPencilOnly(pencilOnly) {
+      settings.pencilOnly = Boolean(pencilOnly);
+      settings.profile = pencilOnly ? InputProfile.IPAD_PEN_ONLY : InputProfile.DESKTOP_MOUSE_PEN;
+      updateTouchAction();
+    },
+    setInputProfile(profile) {
+      if (Object.values(InputProfile).includes(profile)) {
+        settings.profile = profile;
+        settings.pencilOnly = (profile === InputProfile.IPAD_PEN_ONLY);
+        updateTouchAction();
+      }
+    },
+    getInputProfile() {
+      return settings.profile;
     },
     setReadOnly(readOnly) {
       settings.readOnly = Boolean(readOnly);
-    },
-    resize() {
-      resize();
-    },
-    redraw() {
-      redraw();
+      if (settings.readOnly) {
+        settings.profile = InputProfile.READ_ONLY;
+      }
+      updateTouchAction();
     },
     undo() {
       if (undoStack.length === 0) return false;
@@ -469,6 +637,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       if (strokes.length === 0) return;
       saveToUndoStack();
       strokes = [];
+      currentStroke = null;
       redraw();
       notifyChange();
     },
@@ -484,21 +653,22 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     isEmpty() {
       return strokes.length === 0;
     },
+    resize,
     destroy() {
-      //+_+// 등록된 모든 리스너 및 옵저버 완전 정리
-      boundListeners.forEach(({ target, eventType, handler, options }) => {
-        try {
-          target.removeEventListener(eventType, handler, options);
-        } catch (_) {}
-      });
-      boundListeners.length = 0;
+      if (rafId && typeof cancelAnimationFrame === "function") {
+        cancelAnimationFrame(rafId);
+      }
+      if (cooldownTimer) clearTimeout(cooldownTimer);
       if (resizeObserver) {
         resizeObserver.disconnect();
         resizeObserver = null;
       }
-      strokes = [];
-      undoStack = [];
-      redoStack = [];
+      boundListeners.forEach(({ target, type, handler, opts }) => {
+        if (target && typeof target.removeEventListener === "function") {
+          target.removeEventListener(type, handler, opts);
+        }
+      });
+      boundListeners.length = 0;
     }
   };
 }

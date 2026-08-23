@@ -20,9 +20,20 @@ const APP_SHELL = [
   "./js/curriculumRegistry.js",
   "./js/masteryEngine.js",
   "./js/adaptiveEngine.js",
+  "./js/interactionGuard.js",
   "./manifest.webmanifest",
-  "./icon.svg"
+  "./icon.svg",
+  "./icon-180.png",
+  "./icon-192.png",
+  "./icon-512.png",
+  "./icon-maskable-512.png"
 ];
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
 
 self.addEventListener("install", (event) => {
   //+_+// App Shell 사전 캐싱 완료 보장

@@ -2788,3 +2788,161 @@ footer { min-height: 90px; display: flex; align-items: center; justify-content: 
   }
 }
 
+/* ====================================================
+   iPad 안정화 및 UI UX 전면 보완 스타일 (CODEX 명세)
+   ==================================================== */
+
+/* Safe Area 전역 보정 */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+body {
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: pan-y;
+}
+
+input, textarea, select, [contenteditable="true"], dialog {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+/* 🌟 오늘의 맞춤 추천 학습 카드 */
+.adaptive-recommend-card {
+  background: linear-gradient(135deg, rgba(23, 63, 53, 0.06), rgba(228, 123, 79, 0.08)), var(--paper);
+  border: 2px solid var(--accent);
+  border-radius: 16px;
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 12px 32px rgba(228, 123, 79, 0.12);
+  position: relative;
+  overflow: hidden;
+}
+
+.adaptive-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  margin-bottom: 12px;
+}
+
+.adaptive-card-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.adaptive-card-info h2 {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0 0 6px 0;
+  color: var(--ink);
+}
+
+.adaptive-reason-text {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+
+.adaptive-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag-chip {
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+.btn-start-adaptive {
+  min-height: 48px;
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* 🌟 PWA 업데이트 알림 배너 */
+.update-banner {
+  background: var(--green-dark);
+  color: #fff;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.update-banner-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.btn-update-apply {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-update-dismiss {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+/* 화면 모드별 UI 최적화 */
+body.mode-practice .topbar {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+body.mode-practice .brand small {
+  display: none;
+}
+
+/* 버튼 터치 타깃 최소 44px 보장 */
+button, .icon-button, .float-btn, .step-nav-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+

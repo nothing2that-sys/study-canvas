@@ -2,12 +2,18 @@ import { generateQuestionSet, REFERENCE_CURRICULUM, mapToRefLevel, calculateCand
 import { createSession, SessionState, mistakeToQuestion, escapeHtml } from "./sessionEngine.js";
 import { createQuestionTimer, formatTime } from "./timer.js";
 import { getMultiplicationSteps, getDivisionSteps } from "./explainer.js";
-import { createDrawingCanvas } from "./canvasEngine.js";
-import { saveSessionRecord, getRecentSessions, getMistakeQuestions, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, clearAllData } from "./storage.js";
+import { createDrawingCanvas, InputProfile } from "./canvasEngine.js";
+import { saveSessionRecord, getRecentSessions, getMistakeQuestions, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, clearAllData, saveDraftSession, getDraftSession, clearDraftSession, getRecentAttempts } from "./storage.js";
 import { playCorrectSound, playWrongSound, playFanfareSound, playClickSound, toggleSound, isSoundMuted } from "./sound.js";
 import { launchConfetti } from "./confetti.js";
 import { applyTheme, cycleTheme, getCurrentTheme, getThemeInfo } from "./theme.js";
 import { setupKeyboardShortcuts } from "./shortcuts.js";
+import { setupInteractionGuard, AppMode } from "./interactionGuard.js";
+import { composeAdaptiveSession } from "./adaptiveEngine.js";
+import { calculateStageMastery, analyzeWeaknesses } from "./masteryEngine.js";
+
+// 앱 전역 인터랙션 가드 초기화
+const interactionGuard = setupInteractionGuard(typeof document !== "undefined" ? document : null);
 
 // DOM 요소 캐싱 - 뷰 컨테이너
 const setupView = document.querySelector("#setupView");
@@ -212,6 +218,29 @@ const questionTimer = createQuestionTimer({
   }
 });
 
+//+_+// Draft 세션 자동 저장 디바운서
+let draftDebounceTimer = null;
+export function triggerDraftSave() {
+  if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) return;
+  if (draftDebounceTimer) clearTimeout(draftDebounceTimer);
+  draftDebounceTimer = setTimeout(async () => {
+    try {
+      const strokesObj = {};
+      questionStrokesMap.forEach((v, k) => {
+        strokesObj[k] = v;
+      });
+      await saveDraftSession({
+        config: lastSessionConfig || currentSession.config,
+        questions: currentQuestions,
+        currentPageIndex: currentSession.currentPageIndex,
+        strokesMap: strokesObj,
+        elapsedMs: questionTimer.getElapsedMs(),
+        pencilOnly: currentPencilOnly
+      });
+    } catch (_) {}
+  }, 400);
+}
+
 // 뷰 전환
 function switchView(targetView) {
   [setupView, practiceView, gradingView, resultView].forEach((view) => {
@@ -222,6 +251,12 @@ function switchView(targetView) {
 
   const isPracticing = targetView === practiceView;
   abortSessionBtn.hidden = !isPracticing;
+
+  if (targetView === setupView) interactionGuard.setAppMode(AppMode.SETUP);
+  else if (targetView === practiceView) interactionGuard.setAppMode(AppMode.PRACTICE);
+  else if (targetView === gradingView) interactionGuard.setAppMode(AppMode.GRADING);
+  else if (targetView === resultView) interactionGuard.setAppMode(AppMode.RESULT);
+
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -1231,6 +1266,7 @@ function renderCurrentWorksheetPage() {
         onStrokeChange: (strokes) => {
           questionStrokesMap.set(q.id, strokes);
           lastActiveCanvasId = q.id;
+          triggerDraftSave();
         }
       });
 
@@ -1675,6 +1711,7 @@ async function handleFinishGrading() {
     const summary = currentSession.finishGrading();
     // 영구 스토리지에 세션 및 스트로크 저장
     await saveSessionRecord(summary, questionStrokesMap);
+    await clearDraftSession();
     showSessionResult(summary);
   } catch (error) {
     alert(error.message);
@@ -2216,6 +2253,154 @@ window.addEventListener("orientationchange", () => {
   setTimeout(autoFitProblemStages, 120);
 });
 
+// 🌟 맞춤 추천 학습 카드 렌더링
+async function renderAdaptiveRecommendCard() {
+  const cardTitle = document.querySelector("#adaptiveCardTitle");
+  const reasonText = document.querySelector("#adaptiveReasonText");
+  const tagsContainer = document.querySelector("#adaptiveTags");
+  const startBtn = document.querySelector("#startAdaptiveSessionBtn");
+
+  if (!cardTitle || !reasonText || !startBtn) return;
+
+  try {
+    const attempts = await getRecentAttempts(50);
+    const mistakes = await getMistakeQuestions();
+    const weaknessAnalysis = analyzeWeaknesses(attempts, mistakes);
+    const topWeakness = weaknessAnalysis.weaknesses[0];
+
+    const currentStageId = topWeakness?.stageId || "M2-2";
+    const composed = composeAdaptiveSession({
+      count: 10,
+      currentStageId,
+      attempts,
+      mistakes
+    });
+
+    cardTitle.textContent = topWeakness ? `${topWeakness.title} 집중 보강` : "2자리 × 1자리 표준 세로셈";
+    reasonText.textContent = composed.recommendationReason;
+
+    if (tagsContainer) {
+      tagsContainer.innerHTML = `
+        <span class="tag-chip">📝 10문제</span>
+        <span class="tag-chip">💡 60/20/10/10 적응형</span>
+        <span class="tag-chip">🎯 ${topWeakness ? "취약 기술 보강" : "표준 진도"}</span>
+      `;
+    }
+
+    startBtn.onclick = () => {
+      startCustomSessionWithQuestions(composed.questions, {
+        operation: composed.questions[0]?.operation || "mul",
+        count: composed.questions.length,
+        pageSize: 4,
+        cols: 2,
+        rows: 2,
+        mathFormat: "vertical",
+        stageId: currentStageId
+      });
+    };
+  } catch (_) {}
+}
+
+function startCustomSessionWithQuestions(questions, config) {
+  if (!questions || questions.length === 0) return;
+  lastSessionConfig = config;
+  currentQuestions = questions;
+  currentSession = createSession(config, questions);
+  questionStrokesMap.clear();
+  activeCanvasInstances.clear();
+
+  currentSession.start();
+  questionTimer.reset();
+  questionTimer.start();
+
+  renderPracticePage();
+  switchView(practiceView);
+  triggerDraftSave();
+}
+
+// 🌟 미완료 Draft 복구 체크
+async function checkDraftResumeOnStartup() {
+  const draftModal = document.querySelector("#draftResumeModal");
+  const resumeBtn = document.querySelector("#draftResumeBtn");
+  const discardBtn = document.querySelector("#draftDiscardBtn");
+
+  try {
+    const draft = await getDraftSession();
+    if (!draft || !draft.questions || draft.questions.length === 0) return;
+
+    if (draftModal && typeof draftModal.showModal === "function") {
+      draftModal.showModal();
+
+      if (resumeBtn) {
+        resumeBtn.onclick = () => {
+          draftModal.close();
+          // 세션 복원
+          lastSessionConfig = draft.config;
+          currentQuestions = draft.questions;
+          currentSession = createSession(draft.config, draft.questions);
+          questionStrokesMap.clear();
+
+          if (draft.strokesMap) {
+            Object.entries(draft.strokesMap).forEach(([k, v]) => {
+              questionStrokesMap.set(k, v);
+            });
+          }
+
+          currentSession.start();
+          currentSession.goToPage(draft.currentPageIndex || 0);
+          questionTimer.reset();
+          if (draft.elapsedMs) questionTimer.setElapsedMs(draft.elapsedMs);
+          questionTimer.start();
+
+          renderPracticePage();
+          switchView(practiceView);
+        };
+      }
+
+      if (discardBtn) {
+        discardBtn.onclick = async () => {
+          draftModal.close();
+          await clearDraftSession();
+        };
+      }
+    }
+  } catch (_) {}
+}
+
+// 🌟 PWA 업데이트 감지 및 배너 연동
+function setupServiceWorkerUpdates() {
+  if (!("serviceWorker" in navigator)) return;
+
+  const updateBanner = document.querySelector("#updateBanner");
+  const applyUpdateBtn = document.querySelector("#applyUpdateBtn");
+  const dismissUpdateBtn = document.querySelector("#dismissUpdateBtn");
+
+  if (dismissUpdateBtn && updateBanner) {
+    dismissUpdateBtn.addEventListener("click", () => {
+      updateBanner.hidden = true;
+    });
+  }
+
+  navigator.serviceWorker.register("./service-worker.js").then((reg) => {
+    reg.addEventListener("updatefound", () => {
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+      newWorker.addEventListener("statechange", () => {
+        if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+          // 새 버전 설치 완료 시 배너 표시
+          if (updateBanner) updateBanner.hidden = false;
+          if (applyUpdateBtn) {
+            applyUpdateBtn.onclick = () => {
+              newWorker.postMessage({ type: "SKIP_WAITING" });
+              location.reload();
+            };
+          }
+        }
+      });
+    });
+  }).catch(() => {});
+}
+
 // 초기 실행
 restoreFormSettings();
 applyTheme(getCurrentTheme());
@@ -2226,8 +2411,8 @@ updateNetworkState();
 loadDashboardStats();
 updateSoundUI();
 updatePencilModeUI();
+renderAdaptiveRecommendCard();
+checkDraftResumeOnStartup();
+setupServiceWorkerUpdates();
 
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js"));
-}
 

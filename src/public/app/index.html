@@ -16,8 +16,9 @@
     <title>Math Canvas Pro</title>
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="./icon.svg">
-    <link rel="stylesheet" href="./css/app.css?v=20260822_35">
+    <link rel="apple-touch-icon" href="./icon-180.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
+    <link rel="stylesheet" href="./css/app.css?v=20260823_1">
   </head>
   <body>
     <div class="app-shell">
@@ -42,9 +43,39 @@
         </div>
       </header>
 
+      <!-- 🌟 PWA 새 버전 업데이트 안내 배너 -->
+      <aside class="update-banner" id="updateBanner" hidden aria-live="polite">
+        <span>✨ 새 버전의 Math Canvas Pro가 준비되었습니다.</span>
+        <div class="update-banner-actions">
+          <button type="button" class="btn-update-apply" id="applyUpdateBtn">지금 업데이트</button>
+          <button type="button" class="btn-update-dismiss" id="dismissUpdateBtn" aria-label="닫기">✕</button>
+        </div>
+      </aside>
+
       <main class="main-container">
         <!-- 1. 세션 설정 뷰 (Setup View) -->
         <div id="setupView" class="view active-view">
+          <!-- 🌟 오늘의 맞춤 추천 학습 우선 카드 (최상단 CTA) -->
+          <section class="adaptive-recommend-card" id="adaptiveRecommendCard" aria-labelledby="adaptiveCardTitle">
+            <div class="adaptive-card-badge">🎯 오늘의 맞춤 추천</div>
+            <div class="adaptive-card-body">
+              <div class="adaptive-card-info">
+                <h2 id="adaptiveCardTitle">2자리 × 1자리 연속 올림 마스터</h2>
+                <p class="adaptive-reason-text" id="adaptiveReasonText">
+                  최근 받아올림 연산에서 오답이 2회 발생하여 취약 기술 보강 및 복습을 추천합니다.
+                </p>
+                <div class="adaptive-tags" id="adaptiveTags">
+                  <span class="tag-chip">📝 10문제</span>
+                  <span class="tag-chip">⏱ 약 4분 소요</span>
+                  <span class="tag-chip">💡 60/20/10/10 적응형</span>
+                </div>
+              </div>
+              <button type="button" class="primary-action btn-start-adaptive" id="startAdaptiveSessionBtn">
+                <span>추천 학습 시작하기</span><b>➔</b>
+              </button>
+            </div>
+          </section>
+
           <section class="hero" aria-labelledby="heroTitle">
             <div class="hero-copy">
               <p class="eyebrow">오늘의 연산</p>
@@ -67,11 +98,11 @@
 
           <section class="setup-section" aria-labelledby="setupTitle">
             <div class="section-heading">
-              <div><p class="eyebrow">학습 로드맵 & 빠른 시작</p><h2 id="setupTitle">오늘 풀 문제를 골라요</h2></div>
+              <div><p class="eyebrow">학습 로드맵 & 세부 설정</p><h2 id="setupTitle">학습 조건 선택</h2></div>
               <span class="engine-state" id="engineState">수학 엔진 준비 완료</span>
             </div>
 
-            <!-- 🌟 6단계 연산 로드맵 마스터리 트래커 (상단 배치) -->
+            <!-- 🌟 6단계 연산 로드맵 마스터리 트래커 -->
             <div class="curriculum-roadmap-section" id="curriculumRoadmapSection">
               <div class="roadmap-header">
                 <div>
@@ -620,6 +651,18 @@
         <span>워크시트 모드 & 채점자 평가 시스템 가동 중</span>
       </footer>
     </div>
+
+    <!-- 🌟 미완료 학습 이어하기 (Draft Resume) 모달 -->
+    <dialog id="draftResumeModal" class="confirm-dialog draft-resume-dialog">
+      <div class="dialog-card">
+        <h3>📝 이어서 풀 문제가 있습니다!</h3>
+        <p id="draftResumeMessage">이전에 풀던 학습 세션이 보관되어 있습니다. 이어서 풀기를 진행하시겠습니까?</p>
+        <div class="dialog-actions">
+          <button type="button" class="btn-cancel" id="draftDiscardBtn">처음부터 시작</button>
+          <button type="button" class="btn-confirm" id="draftResumeBtn">이어서 풀기</button>
+        </div>
+      </div>
+    </dialog>
 
     <!-- 확인 모달 (세션 중단 등) -->
     <dialog id="confirmModal" class="confirm-dialog">
