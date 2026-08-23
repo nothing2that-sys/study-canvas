@@ -167,9 +167,33 @@ const nextProblemStepBtn = document.querySelector("#nextProblemStepBtn");
 const currentProblemStepText = document.querySelector("#currentProblemStepText");
 let currentFocusedProblemIndex = 0;
 
-//+_+// Pencil Only 기본값 명세 준수: 저장된 설정이 없으면 true (iPad 기본 펜슬 우선)
-const savedPencilOnlySetting = localStorage.getItem("math_canvas_pencil_only");
-let currentPencilOnly = savedPencilOnlySetting !== null ? savedPencilOnlySetting === "true" : true;
+//+_+// 명시적 입력 프로필 결정 (기기 환경 및 사용자 저장값 반영)
+function resolveDefaultInputProfile() {
+  try {
+    const saved = localStorage.getItem("math_canvas_input_profile");
+    if (saved && Object.values(InputProfile).includes(saved)) {
+      return saved;
+    }
+    const legacySaved = localStorage.getItem("math_canvas_pencil_only");
+    const isTouch = typeof navigator !== "undefined" && (navigator.maxTouchPoints > 0 || (typeof window !== "undefined" && "ontouchstart" in window));
+    const isAppleTablet = typeof navigator !== "undefined" && (/iPad|Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+
+    if (legacySaved !== null) {
+      if (legacySaved === "true") {
+        return isAppleTablet ? InputProfile.IPAD_PEN_ONLY : InputProfile.DESKTOP_MOUSE_PEN;
+      } else {
+        return isTouch ? InputProfile.IPAD_PEN_TOUCH : InputProfile.DESKTOP_MOUSE_PEN;
+      }
+    }
+
+    if (isAppleTablet) return InputProfile.IPAD_PEN_ONLY;
+    return isTouch ? InputProfile.IPAD_PEN_TOUCH : InputProfile.DESKTOP_MOUSE_PEN;
+  } catch (_) {
+    return InputProfile.DESKTOP_MOUSE_PEN;
+  }
+}
+
+let currentInputProfile = resolveDefaultInputProfile();
 
 // 3. 채점자 평가 뷰 요소
 const gradedCountText = document.querySelector("#gradedCountText");
@@ -218,53 +242,100 @@ const questionTimer = createQuestionTimer({
   }
 });
 
-//+_+// Draft 세션 자동 저장 계층 (Atomic Flush & Debounce)
-let draftDebounceTimer = null;
-
-export async function flushDraftSave() {
-  if (draftDebounceTimer) {
-    clearTimeout(draftDebounceTimer);
-    draftDebounceTimer = null;
+//+_+// DraftSaveCoordinator: 저장 작업 직렬화, revision 관리, 에러 전파 보장
+class DraftSaveCoordinator {
+  constructor() {
+    this.revision = 0;
+    this.activeSavePromise = null;
+    this.debounceTimer = null;
+    this.saveStatus = "idle"; // "idle" | "saving" | "saved" | "failed"
   }
-  if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) return;
 
-  try {
+  scheduleSave(delayMs = 400) {
+    if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) return;
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    this.debounceTimer = setTimeout(() => {
+      this.flushSave().catch(() => {});
+    }, delayMs);
+  }
+
+  async flushSave() {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) {
+      return true;
+    }
+
+    const currentRevision = ++this.revision;
     const strokesObj = {};
     questionStrokesMap.forEach((v, k) => {
       strokesObj[k] = v;
     });
-    await saveDraftSession({
+
+    const snapshot = {
       schemaVersion: 2,
-      appBuildId: "20260823_2",
+      appBuildId: "20260823_3",
+      revision: currentRevision,
       config: lastSessionConfig || currentSession.config,
       questions: currentQuestions,
       currentPageIndex: currentSession.currentPageIndex,
       strokesMap: strokesObj,
       elapsedMs: questionTimer.getElapsedMs(),
-      pencilOnly: currentPencilOnly,
+      inputProfile: currentInputProfile,
+      sessionState: currentSession.state,
       updatedAt: Date.now()
-    });
-  } catch (err) {
-    console.error("Draft save failed:", err);
+    };
+
+    this.saveStatus = "saving";
+
+    const saveOp = (async () => {
+      try {
+        if (this.activeSavePromise) {
+          await this.activeSavePromise.catch(() => {});
+        }
+        if (this.revision > currentRevision) {
+          // 더 최신 snapshot이 이미 예약되었으므로 건너뜀
+          return true;
+        }
+        await saveDraftSession(snapshot);
+        this.saveStatus = "saved";
+        return true;
+      } catch (err) {
+        this.saveStatus = "failed";
+        console.error("Draft save failed:", err);
+        throw err;
+      } finally {
+        if (this.activeSavePromise === saveOp) {
+          this.activeSavePromise = null;
+        }
+      }
+    })();
+
+    this.activeSavePromise = saveOp;
+    return saveOp;
   }
 }
 
+export const draftCoordinator = new DraftSaveCoordinator();
+
 export function triggerDraftSave() {
-  if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) return;
-  if (draftDebounceTimer) clearTimeout(draftDebounceTimer);
-  draftDebounceTimer = setTimeout(() => {
-    flushDraftSave();
-  }, 400);
+  draftCoordinator.scheduleSave();
+}
+
+export async function flushDraftSave() {
+  return draftCoordinator.flushSave();
 }
 
 // 생명주기 이벤트(hidden, pagehide) 시 즉시 flush
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => {
-    flushDraftSave();
+    flushDraftSave().catch(() => {});
   });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      flushDraftSave();
+      flushDraftSave().catch(() => {});
     }
   });
 }
@@ -1200,7 +1271,7 @@ function startSessionWithQuestions(questions, config) {
   currentSession.start();
 
   questionTimer.reset();
-  questionTimer.start();
+  questionTimer.start(0);
 
   switchView(practiceView);
   renderCurrentWorksheetPage();
@@ -1293,7 +1364,8 @@ function renderCurrentWorksheetPage() {
         color: currentPenColor,
         width: currentPenWidth,
         isEraser: currentIsEraser,
-        pencilOnly: currentPencilOnly,
+        profile: currentInputProfile,
+        pencilOnly: currentInputProfile === InputProfile.IPAD_PEN_ONLY,
         onStrokeChange: (strokes) => {
           questionStrokesMap.set(q.id, strokes);
           lastActiveCanvasId = q.id;
@@ -1310,12 +1382,12 @@ function renderCurrentWorksheetPage() {
     }
   });
 
-  // 네비게이션 및 제출 버튼 상태 갱신 (마지막 페이지에서만 제출 버튼 활성화)
+  // 네비게이션 및 제출 버튼 상태 갱신 (마지막 페이지에서도 다음에 풀기는 항상 노출!)
   prevPageBtn.disabled = pageData.isFirstPage;
   nextPageBtn.disabled = pageData.isLastPage;
   nextPageBtn.style.display = pageData.isLastPage ? "none" : "inline-flex";
   if (pausePracticeBtn) {
-    pausePracticeBtn.style.display = pageData.isLastPage ? "none" : "inline-flex";
+    pausePracticeBtn.style.display = "inline-flex";
   }
   submitPracticeBtn.style.display = pageData.isLastPage ? "inline-flex" : "none";
   pageIndicatorText.textContent = `${pageData.pageNumber} / ${pageData.totalPages} 페이지`;
@@ -1389,17 +1461,35 @@ function autoFitProblemStages() {
 // 펜 도구바 핸들러
 // ----------------------------------------------------
 function updatePencilModeUI() {
+  const isPenOnly = currentInputProfile === InputProfile.IPAD_PEN_ONLY;
+  const isPenTouch = currentInputProfile === InputProfile.IPAD_PEN_TOUCH;
+  const isDesktop = currentInputProfile === InputProfile.DESKTOP_MOUSE_PEN;
+
+  let modeLabel = "✏️ 펜슬 전용";
+  let shortLabel = "펜슬만";
+
+  if (isPenOnly) {
+    modeLabel = "✏️ 펜슬 전용";
+    shortLabel = "펜슬만";
+  } else if (isPenTouch) {
+    modeLabel = "🖐️ 손+펜 공용";
+    shortLabel = "손+펜";
+  } else if (isDesktop) {
+    modeLabel = "🖱️ 마우스/펜";
+    shortLabel = "마우스";
+  }
+
   if (pencilOnlyToggleBtn) {
-    pencilOnlyToggleBtn.classList.toggle("active", currentPencilOnly);
+    pencilOnlyToggleBtn.classList.toggle("active", isPenOnly);
   }
   if (pencilModeText) {
-    pencilModeText.textContent = currentPencilOnly ? "✏️ 펜슬 전용" : "🖐️ 손+펜 공용";
+    pencilModeText.textContent = modeLabel;
   }
   if (floatPencilOnlyBtn) {
-    floatPencilOnlyBtn.classList.toggle("active", currentPencilOnly);
+    floatPencilOnlyBtn.classList.toggle("active", isPenOnly);
   }
   if (floatPencilLabel) {
-    floatPencilLabel.textContent = currentPencilOnly ? "펜슬만" : "손+펜";
+    floatPencilLabel.textContent = shortLabel;
   }
 }
 
@@ -1414,13 +1504,23 @@ function updateFloatingToolbarUI() {
 }
 
 function handlePencilOnlyToggle() {
-  currentPencilOnly = !currentPencilOnly;
+  // iPad/터치 환경: IPAD_PEN_ONLY <-> IPAD_PEN_TOUCH
+  // 데스크톱 환경: DESKTOP_MOUSE_PEN <-> IPAD_PEN_ONLY
+  if (currentInputProfile === InputProfile.IPAD_PEN_ONLY) {
+    const isTouch = typeof navigator !== "undefined" && (navigator.maxTouchPoints > 0 || (typeof window !== "undefined" && "ontouchstart" in window));
+    currentInputProfile = isTouch ? InputProfile.IPAD_PEN_TOUCH : InputProfile.DESKTOP_MOUSE_PEN;
+  } else {
+    currentInputProfile = InputProfile.IPAD_PEN_ONLY;
+  }
+
   try {
-    localStorage.setItem("math_canvas_pencil_only", String(currentPencilOnly));
+    localStorage.setItem("math_canvas_input_profile", currentInputProfile);
+    localStorage.setItem("math_canvas_pencil_only", String(currentInputProfile === InputProfile.IPAD_PEN_ONLY));
   } catch (_) {}
 
   updatePencilModeUI();
-  activeCanvasInstances.forEach((inst) => inst.setPencilOnly(currentPencilOnly));
+  activeCanvasInstances.forEach((inst) => inst.setInputProfile(currentInputProfile));
+  triggerDraftSave();
 }
 
 function handleColorSelect(btn) {
@@ -1863,8 +1963,15 @@ function handleAbortSession() {
 }
 
 async function terminateSession() {
-  await flushDraftSave();
+  try {
+    await flushDraftSave();
+  } catch (err) {
+    alert("임시 저장에 실패했습니다. 네트워크 및 저장소 상태를 확인한 후 다시 시도해 주세요.");
+    return; // 세션 유지!
+  }
   questionTimer.stop();
+  activeCanvasInstances.forEach((inst) => inst.destroy());
+  activeCanvasInstances.clear();
   currentSession = null;
   questionStrokesMap.clear();
   switchView(setupView);
@@ -2364,11 +2471,17 @@ async function checkDraftResumeOnStartup() {
             });
           }
 
+          if (draft.inputProfile && Object.values(InputProfile).includes(draft.inputProfile)) {
+            currentInputProfile = draft.inputProfile;
+            updatePencilModeUI();
+          }
+
           currentSession.start();
           currentSession.goToPage(draft.currentPageIndex || 0);
+
+          //+_+// 단일 계약으로 복원 시간부터 정밀 흐름 시작!
           questionTimer.reset();
-          if (draft.elapsedMs) questionTimer.setElapsedMs(draft.elapsedMs);
-          questionTimer.start();
+          questionTimer.start(draft.elapsedMs || 0);
 
           switchView(practiceView);
           renderCurrentWorksheetPage();
@@ -2413,7 +2526,12 @@ function setupServiceWorkerUpdates() {
       if (updateBanner) updateBanner.hidden = false;
       if (applyUpdateBtn) {
         applyUpdateBtn.onclick = async () => {
-          await flushDraftSave();
+          try {
+            await flushDraftSave();
+          } catch (err) {
+            alert("임시 저장에 실패하여 업데이트를 중단합니다. 저장 후 다시 시도해 주세요.");
+            return;
+          }
           worker.postMessage({ type: "SKIP_WAITING" });
         };
       }

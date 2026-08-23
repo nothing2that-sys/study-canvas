@@ -16,21 +16,27 @@ export const AppMode = Object.freeze({
 
 /**
  * 특정 요소가 상호작용 예외 대상(입력창, 선택상자 등)인지 확인
+ * - dialog 전체는 예외가 아니며, dialog 내부의 실제 입력 요소만 허용
  */
 export function isInteractiveElement(target) {
-  if (!target || typeof target.closest !== "function") return false;
-  return Boolean(
-    target.closest("input, textarea, select, option, [contenteditable='true'], dialog, [data-interactive='true']")
-  );
+  if (!target) return false;
+  if (typeof target.closest === "function") {
+    return Boolean(
+      target.closest("input, textarea, select, option, [contenteditable='true'], [data-interactive='true']")
+    );
+  }
+  const tag = (target.tagName || "").toLowerCase();
+  return ["input", "textarea", "select", "option"].includes(tag);
 }
 
 /**
  * 앱 전역 Interaction Guard 초기화
  */
 export function setupInteractionGuard(rootElement = (typeof document !== "undefined" ? document : null)) {
-  if (!rootElement) return { destroy: () => {}, setAppMode: () => {} };
+  if (!rootElement) return { destroy: () => {}, setAppMode: () => {}, pushModalMode: () => {}, popModalMode: () => {} };
 
   const listeners = [];
+  let previousMode = AppMode.SETUP;
 
   function addGuardListener(target, type, handler, options = { capture: true, passive: false }) {
     if (!target || typeof target.addEventListener !== "function") return;
@@ -75,7 +81,16 @@ export function setupInteractionGuard(rootElement = (typeof document !== "undefi
       allModes.forEach((m) => document.body.classList.remove(m));
       if (mode && allModes.includes(mode)) {
         document.body.classList.add(mode);
+        if (mode !== AppMode.MODAL_OPEN) {
+          previousMode = mode;
+        }
       }
+    },
+    pushModalMode() {
+      this.setAppMode(AppMode.MODAL_OPEN);
+    },
+    popModalMode() {
+      this.setAppMode(previousMode || AppMode.SETUP);
     },
     destroy() {
       listeners.forEach(({ target, type, handler, options }) => {

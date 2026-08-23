@@ -39,8 +39,10 @@ export function createQuestionTimer(options = {}) {
     }
   }
 
-  function start() {
-    startedAt = getTime();
+  function start(initialElapsedMs = 0) {
+    const safeInitial = (Number.isFinite(initialElapsedMs) && initialElapsedMs > 0) ? Math.max(0, Number(initialElapsedMs)) : 0;
+    const now = getTime();
+    startedAt = now - safeInitial;
     stoppedAt = 0;
     pausedAt = 0;
     accumulatedPauseMs = 0;
@@ -49,10 +51,11 @@ export function createQuestionTimer(options = {}) {
 
     if (animFrameId && typeof cancelAnimationFrame === "function") {
       cancelAnimationFrame(animFrameId);
+      animFrameId = null;
     }
 
     if (onTick) {
-      onTick(0);
+      onTick(safeInitial);
       if (typeof requestAnimationFrame === "function") {
         animFrameId = requestAnimationFrame(tick);
       }

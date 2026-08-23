@@ -27,24 +27,33 @@ export const InputState = Object.freeze({
 });
 
 /**
- * 단일 입력 수락 판정기
+ * 단일 입력 수락 판정기 (상태 머신 규칙 완벽 준수)
  */
 export function shouldAcceptPointer(event, profile, state = InputState.IDLE) {
   if (!event || profile === InputProfile.READ_ONLY) return false;
   const pType = event.pointerType;
 
+  // PEN_DRAWING 중에는 오직 pen만 수락, touch와 mouse는 절대 수락하지 않음
+  if (state === InputState.PEN_DRAWING) {
+    return pType === "pen";
+  }
+
+  // TOUCH_DRAWING 중에는 새로운 pen만 가로채기 허용, 추가 touch/mouse 거부
+  if (state === InputState.TOUCH_DRAWING) {
+    return pType === "pen";
+  }
+
+  // PEN_COOLDOWN 중에는 pen만 즉시 수락, touch는 쿨다운 보호로 거부
+  if (state === InputState.PEN_COOLDOWN) {
+    return pType === "pen";
+  }
+
   if (profile === InputProfile.IPAD_PEN_ONLY) {
-    // 엄격한 Pen 전용: pen 타입만 수락, touch/mouse/unknown 일체 거부
     return pType === "pen";
   }
 
   if (profile === InputProfile.IPAD_PEN_TOUCH) {
-    if (pType === "pen") return true;
-    if (pType === "touch") {
-      // Pen Cooldown 중에는 touch 거부
-      return state !== InputState.PEN_COOLDOWN;
-    }
-    return false;
+    return pType === "pen" || pType === "touch";
   }
 
   if (profile === InputProfile.DESKTOP_MOUSE_PEN) {
@@ -60,7 +69,6 @@ export function shouldAcceptPointer(event, profile, state = InputState.IDLE) {
     return true;
   }
 
-  // 기본 Fallback
   return pType === "pen" || (pType === "mouse" && (event.button === 0 || event.button === undefined));
 }
 
@@ -466,16 +474,23 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   function onPointerUp(e) {
     if (!isDrawing) return;
 
-    if (e.pointerType === "pen") {
-      if (activePenPointerId !== null && e.pointerId !== undefined && e.pointerId !== activePenPointerId) return;
-    } else {
-      if (activeTouchPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeTouchPointerId) return;
+    const isPen = e.pointerType === "pen";
+    const isTouch = e.pointerType === "touch";
+
+    // 활성 포인터와 일치하지 않는 다른 포인터의 up 이벤트는 무시
+    if (activePenPointerId !== null) {
+      if (!isPen || (e.pointerId !== undefined && e.pointerId !== activePenPointerId)) {
+        return;
+      }
+    } else if (activeTouchPointerId !== null) {
+      if (!isTouch || (e.pointerId !== undefined && e.pointerId !== activeTouchPointerId)) {
+        return;
+      }
     }
 
     if (e.cancelable) e.preventDefault();
 
     isDrawing = false;
-    const isPen = e.pointerType === "pen";
     activePenPointerId = null;
     activeTouchPointerId = null;
     cachedCanvasRect = null;
@@ -511,10 +526,23 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   function onPointerCancel(e) {
     if (!isDrawing) return;
 
+    const isPen = e.pointerType === "pen";
+    const isTouch = e.pointerType === "touch";
+
+    // 활성 포인터와 일치하지 않는 다른 포인터의 cancel 이벤트는 무시
+    if (activePenPointerId !== null) {
+      if (!isPen || (e.pointerId !== undefined && e.pointerId !== activePenPointerId)) {
+        return;
+      }
+    } else if (activeTouchPointerId !== null) {
+      if (!isTouch || (e.pointerId !== undefined && e.pointerId !== activeTouchPointerId)) {
+        return;
+      }
+    }
+
     if (e.cancelable) e.preventDefault();
 
     isDrawing = false;
-    const isPen = e.pointerType === "pen";
     activePenPointerId = null;
     activeTouchPointerId = null;
     cachedCanvasRect = null;
@@ -553,7 +581,11 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
   function onLostPointerCapture(e) {
     if (isDrawing) {
-      onPointerUp(e);
+      if (activePenPointerId !== null && e.pointerId === activePenPointerId) {
+        onPointerUp(e);
+      } else if (activeTouchPointerId !== null && e.pointerId === activeTouchPointerId) {
+        onPointerUp(e);
+      }
     }
   }
 
