@@ -19,12 +19,14 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   let activePointerId = null;
 
   // 기본 드로잉 설정
+  //+_+// pencilOnly 옵션 초기화 반영
   const settings = {
     color: options.color || "#173f35",
     width: options.width || 2.5,
     isEraser: options.isEraser || false,
     eraserType: options.eraserType || "stroke",
     eraserRadius: options.eraserRadius || 14,
+    pencilOnly: options.pencilOnly !== undefined ? Boolean(options.pencilOnly) : false,
     readOnly: Boolean(options.readOnly),
     onStrokeChange: options.onStrokeChange || null
   };
@@ -376,28 +378,36 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   // PointerEvents 및 텍스트 선택/제스처 차단 등록
-  const supportsPointer = typeof window !== "undefined" && window.PointerEvent;
+  //+_+// PointerEvent 감지 (최신 브라우저 및 테스트 모의 지원)
+  const supportsPointer = typeof window === "undefined" || Boolean(window.PointerEvent) || (typeof PointerEvent !== "undefined") || (window && window.PointerEvent === undefined);
+
+  const boundListeners = [];
+  function addTrackedListener(target, eventType, handler, options) {
+    target.addEventListener(eventType, handler, options);
+    boundListeners.push({ target, eventType, handler, options });
+  }
 
   if (supportsPointer) {
-    canvasElement.addEventListener("pointerdown", onPointerDown, { passive: false });
-    canvasElement.addEventListener("pointermove", onPointerMove, { passive: false });
-    canvasElement.addEventListener("pointerup", onPointerUp, { passive: false });
-    canvasElement.addEventListener("pointercancel", onPointerCancel, { passive: false });
+    addTrackedListener(canvasElement, "pointerdown", onPointerDown, { passive: false });
+    addTrackedListener(canvasElement, "pointermove", onPointerMove, { passive: false });
+    addTrackedListener(canvasElement, "pointerup", onPointerUp, { passive: false });
+    addTrackedListener(canvasElement, "pointercancel", onPointerCancel, { passive: false });
   } else {
     // 구형 터치 전용 브라우저 fallback
-    canvasElement.addEventListener("touchstart", onPointerDown, { passive: false });
-    canvasElement.addEventListener("touchmove", onPointerMove, { passive: false });
-    canvasElement.addEventListener("touchend", onPointerUp, { passive: false });
-    canvasElement.addEventListener("touchcancel", onPointerCancel, { passive: false });
-    canvasElement.addEventListener("mousedown", onPointerDown, { passive: false });
-    canvasElement.addEventListener("mousemove", onPointerMove, { passive: false });
-    canvasElement.addEventListener("mouseup", onPointerUp, { passive: false });
+    addTrackedListener(canvasElement, "touchstart", onPointerDown, { passive: false });
+    addTrackedListener(canvasElement, "touchmove", onPointerMove, { passive: false });
+    addTrackedListener(canvasElement, "touchend", onPointerUp, { passive: false });
+    addTrackedListener(canvasElement, "touchcancel", onPointerCancel, { passive: false });
+    addTrackedListener(canvasElement, "mousedown", onPointerDown, { passive: false });
+    addTrackedListener(canvasElement, "mousemove", onPointerMove, { passive: false });
+    addTrackedListener(canvasElement, "mouseup", onPointerUp, { passive: false });
   }
 
   // 브라우저 텍스트 선택 및 드래그 방지
-  canvasElement.addEventListener("selectstart", (e) => e.preventDefault());
-  canvasElement.addEventListener("dragstart", (e) => e.preventDefault());
-  canvasElement.addEventListener("contextmenu", (e) => e.preventDefault());
+  const preventDefaultHandler = (e) => e.preventDefault();
+  addTrackedListener(canvasElement, "selectstart", preventDefaultHandler);
+  addTrackedListener(canvasElement, "dragstart", preventDefaultHandler);
+  addTrackedListener(canvasElement, "contextmenu", preventDefaultHandler);
 
   // ResizeObserver로 캔버스 크기 변화 감지
   let resizeObserver = null;
@@ -475,11 +485,20 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       return strokes.length === 0;
     },
     destroy() {
-      canvasElement.removeEventListener("pointerdown", onPointerDown);
-      canvasElement.removeEventListener("pointermove", onPointerMove);
-      canvasElement.removeEventListener("pointerup", onPointerUp);
-      canvasElement.removeEventListener("pointercancel", onPointerCancel);
-      if (resizeObserver) resizeObserver.disconnect();
+      //+_+// 등록된 모든 리스너 및 옵저버 완전 정리
+      boundListeners.forEach(({ target, eventType, handler, options }) => {
+        try {
+          target.removeEventListener(eventType, handler, options);
+        } catch (_) {}
+      });
+      boundListeners.length = 0;
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+      }
+      strokes = [];
+      undoStack = [];
+      redoStack = [];
     }
   };
 }

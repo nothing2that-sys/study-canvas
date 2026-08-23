@@ -7,7 +7,7 @@
  */
 
 const DB_NAME = "math_canvas_pro_db";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise = null;
 
@@ -28,15 +28,36 @@ export function getDB() {
       if (!db.objectStoreNames.contains("sessions")) {
         const sessionStore = db.createObjectStore("sessions", { keyPath: "id" });
         sessionStore.createIndex("completedAt", "completedAt", { unique: false });
+        sessionStore.createIndex("operation", "operation", { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains("attempts")) {
+        const attemptStore = db.createObjectStore("attempts", { keyPath: "id" });
+        attemptStore.createIndex("sessionId", "sessionId", { unique: false });
+        attemptStore.createIndex("questionKey", "questionKey", { unique: false });
+        attemptStore.createIndex("stageId", "stageId", { unique: false });
+        attemptStore.createIndex("completedAt", "completedAt", { unique: false });
+        attemptStore.createIndex("isCorrect", "isCorrect", { unique: false });
       }
 
       if (!db.objectStoreNames.contains("mistakes")) {
         const mistakeStore = db.createObjectStore("mistakes", { keyPath: "key" });
         mistakeStore.createIndex("lastWrongAt", "lastWrongAt", { unique: false });
+        mistakeStore.createIndex("stageId", "stageId", { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains("stageProgress")) {
+        const progressStore = db.createObjectStore("stageProgress", { keyPath: "stageKey" });
+        progressStore.createIndex("macroLevelId", "macroLevelId", { unique: false });
+        progressStore.createIndex("status", "status", { unique: false });
       }
 
       if (!db.objectStoreNames.contains("strokes")) {
         db.createObjectStore("strokes", { keyPath: "sessionId_questionId" });
+      }
+
+      if (!db.objectStoreNames.contains("draftSessions")) {
+        db.createObjectStore("draftSessions", { keyPath: "id" });
       }
     };
 
@@ -55,17 +76,34 @@ export function getDB() {
 // 메모리 Fallback DB (IndexedDB 미지원 환경용)
 let memoryStore = {
   sessions: new Map(),
+  attempts: new Map(),
   mistakes: new Map(),
-  strokes: new Map()
+  stageProgress: new Map(),
+  strokes: new Map(),
+  draftSessions: new Map()
 };
 
 function createMemoryFallbackDB() {
   return {
     isMemory: true,
     sessions: memoryStore.sessions,
+    attempts: memoryStore.attempts,
     mistakes: memoryStore.mistakes,
-    strokes: memoryStore.strokes
+    stageProgress: memoryStore.stageProgress,
+    strokes: memoryStore.strokes,
+    draftSessions: memoryStore.draftSessions
   };
+}
+
+//+_+// 세션의 실제 연산 종류를 우선순위에 따라 안전하게 확인
+export function resolveSessionOperation(session) {
+  if (!session) return "mul";
+  if (session.operation === "div" || session.operation === "mul") return session.operation;
+  if (session.config?.operation === "div" || session.config?.operation === "mul") return session.config.operation;
+  if (session.results && session.results.length > 0 && session.results[0].operation) {
+    return session.results[0].operation === "div" ? "div" : "mul";
+  }
+  return "mul";
 }
 
 /**
@@ -76,31 +114,77 @@ export async function saveSessionRecord(summary, strokesMap = new Map()) {
   const sessionId = summary.sessionId || `session_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const now = Date.now();
 
+  const operation = summary.operation || summary.config?.operation || summary.results?.[0]?.operation || "mul";
+  const mathFormat = summary.mathFormat || summary.config?.mathFormat || "vertical";
+  const macroLevelId = summary.macroLevelId || summary.config?.macroLevelId || summary.results?.[0]?.level || (operation === "div" ? "D1" : "M1");
+  const stageId = summary.stageId || summary.config?.stageId || macroLevelId;
+
   const sessionRecord = {
     ...summary,
     id: sessionId,
+    operation,
+    mathFormat,
+    macroLevelId,
+    stageId,
     completedAt: now,
-    results: summary.results.map((r) => ({
-      ...r,
-      strokes: strokesMap.get(r.questionId) || r.strokes || []
-    }))
+    results: (summary.results || []).map((r) => {
+      const qAns = r.answer !== undefined ? r.answer : r.expectedAnswer;
+      return {
+        ...r,
+        operation: r.operation || operation,
+        answer: qAns,
+        expectedAnswer: qAns,
+        strokes: strokesMap.get(r.questionId) || r.strokes || []
+      };
+    })
   };
 
   if (db.isMemory) {
     db.sessions.set(sessionId, sessionRecord);
 
-    summary.results.forEach((r) => {
+    sessionRecord.results.forEach((r, idx) => {
+      const qKey = r.questionKey || r.key || `${r.operation || operation}:${r.operandA}:${r.operandB}`;
+      
+      //+_+// 개별 Attempt 객체 생성 및 저장
+      const attemptId = `att_${sessionId}_${r.questionId || idx}_${now}`;
+      const attemptRecord = {
+        id: attemptId,
+        sessionId,
+        questionId: r.questionId || `q_${idx}`,
+        questionKey: qKey,
+        operation: r.operation || operation,
+        macroLevelId: r.macroLevelId || macroLevelId,
+        stageId: r.stageId || stageId,
+        operandA: r.operandA,
+        operandB: r.operandB,
+        answer: r.answer,
+        isCorrect: Boolean(r.isCorrect),
+        solveTimeMs: r.solveTimeMs || 0,
+        comment: r.comment || "",
+        sourceWrongAnswerId: r.sourceWrongAnswerId || null,
+        errorCategories: r.errorCategories || [],
+        sourceType: r.sourceWrongAnswerId ? "retry" : "normal",
+        completedAt: now
+      };
+      db.attempts.set(attemptId, attemptRecord);
+
       if (!r.isCorrect) {
-        const prev = db.mistakes.get(r.questionKey) || { wrongCount: 0 };
-        db.mistakes.set(r.questionKey, {
+        const prev = db.mistakes.get(qKey) || { wrongCount: 0 };
+        db.mistakes.set(qKey, {
           ...r,
-          key: r.questionKey,
+          key: qKey,
+          questionKey: qKey,
+          operation: r.operation || operation,
+          macroLevelId: r.macroLevelId || macroLevelId,
+          stageId: r.stageId || stageId,
+          answer: r.answer,
+          expectedAnswer: r.answer,
           wrongCount: prev.wrongCount + 1,
           lastWrongAt: now
         });
       } else {
         // 정답을 맞춘 경우 오답 큐에서 해제
-        db.mistakes.delete(r.questionKey);
+        db.mistakes.delete(qKey);
       }
 
       if (strokesMap.has(r.questionId)) {
@@ -112,27 +196,59 @@ export async function saveSessionRecord(summary, strokesMap = new Map()) {
   }
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(["sessions", "mistakes", "strokes"], "readwrite");
+    const tx = db.transaction(["sessions", "attempts", "mistakes", "strokes"], "readwrite");
     const sessionStore = tx.objectStore("sessions");
+    const attemptStore = tx.objectStore("attempts");
     const mistakeStore = tx.objectStore("mistakes");
     const strokeStore = tx.objectStore("strokes");
 
     sessionStore.put(sessionRecord);
 
-    summary.results.forEach((r) => {
+    sessionRecord.results.forEach((r, idx) => {
+      const qKey = r.questionKey || r.key || `${r.operation || operation}:${r.operandA}:${r.operandB}`;
+
+      //+_+// 개별 Attempt 객체 저장
+      const attemptId = `att_${sessionId}_${r.questionId || idx}_${now}`;
+      const attemptRecord = {
+        id: attemptId,
+        sessionId,
+        questionId: r.questionId || `q_${idx}`,
+        questionKey: qKey,
+        operation: r.operation || operation,
+        macroLevelId: r.macroLevelId || macroLevelId,
+        stageId: r.stageId || stageId,
+        operandA: r.operandA,
+        operandB: r.operandB,
+        answer: r.answer,
+        isCorrect: Boolean(r.isCorrect),
+        solveTimeMs: r.solveTimeMs || 0,
+        comment: r.comment || "",
+        sourceWrongAnswerId: r.sourceWrongAnswerId || null,
+        errorCategories: r.errorCategories || [],
+        sourceType: r.sourceWrongAnswerId ? "retry" : "normal",
+        completedAt: now
+      };
+      attemptStore.put(attemptRecord);
+
       if (!r.isCorrect) {
-        const getReq = mistakeStore.get(r.questionKey);
+        const getReq = mistakeStore.get(qKey);
         getReq.onsuccess = () => {
           const prev = getReq.result || { wrongCount: 0 };
           mistakeStore.put({
             ...r,
-            key: r.questionKey,
+            key: qKey,
+            questionKey: qKey,
+            operation: r.operation || operation,
+            macroLevelId: r.macroLevelId || macroLevelId,
+            stageId: r.stageId || stageId,
+            answer: r.answer,
+            expectedAnswer: r.answer,
             wrongCount: prev.wrongCount + 1,
             lastWrongAt: now
           });
         };
       } else {
-        mistakeStore.delete(r.questionKey);
+        mistakeStore.delete(qKey);
       }
 
       if (strokesMap.has(r.questionId)) {
@@ -146,6 +262,96 @@ export async function saveSessionRecord(summary, strokesMap = new Map()) {
     });
 
     tx.oncomplete = () => resolve(sessionRecord);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/**
+ * Attempt 단위 목록 조회
+ */
+export async function getRecentAttempts(limit = 50, filter = {}) {
+  const db = await getDB();
+  let all = [];
+
+  if (db.isMemory) {
+    all = Array.from(db.attempts.values());
+  } else {
+    all = await new Promise((resolve, reject) => {
+      const tx = db.transaction("attempts", "readonly");
+      const store = tx.objectStore("attempts");
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  // 필터링 적용
+  if (filter.operation) {
+    all = all.filter((a) => a.operation === filter.operation);
+  }
+  if (filter.stageId) {
+    all = all.filter((a) => a.stageId === filter.stageId);
+  }
+  if (filter.macroLevelId) {
+    all = all.filter((a) => a.macroLevelId === filter.macroLevelId);
+  }
+
+  return all
+    .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))
+    .slice(0, limit);
+}
+
+/**
+ * Draft Session (세션 중단 및 이어하기) 관리
+ */
+export async function saveDraftSession(draft) {
+  const db = await getDB();
+  const draftRecord = { ...draft, id: "current_draft", updatedAt: Date.now() };
+
+  if (db.isMemory) {
+    db.draftSessions.set("current_draft", draftRecord);
+    return draftRecord;
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("draftSessions", "readwrite");
+    tx.objectStore("draftSessions").put(draftRecord);
+    tx.oncomplete = () => resolve(draftRecord);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+export async function getDraftSession() {
+  const db = await getDB();
+
+  if (db.isMemory) {
+    return db.draftSessions.get("current_draft") || null;
+  }
+
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction("draftSessions", "readonly");
+      const req = tx.objectStore("draftSessions").get("current_draft");
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+export async function clearDraftSession() {
+  const db = await getDB();
+
+  if (db.isMemory) {
+    db.draftSessions.delete("current_draft");
+    return true;
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("draftSessions", "readwrite");
+    tx.objectStore("draftSessions").delete("current_draft");
+    tx.oncomplete = () => resolve(true);
     tx.onerror = (e) => reject(e.target.error);
   });
 }
@@ -241,10 +447,35 @@ export async function getMistakeQuestions() {
 }
 
 /**
- * 전체 학습 통계 집계
+ * 전체 완료 세션 목록 조회 (누적 통계용, 제한 없음)
+ */
+export async function getAllSessions() {
+  const db = await getDB();
+
+  if (db.isMemory) {
+    return Array.from(db.sessions.values())
+      .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("sessions", "readonly");
+    const store = tx.objectStore("sessions");
+    const req = store.getAll();
+
+    req.onsuccess = () => {
+      const sorted = (req.result || [])
+        .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+      resolve(sorted);
+    };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/**
+ * 전체 학습 누적 통계 집계 (제한 없이 모든 세션 데이터 합산)
  */
 export async function getLearningStats() {
-  const sessions = await getRecentSessions(100);
+  const sessions = await getAllSessions();
   const mistakes = await getMistakeQuestions();
 
   let totalQuestions = 0;
@@ -270,6 +501,35 @@ export async function getLearningStats() {
 }
 
 /**
+ * 최근 통계 집계 (최근 20문제 및 최근 5세션 기준)
+ */
+export async function getRecentStats(attemptLimit = 20) {
+  const recentAttempts = await getRecentAttempts(attemptLimit);
+  const recentSessions = await getRecentSessions(5);
+
+  let recentQuestions = recentAttempts.length;
+  let recentCorrect = 0;
+  let recentSolveTimeMs = 0;
+
+  recentAttempts.forEach((a) => {
+    if (a.isCorrect) recentCorrect += 1;
+    recentSolveTimeMs += (a.solveTimeMs || 0);
+  });
+
+  const recentAccuracy = recentQuestions > 0 ? Math.round((recentCorrect / recentQuestions) * 100) : 0;
+  const recentAvgSolveTimeMs = recentQuestions > 0 ? Math.round(recentSolveTimeMs / recentQuestions) : 0;
+
+  return {
+    recentAttemptsCount: recentQuestions,
+    recentCorrect,
+    recentAccuracy,
+    recentSolveTimeMs,
+    recentAvgSolveTimeMs,
+    recentSessionsCount: recentSessions.length
+  };
+}
+
+/**
  * 표준 레퍼런스 교육과정별(Lv.1~Lv.6) 누적 학습 진행도 및 마스터리 집계
  */
 export async function getCurriculumProgress() {
@@ -290,7 +550,7 @@ export async function getCurriculumProgress() {
   };
 
   sessions.forEach((session) => {
-    const op = session.operation === "div" ? "div" : "mul";
+    const op = resolveSessionOperation(session);
     const results = session.results || [];
 
     results.forEach((r) => {
@@ -469,16 +729,22 @@ export async function clearAllData() {
 
   if (db.isMemory) {
     db.sessions.clear();
+    db.attempts.clear();
     db.mistakes.clear();
+    db.stageProgress.clear();
     db.strokes.clear();
+    db.draftSessions.clear();
     return true;
   }
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(["sessions", "mistakes", "strokes"], "readwrite");
+    const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions"], "readwrite");
     tx.objectStore("sessions").clear();
+    tx.objectStore("attempts").clear();
     tx.objectStore("mistakes").clear();
+    tx.objectStore("stageProgress").clear();
     tx.objectStore("strokes").clear();
+    tx.objectStore("draftSessions").clear();
     tx.oncomplete = () => resolve(true);
     tx.onerror = (e) => reject(e.target.error);
   });

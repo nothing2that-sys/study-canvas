@@ -226,14 +226,67 @@ function createMultiplier(config, bDigits, random) {
   return randomInt(bounds.min, bounds.max, random);
 }
 
+//+_+// 후보 문제 수 사전 계산 함수
+export function calculateCandidateCapacity(operation, options = {}) {
+  const op = operation === "div" ? "div" : "mul";
+  if (op === "mul") {
+    const mode = options.multiplierMode ?? "random";
+    const combos = multiplicationCombos(options);
+    let totalCap = 0;
+    for (const [aDigits, bDigits] of combos) {
+      const aBounds = digitBounds(aDigits, options.allowZeroOne);
+      const aCount = aBounds.max - aBounds.min + 1;
+      let bCount;
+      if (mode === "fixed") {
+        bCount = 1;
+      } else if (mode === "multiple") {
+        const base = Number(options.multipleBase) || 2;
+        const bBounds = digitBounds(bDigits, options.allowZeroOne);
+        const first = Math.ceil(bBounds.min / base) * base;
+        const last = Math.floor(bBounds.max / base) * base;
+        bCount = first <= last ? Math.floor((last - first) / base) + 1 : 0;
+      } else {
+        const bBounds = digitBounds(bDigits, options.allowZeroOne);
+        bCount = bBounds.max - bBounds.min + 1;
+      }
+      totalCap += aCount * bCount;
+    }
+    return totalCap;
+  } else {
+    // 나눗셈 후보 수 계산
+    const profile = divisionProfile(options);
+    let count = 0;
+    const maxDividendLimit = options.maxDividend || (10 ** Math.max(...profile.dividendDigits) - 1);
+    for (const dvrDigits of profile.divisorDigits) {
+      const dvrBounds = digitBounds(dvrDigits, false);
+      for (const qDigits of profile.quotientDigits) {
+        const qBounds = digitBounds(qDigits, false);
+        const minQ = Math.max(2, qBounds.min);
+        for (let dvr = dvrBounds.min; dvr <= dvrBounds.max; dvr++) {
+          for (let q = minQ; q <= qBounds.max; q++) {
+            const dvd = dvr * q;
+            if (dvd > maxDividendLimit) continue;
+            const dvdDigits = digitCount(dvd);
+            if (profile.dividendDigits.includes(dvdDigits) && dvd !== dvr && q !== 1) {
+              count++;
+            }
+          }
+        }
+      }
+    }
+    return count;
+  }
+}
+
 export function generateMultiplicationSet(options = {}) {
   const config = { count: 20, difficulty: "easy", multiplierMode: "random", ...options };
   const count = Number(config.count);
   if (!Number.isInteger(count) || count < 1 || count > 500) throw new RangeError("문제 수는 1에서 500 사이여야 합니다.");
   const random = config.random ?? Math.random;
   const combos = multiplicationCombos(config);
+  const candidateCapacity = calculateCandidateCapacity("mul", config);
   const unique = new Map();
-  const targetCandidates = Math.max(count, Math.min(count * 2, 50));
+  const targetCandidates = Math.min(candidateCapacity, Math.max(count, Math.min(count * 2, 50)));
   const attemptLimit = Math.max(targetCandidates * 100, 3000);
   let attempts = 0;
 
@@ -247,16 +300,39 @@ export function generateMultiplicationSet(options = {}) {
     unique.set(question.key, question);
   }
 
+  let result;
+  let repetitionPolicy = "none";
+  let uniqueCount = unique.size;
+  let repeatedCount = 0;
+
   if (unique.size < count) {
-    // 고유 문제 수가 부족하면 풀에 있는 문제를 셔플하여 보충
+    if (config.strictUnique) {
+      throw new Error(`조건에 맞는 고유 문제는 ${unique.size}개뿐입니다. 문제 수나 조건을 조정해 주세요.`);
+    }
+    repetitionPolicy = "spaced";
     const baseItems = [...unique.values()];
     const repeated = [];
     while (repeated.length < count) {
-      repeated.push(...fisherYates(baseItems, random).map(q => ({ ...q, id: makeId() })));
+      repeated.push(...fisherYates(baseItems, random).map((q) => ({ ...q, id: makeId() })));
     }
-    return repeated.slice(0, count);
+    result = repeated.slice(0, count);
+    repeatedCount = count - uniqueCount;
+  } else {
+    result = arrangeForVariety([...unique.values()], config.multiplierMode === "fixed", random).slice(0, count);
+    uniqueCount = count;
   }
-  return arrangeForVariety([...unique.values()], config.multiplierMode === "fixed", random).slice(0, count);
+
+  const meta = {
+    requestedCount: count,
+    generatedCount: result.length,
+    uniqueCount,
+    repeatedCount,
+    candidateCapacity,
+    repetitionPolicy
+  };
+
+  result.meta = meta;
+  return result;
 }
 
 function divisionQuestion(dividend, divisor, quotient) {
@@ -316,14 +392,16 @@ export function generateDivisionSet(options = {}) {
   if (!Number.isInteger(count) || count < 1 || count > 500) throw new RangeError("문제 수는 1에서 500 사이여야 합니다.");
   const random = config.random ?? Math.random;
   const profile = divisionProfile(config);
+  const candidateCapacity = calculateCandidateCapacity("div", config);
   const maxDividendLimit = config.maxDividend || (10 ** Math.max(...profile.dividendDigits) - 1);
   const maxTrailingZero = Math.floor(count * 0.2);
   const unique = new Map();
   let trailingZeroCount = 0;
   let attempts = 0;
-  const attemptLimit = Math.max(count * 500, 5000);
+  const targetCandidates = Math.min(candidateCapacity, count);
+  const attemptLimit = Math.max(targetCandidates * 500, 5000);
 
-  while (unique.size < count && attempts < attemptLimit) {
+  while (unique.size < targetCandidates && attempts < attemptLimit) {
     attempts += 1;
     const divisorDigits = choose(profile.divisorDigits, random);
     const quotientDigits = choose(profile.quotientDigits, random);
@@ -342,10 +420,43 @@ export function generateDivisionSet(options = {}) {
     unique.set(question.key, question);
   }
 
+  let result;
+  let repetitionPolicy = "none";
+  let uniqueCount = unique.size;
+  let repeatedCount = 0;
+
   if (unique.size < count) {
-    throw new Error(`조건에 맞는 고유 문제는 ${unique.size}개뿐입니다. 문제 수나 조건을 조정해 주세요.`);
+    // D1 또는 후보 부족 시 spaced repetition 허용 (strictUnique 옵션이 아닌 경우)
+    if (config.strictUnique) {
+      throw new Error(`조건에 맞는 고유 문제는 ${unique.size}개뿐입니다. 문제 수나 조건을 조정해 주세요.`);
+    }
+    if (unique.size === 0) {
+      throw new Error("주어진 조건에 맞는 문제를 생성할 수 없습니다.");
+    }
+    repetitionPolicy = "spaced";
+    const baseItems = [...unique.values()];
+    const repeated = [];
+    while (repeated.length < count) {
+      repeated.push(...fisherYates(baseItems, random).map((q) => ({ ...q, id: makeId() })));
+    }
+    result = repeated.slice(0, count);
+    repeatedCount = count - uniqueCount;
+  } else {
+    result = arrangeForVariety([...unique.values()], false, random).slice(0, count);
+    uniqueCount = count;
   }
-  return arrangeForVariety([...unique.values()], false, random);
+
+  const meta = {
+    requestedCount: count,
+    generatedCount: result.length,
+    uniqueCount,
+    repeatedCount,
+    candidateCapacity,
+    repetitionPolicy
+  };
+
+  result.meta = meta;
+  return result;
 }
 
 export function generateQuestionSet(options = {}) {

@@ -1,5 +1,5 @@
-import { generateQuestionSet, REFERENCE_CURRICULUM, mapToRefLevel } from "./mathGen.js";
-import { createSession, SessionState } from "./sessionEngine.js";
+import { generateQuestionSet, REFERENCE_CURRICULUM, mapToRefLevel, calculateCandidateCapacity } from "./mathGen.js";
+import { createSession, SessionState, mistakeToQuestion, escapeHtml } from "./sessionEngine.js";
 import { createQuestionTimer, formatTime } from "./timer.js";
 import { getMultiplicationSteps, getDivisionSteps } from "./explainer.js";
 import { createDrawingCanvas } from "./canvasEngine.js";
@@ -161,7 +161,9 @@ const nextProblemStepBtn = document.querySelector("#nextProblemStepBtn");
 const currentProblemStepText = document.querySelector("#currentProblemStepText");
 let currentFocusedProblemIndex = 0;
 
-let currentPencilOnly = localStorage.getItem("math_canvas_pencil_only") === "true";
+//+_+// Pencil Only 기본값 명세 준수: 저장된 설정이 없으면 true (iPad 기본 펜슬 우선)
+const savedPencilOnlySetting = localStorage.getItem("math_canvas_pencil_only");
+let currentPencilOnly = savedPencilOnlySetting !== null ? savedPencilOnlySetting === "true" : true;
 
 // 3. 채점자 평가 뷰 요소
 const gradedCountText = document.querySelector("#gradedCountText");
@@ -710,12 +712,15 @@ function showCalendarDayDetails(dateKey, entry) {
   calendarSelectedDetails.hidden = false;
 }
 
-let currentModalSession = null;
-let currentModalViewMode = "detail"; // "compact" | "detail"
+let modalReviewCanvasInstances = new Map();
 
 function renderModalDetailItems(session, mode = currentModalViewMode) {
   if (!detailModalList || !session) return;
   currentModalViewMode = mode;
+
+  //+_+// 이전 모달 캔버스 인스턴스 완전 정리
+  modalReviewCanvasInstances.forEach((inst) => inst.destroy());
+  modalReviewCanvasInstances.clear();
 
   if (modalViewCompactBtn) modalViewCompactBtn.classList.toggle("active", mode === "compact");
   if (modalViewDetailBtn) modalViewDetailBtn.classList.toggle("active", mode === "detail");
@@ -723,7 +728,8 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
   const results = session.results || [];
   detailModalList.innerHTML = results.map((r, idx) => {
     const symbol = r.operation === "div" ? "÷" : "×";
-    const commentHtml = r.comment ? `<span class="comment-badge">✏️ 피드백: ${r.comment}</span>` : "";
+    const safeComment = escapeHtml(r.comment);
+    const commentHtml = safeComment ? `<span class="comment-badge">✏️ 피드백: ${safeComment}</span>` : "";
     const canvasId = `modalReviewCanvas_${session.id || "temp"}_${r.questionId || idx}`;
 
     if (mode === "compact") {
@@ -770,6 +776,7 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
         if (canvasEl) {
           const strokes = r.strokes || [];
           const canvasInst = createDrawingCanvas(canvasEl, { readOnly: true });
+          modalReviewCanvasInstances.set(canvasId, canvasInst);
           if (strokes.length > 0) {
             canvasInst.setStrokes(strokes);
           }
@@ -811,16 +818,8 @@ async function handleStartMistakeSession() {
       return;
     }
 
-    const questions = mistakes.map((m, idx) => ({
-      id: `mistake_${idx}_${Date.now()}`,
-      orderNumber: idx + 1,
-      operation: m.operation || "mul",
-      operandA: m.operandA,
-      operandB: m.operandB,
-      level: m.level || "오답복습",
-      answer: m.expectedAnswer,
-      expectedAnswer: m.expectedAnswer
-    }));
+    //+_+// mistakeToQuestion 매퍼를 사용하여 정답, 키, 연산자 완전 보존
+    const questions = mistakes.map((m, idx) => mistakeToQuestion(m, idx));
 
     startSessionWithQuestions(questions, {
       operation: questions[0].operation,
@@ -830,6 +829,7 @@ async function handleStartMistakeSession() {
       rows: 2
     });
   } catch (e) {
+    console.error("오답 세션 생성 실패:", e);
     alert("오답 세션 생성 중 오류가 발생했습니다.");
   }
 }
@@ -861,8 +861,13 @@ function renderQueuePreview(questions) {
     item.append(label, expression);
     return item;
   }));
+  
+  //+_+// generationMeta에 기반한 정확한 중복/반복 상태 안내
+  const meta = questions.meta;
+  const isRepeated = meta && meta.repeatedCount > 0;
+  const repeatInfo = isRepeated ? ` (반복 학습 ${meta.repeatedCount}문제 포함)` : " (중복 없는 문제)";
   const trailingText = questions.length > 10 ? ` · 나머지 ${questions.length - 10}문제는 워크시트에 준비됨` : "";
-  if (queueNote) queueNote.textContent = `중복 없는 ${questions.length}문제 생성 완료${trailingText}`;
+  if (queueNote) queueNote.textContent = `${questions.length}문제 생성 완료${repeatInfo}${trailingText}`;
   if (queueSection) {
     queueSection.hidden = false;
     queueSection.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1699,6 +1704,7 @@ function showSessionResult(summary) {
   renderResultDetailItems(summary, currentResultViewMode);
 }
 
+let resultReviewCanvasInstances = new Map();
 let currentResultSummary = null;
 let currentResultViewMode = "detail"; // "compact" | "detail"
 
@@ -1706,6 +1712,10 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
   if (!resultsDetailList || !summary) return;
   currentResultSummary = summary;
   currentResultViewMode = mode;
+
+  //+_+// 이전 결과 캔버스 인스턴스 완전 정리
+  resultReviewCanvasInstances.forEach((inst) => inst.destroy());
+  resultReviewCanvasInstances.clear();
 
   if (resultViewCompactBtn) resultViewCompactBtn.classList.toggle("active", mode === "compact");
   if (resultViewDetailBtn) resultViewDetailBtn.classList.toggle("active", mode === "detail");
@@ -1715,7 +1725,8 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
     item.className = `result-detail-item ${mode === "compact" ? "compact-view" : ""} ${r.isCorrect ? "is-correct" : "is-wrong"}`;
 
     const symbol = r.operation === "div" ? "÷" : "×";
-    const commentHtml = r.comment ? `<span class="comment-badge">✏️ 피드백: ${r.comment}</span>` : "";
+    const safeComment = escapeHtml(r.comment);
+    const commentHtml = safeComment ? `<span class="comment-badge">✏️ 피드백: ${safeComment}</span>` : "";
     const canvasId = `resultReviewCanvas_${r.questionId || idx}`;
 
     if (mode === "compact") {
@@ -1761,6 +1772,7 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
         if (canvasEl) {
           const strokes = r.strokes || questionStrokesMap.get(r.questionId) || [];
           const canvasInst = createDrawingCanvas(canvasEl, { readOnly: true });
+          resultReviewCanvasInstances.set(canvasId, canvasInst);
           if (strokes.length > 0) {
             canvasInst.setStrokes(strokes);
           }

@@ -1,7 +1,36 @@
-const CACHE_NAME = "math-canvas-pro-v20260822_35";
+const CACHE_NAME = "math-canvas-pro-v20260823_1";
+
+//+_+// PWA 오프라인 구동을 위한 필수 App Shell 자산 목록
+const APP_SHELL = [
+  "./",
+  "./index.html",
+  "./css/app.css",
+  "./js/app.js",
+  "./js/canvasEngine.js",
+  "./js/sessionEngine.js",
+  "./js/mathGen.js",
+  "./js/storage.js",
+  "./js/timer.js",
+  "./js/explainer.js",
+  "./js/sound.js",
+  "./js/confetti.js",
+  "./js/theme.js",
+  "./js/shortcuts.js",
+  "./js/backupEngine.js",
+  "./js/curriculumRegistry.js",
+  "./js/masteryEngine.js",
+  "./js/adaptiveEngine.js",
+  "./manifest.webmanifest",
+  "./icon.svg"
+];
 
 self.addEventListener("install", (event) => {
-  self.skipWaiting();
+  //+_+// App Shell 사전 캐싱 완료 보장
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(APP_SHELL);
+    }).then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (event) => {
@@ -18,19 +47,51 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Network First 전략 (항상 최신 코드를 우선 가져오고, 네트워크 불가 시에만 캐시 사용)
+//+_+// Navigation 요청과 정적 Asset 요청 분리 처리
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
+  const url = new URL(event.request.url);
+  const isNavigation = event.request.mode === "navigate" || event.request.destination === "document";
+
+  if (isNavigation) {
+    // Navigation: Network First -> Cache Fallback (index.html)
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => {
+          return caches.match("./index.html") || caches.match("./");
+        })
+    );
+    return;
+  }
+
+  // 정적 Asset: Cache First with Network Fallback & Update
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        // 백그라운드에서 캐시 최신화 시도
+        fetch(event.request).then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
+          }
+        }).catch(() => {});
+        return cachedResponse;
+      }
+
+      return fetch(event.request).then((response) => {
         if (response && response.status === 200) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         }
         return response;
-      })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("./index.html")))
+      });
+    })
   );
 });

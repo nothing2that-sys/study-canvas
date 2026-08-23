@@ -12,10 +12,49 @@ export const SessionState = Object.freeze({
   SESSION_COMPLETE: "SESSION_COMPLETE"
 });
 
+//+_+// HTML 특수문자 안전 이스케이프 유틸리티
+export function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function generateSessionId() {
   const timestamp = Date.now();
   const rand = Math.random().toString(36).slice(2, 8);
   return `session_${timestamp}_${rand}`;
+}
+
+//+_+// 오답 객체를 Question 형식으로 안전하게 변환하는 매퍼 함수
+export function mistakeToQuestion(mistake, index = 0) {
+  if (!mistake) throw new Error("변환할 오답 객체가 없습니다.");
+  const op = mistake.operation || (mistake.key && String(mistake.key).startsWith("div") ? "div" : "mul");
+  const rawAns = mistake.answer !== undefined ? mistake.answer : (mistake.expectedAnswer !== undefined ? mistake.expectedAnswer : 0);
+  const expectedAnswer = Number(rawAns);
+  const orderNumber = Number(mistake.orderNumber || index + 1);
+  const qKey = mistake.questionKey || mistake.key || `${op}:${mistake.operandA}:${mistake.operandB}`;
+
+  return {
+    id: mistake.id || `mistake_q_${Date.now()}_${index}`,
+    key: qKey,
+    questionKey: qKey,
+    orderNumber,
+    operation: op,
+    operandA: Number(mistake.operandA),
+    operandB: Number(mistake.operandB),
+    answer: expectedAnswer,
+    expectedAnswer,
+    level: mistake.level || (op === "div" ? "D1" : "M1"),
+    macroLevelId: mistake.macroLevelId || mistake.level || (op === "div" ? "D1" : "M1"),
+    stageId: mistake.stageId || mistake.level || null,
+    sourceWrongAnswerId: mistake.questionId || mistake.id || mistake.key || qKey,
+    errorCategories: Array.isArray(mistake.errorCategories) ? [...mistake.errorCategories] : [],
+    mathFormat: mistake.mathFormat || "vertical"
+  };
 }
 
 export function createSession(config = {}, questions = []) {
@@ -26,6 +65,12 @@ export function createSession(config = {}, questions = []) {
   const id = generateSessionId();
   const startedAt = Date.now();
   let state = SessionState.IDLE;
+
+  // 세션 메타데이터 추출
+  const operation = config.operation || questions[0]?.operation || "mul";
+  const mathFormat = config.mathFormat || questions[0]?.mathFormat || "vertical";
+  const macroLevelId = config.macroLevelId || questions[0]?.macroLevelId || questions[0]?.level || (operation === "div" ? "D1" : "M1");
+  const stageId = config.stageId || questions[0]?.stageId || macroLevelId;
 
   // 워크시트 페이지 설정
   const pageSize = Math.max(1, Math.min(50, Number(config.pageSize) || 4));
@@ -38,13 +83,29 @@ export function createSession(config = {}, questions = []) {
 
   // 문제별 채점 결과 맵 (questionId -> { isCorrect, ... })
   const grades = new Map();
+  //+_+// 문제별 실제 측정 풀이 시간 맵 (questionId -> ms)
+  const questionSolveTimes = new Map();
 
   function start() {
     currentPageIndex = 0;
     grades.clear();
+    questionSolveTimes.clear();
     totalSolveTimeMs = 0;
     state = SessionState.PRACTICE_ACTIVE;
     return getPageQuestions(currentPageIndex);
+  }
+
+  function recordQuestionSolveTime(questionId, durationMs) {
+    const prev = questionSolveTimes.get(questionId) || 0;
+    questionSolveTimes.set(questionId, prev + Math.max(0, Math.round(durationMs)));
+  }
+
+  function setQuestionSolveTimes(timesMap) {
+    if (timesMap instanceof Map) {
+      timesMap.forEach((val, key) => questionSolveTimes.set(key, Math.max(0, Math.round(val))));
+    } else if (typeof timesMap === "object" && timesMap !== null) {
+      Object.entries(timesMap).forEach(([key, val]) => questionSolveTimes.set(key, Math.max(0, Math.round(val))));
+    }
   }
 
   function getPageQuestions(pageIndex = currentPageIndex) {
@@ -90,11 +151,14 @@ export function createSession(config = {}, questions = []) {
   }
 
   // 학생 풀이 완료 및 제출
-  function submitPractice(elapsedMs = 0) {
+  function submitPractice(elapsedMs = 0, individualTimes = null) {
     if (state !== SessionState.PRACTICE_ACTIVE) {
       throw new Error(`현재 상태(${state})에서는 풀이를 제출할 수 없습니다.`);
     }
     totalSolveTimeMs = Math.max(0, Math.round(elapsedMs));
+    if (individualTimes) {
+      setQuestionSolveTimes(individualTimes);
+    }
     submittedAt = Date.now();
     state = SessionState.SUBMITTED;
     return {
@@ -131,14 +195,19 @@ export function createSession(config = {}, questions = []) {
 
     const gradeData = {
       questionId: question.id,
-      questionKey: question.key,
-      operation: question.operation,
-      level: question.level,
+      questionKey: question.key || `${question.operation || operation}:${question.operandA}:${question.operandB}`,
+      operation: question.operation || operation,
+      level: question.level || macroLevelId,
+      macroLevelId: question.macroLevelId || macroLevelId,
+      stageId: question.stageId || stageId,
       operandA: question.operandA,
       operandB: question.operandB,
-      answer: question.answer,
+      answer: question.answer !== undefined ? question.answer : question.expectedAnswer,
+      expectedAnswer: question.answer !== undefined ? question.answer : question.expectedAnswer,
       isCorrect: Boolean(isCorrect),
       comment: finalComment,
+      sourceWrongAnswerId: question.sourceWrongAnswerId || null,
+      errorCategories: question.errorCategories || [],
       gradedAt: Date.now()
     };
 
@@ -187,7 +256,6 @@ export function createSession(config = {}, questions = []) {
   function finishGrading() {
     const status = getGradingStatus();
     if (!status.allGraded) {
-      // 채점되지 않은 문제는 기본적으로 오답 또는 미채점 처리하지 않고 알림
       throw new Error(`아직 채점되지 않은 문제가 ${status.total - status.graded}개 있습니다.`);
     }
 
@@ -212,17 +280,29 @@ export function createSession(config = {}, questions = []) {
       if (isCorrect) correctCount += 1;
       else wrongCount += 1;
 
+      //+_+// 개별 문제 측정 시간이 있으면 우선 사용, 없으면 평균 시간
+      const actualSolveTime = questionSolveTimes.has(q.id)
+        ? questionSolveTimes.get(q.id)
+        : avgSolvePerQuestionMs;
+
+      const qAns = q.answer !== undefined ? q.answer : q.expectedAnswer;
+
       results.push({
         questionId: q.id,
-        questionKey: q.key,
-        operation: q.operation,
-        level: q.level,
+        questionKey: q.key || `${q.operation || operation}:${q.operandA}:${q.operandB}`,
+        operation: q.operation || operation,
+        level: q.level || macroLevelId,
+        macroLevelId: q.macroLevelId || macroLevelId,
+        stageId: q.stageId || stageId,
         operandA: q.operandA,
         operandB: q.operandB,
-        answer: q.answer,
+        answer: qAns,
+        expectedAnswer: qAns,
         isCorrect,
         comment,
-        solveTimeMs: avgSolvePerQuestionMs
+        solveTimeMs: actualSolveTime,
+        sourceWrongAnswerId: q.sourceWrongAnswerId || null,
+        errorCategories: q.errorCategories || []
       });
     }
 
@@ -230,7 +310,17 @@ export function createSession(config = {}, questions = []) {
 
     return {
       sessionId: id,
-      config,
+      operation,
+      mathFormat,
+      macroLevelId,
+      stageId,
+      config: {
+        ...config,
+        operation,
+        mathFormat,
+        macroLevelId,
+        stageId
+      },
       startedAt,
       submittedAt,
       completedAt,
@@ -249,6 +339,10 @@ export function createSession(config = {}, questions = []) {
   return {
     get id() { return id; },
     get state() { return state; },
+    get operation() { return operation; },
+    get mathFormat() { return mathFormat; },
+    get macroLevelId() { return macroLevelId; },
+    get stageId() { return stageId; },
     get pageSize() { return pageSize; },
     get cols() { return config.cols || (pageSize <= 2 ? pageSize : 2); },
     get rows() { return config.rows || Math.ceil(pageSize / (config.cols || 2)); },
@@ -261,6 +355,8 @@ export function createSession(config = {}, questions = []) {
     nextPage,
     prevPage,
     goToPage,
+    recordQuestionSolveTime,
+    setQuestionSolveTimes,
     submitPractice,
     startGrading,
     gradeQuestion,
