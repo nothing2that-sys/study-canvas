@@ -257,7 +257,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260824T113010000Z-phase-d",
+    appBuildId: "20260824T114500000Z-phase-d",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -1833,11 +1833,17 @@ function handleRedChipClick(event) {
     triggerDraftSave();
 
     const card = document.querySelector(`#gradingCard_${qId}`);
-    if (card && currentGrade) {
+    if (card) {
       card.classList.toggle("is-graded-correct", isCorrect);
       card.classList.toggle("is-graded-wrong", !isCorrect);
+      card.querySelectorAll(".grade-btn").forEach((button) => {
+        button.classList.toggle("active", button.dataset.correct === String(isCorrect));
+      });
+      const stateLabel = card.querySelector(".grading-state-label");
+      if (stateLabel) stateLabel.textContent = isCorrect ? "채점됨: 맞음" : "채점됨: 틀림";
     }
     updateGradingStatusUI();
+    focusNextUngraded(qId);
   }
 }
 
