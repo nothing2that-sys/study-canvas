@@ -2971,3 +2971,273 @@ button, .icon-button, .float-btn, .step-nav-btn {
   background: transparent;
   color: inherit;
 }
+
+:root {
+  --visual-viewport-width: 100vw;
+  --visual-viewport-height: 100vh;
+  --visual-viewport-offset-top: 0px;
+  --visual-viewport-offset-left: 0px;
+  --keyboard-inset: 0px;
+}
+
+html,
+body {
+  overscroll-behavior: none;
+}
+
+body.mode-practice,
+body.mode-grading {
+  touch-action: pan-y;
+}
+
+#practiceView {
+  padding-bottom: calc(116px + var(--safe-bottom) + var(--keyboard-inset));
+}
+
+.practice-header {
+  margin-top: 10px;
+  padding: 10px 14px;
+  gap: 10px;
+}
+
+.adaptive-bottom-dock {
+  position: fixed;
+  z-index: 90;
+  left: calc(var(--visual-viewport-offset-left) + var(--safe-left) + 10px);
+  bottom: var(--keyboard-inset);
+  width: min(1240px, calc(var(--visual-viewport-width) - var(--safe-left) - var(--safe-right) - 20px));
+  max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 20px);
+  margin-left: max(0px, calc((var(--visual-viewport-width) - 1260px) / 2));
+  padding: 8px 10px calc(8px + var(--safe-bottom));
+  border: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  border-radius: 18px 18px 0 0;
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  box-shadow: 0 -10px 30px rgba(25, 52, 45, 0.14);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.dock-progress {
+  position: relative;
+  min-height: 22px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--green-soft);
+}
+
+.dock-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  transition: width 180ms ease;
+}
+
+.page-indicator {
+  position: relative;
+  z-index: 1;
+  display: block;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 22px;
+  color: var(--ink);
+}
+
+.dock-controls {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 7px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.dock-controls::-webkit-scrollbar {
+  display: none;
+}
+
+.dock-btn,
+.dock-more > summary,
+.dock-more-panel button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.dock-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 9px;
+}
+
+.dock-btn.active,
+.dock-btn[aria-pressed="true"] {
+  border-color: var(--green);
+  background: var(--green);
+  color: white;
+}
+
+.dock-btn.pause,
+.dock-btn.submit {
+  padding-inline: 14px;
+}
+
+.dock-btn.submit {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.dock-more {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.dock-more > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 9px;
+  list-style: none;
+}
+
+.dock-more > summary::-webkit-details-marker {
+  display: none;
+}
+
+.dock-more-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  width: min(320px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 10px;
+}
+
+.grading-card[aria-current="step"] {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.grading-state-label {
+  margin-left: auto;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--green-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.is-graded-correct .grading-state-label {
+  background: var(--correct-bg);
+  color: var(--correct);
+}
+
+.is-graded-wrong .grading-state-label {
+  background: var(--wrong-bg);
+  color: var(--wrong);
+}
+
+.grading-explanation {
+  display: none;
+  margin: 0 18px 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--wrong);
+  border-radius: 12px;
+  background: var(--wrong-bg);
+}
+
+.grading-card.is-graded-wrong .grading-explanation {
+  display: block;
+}
+
+.grading-finish-hint {
+  margin: 0 0 8px;
+  color: var(--muted);
+  text-align: center;
+  font-weight: 700;
+}
+
+body.large-problems .worksheet-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+body.large-problems .worksheet-card {
+  min-height: min(68vh, 720px);
+}
+
+body.large-problems .problem-canvas-stage {
+  font-size: 1.18em;
+}
+
+:where(button, input, textarea, select, summary, a, [tabindex]):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 760px) {
+  .dock-btn span {
+    display: none;
+  }
+
+  .dock-btn.pause span,
+  .dock-btn.submit span,
+  #pencilModeText {
+    display: inline;
+  }
+
+  .practice-header {
+    grid-template-columns: 1fr auto;
+  }
+
+  .practice-header .draft-save-status {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 600px) {
+  #practiceView {
+    padding-bottom: calc(94px + var(--safe-bottom) + var(--keyboard-inset));
+  }
+
+  .adaptive-bottom-dock {
+    padding-top: 5px;
+  }
+
+  .dock-progress {
+    min-height: 16px;
+  }
+
+  .page-indicator {
+    line-height: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

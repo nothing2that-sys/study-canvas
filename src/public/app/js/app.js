@@ -13,9 +13,12 @@ import { composeAdaptiveSession } from "./adaptiveEngine.js";
 import { calculateStageMastery, analyzeWeaknesses } from "./masteryEngine.js";
 import { createDraftSaveCoordinator, DRAFT_SCHEMA_VERSION, DraftSaveStatus, navigateWithDraftFlush } from "./draftEngine.js";
 import { createUpdateCoordinator, waitForServiceWorkerControllerChange } from "./updateEngine.js";
+import { createVisualViewportController, getPreferredScrollBehavior } from "./viewportEngine.js";
+import { setupModalManager } from "./modalEngine.js";
 
 // 앱 전역 인터랙션 가드 초기화
 const interactionGuard = setupInteractionGuard(typeof document !== "undefined" ? document : null);
+const modalManager = setupModalManager({ documentRef: document, interactionGuard });
 
 // DOM 요소 캐싱 - 뷰 컨테이너
 const setupView = document.querySelector("#setupView");
@@ -146,6 +149,8 @@ const nextPageBtn = document.querySelector("#nextPageBtn");
 const pausePracticeBtn = document.querySelector("#pausePracticeBtn");
 const pageIndicatorText = document.querySelector("#pageIndicatorText");
 const submitPracticeBtn = document.querySelector("#submitPracticeBtn");
+const practiceDock = document.querySelector("#practiceDock");
+const dockProgress = document.querySelector("#dockProgress");
 
 // 펜 도구바 요소
 const penToolbar = document.querySelector("#penToolbar");
@@ -153,26 +158,12 @@ const colorChips = document.querySelectorAll(".color-chip-btn");
 const widthChips = document.querySelectorAll(".width-chip-btn");
 const pencilOnlyToggleBtn = document.querySelector("#pencilOnlyToggleBtn");
 const pencilModeText = document.querySelector("#pencilModeText");
+const penModeBtn = document.querySelector("#penModeBtn");
 const eraserToggleBtn = document.querySelector("#eraserToggleBtn");
 const undoBtn = document.querySelector("#undoBtn");
 const redoBtn = document.querySelector("#redoBtn");
 const clearAllCanvasBtn = document.querySelector("#clearAllCanvasBtn");
 
-// 🌟 스크롤 따라오는 스마트 플로팅 퀵 액션 바 요소
-const floatingQuickBar = document.querySelector("#floatingQuickBar");
-const floatUndoBtn = document.querySelector("#floatUndoBtn");
-const floatRedoBtn = document.querySelector("#floatRedoBtn");
-const floatEraserBtn = document.querySelector("#floatEraserBtn");
-const floatPenBtn = document.querySelector("#floatPenBtn");
-const floatPencilOnlyBtn = document.querySelector("#floatPencilOnlyBtn");
-const floatPencilLabel = document.querySelector("#floatPencilLabel");
-const floatClearBtn = document.querySelector("#floatClearBtn");
-
-// 🌟 문제 단위 스무스 스크롤 네비게이터 요소
-const problemStepNavigator = document.querySelector("#problemStepNavigator");
-const prevProblemStepBtn = document.querySelector("#prevProblemStepBtn");
-const nextProblemStepBtn = document.querySelector("#nextProblemStepBtn");
-const currentProblemStepText = document.querySelector("#currentProblemStepText");
 let currentFocusedProblemIndex = 0;
 
 //+_+// 명시적 입력 프로필 결정 (기기 환경 및 사용자 저장값 반영)
@@ -201,6 +192,9 @@ const toggleAnswersText = document.querySelector("#toggleAnswersText");
 const gradeAllCorrectBtn = document.querySelector("#gradeAllCorrectBtn");
 const gradingGrid = document.querySelector("#gradingGrid");
 const finishGradingBtn = document.querySelector("#finishGradingBtn");
+const gradingRemainingText = document.querySelector("#gradingRemainingText");
+const gradingFinishHint = document.querySelector("#gradingFinishHint");
+const largeProblemToggleBtn = document.querySelector("#largeProblemToggleBtn");
 
 // 4. 결과 뷰 요소
 const statAccuracy = document.querySelector("#statAccuracy");
@@ -224,6 +218,7 @@ let currentQuestions = null;
 let lastSessionConfig = null;
 let hideAnswersInGrading = false;
 let currentDraftCreatedAt = Date.now();
+let currentGradingQuestionId = null;
 
 // 캔버스 필기 상태
 let currentPenColor = "#173f35";
@@ -262,7 +257,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260824T083500000Z-fff6b83",
+    appBuildId: "20260824T113010000Z-phase-d",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -348,7 +343,7 @@ function switchView(targetView) {
   else if (targetView === gradingView) interactionGuard.setAppMode(AppMode.GRADING);
   else if (targetView === resultView) interactionGuard.setAppMode(AppMode.RESULT);
 
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: getPreferredScrollBehavior() });
 }
 
 function selectedValue(name) {
@@ -1289,6 +1284,10 @@ function renderCurrentWorksheetPage() {
 
   const progressPercent = Math.round((pageData.endIndex / currentSession.totalQuestions) * 100);
   sessionProgressBar.style.width = `${Math.max(5, progressPercent)}%`;
+  if (dockProgress) {
+    dockProgress.setAttribute("aria-valuenow", String(progressPercent));
+    dockProgress.setAttribute("aria-valuetext", `${pageData.endIndex} / ${currentSession.totalQuestions} 문제 구간`);
+  }
 
   // 문제 카드 그리드 열(Column) 및 밀도별 폰트/셀 크기 동적 배치 적용
   if (worksheetGrid) {
@@ -1310,7 +1309,7 @@ function renderCurrentWorksheetPage() {
     }
   }
 
-  // 문제 카드 그리드 렌더링 (문제 영역 바로 위에 캔버스 오버레이 & 인라인 퀵 액션)
+  // 문제 카드 그리드 렌더링
   worksheetGrid.replaceChildren(...pageData.questions.map((q, qIdx) => {
     const card = document.createElement("div");
     card.className = "worksheet-card";
@@ -1324,10 +1323,6 @@ function renderCurrentWorksheetPage() {
         <div class="card-header-left">
           <span class="card-order">${q.orderNumber}번 문제</span>
           <span class="card-level">${q.level}</span>
-        </div>
-        <div class="card-quick-actions">
-          <button type="button" class="card-mini-btn" data-action="undo" data-id="${q.id}" title="이 문제 되돌리기 (1획 취소)">↶</button>
-          <button type="button" class="card-mini-btn danger" data-action="clear" data-id="${q.id}" title="이 문제 필기 비우기">🗑️</button>
         </div>
       </div>
       <div class="card-problem-body" id="problemBody_${q.id}">
@@ -1343,9 +1338,6 @@ function renderCurrentWorksheetPage() {
       lastActiveCanvasId = q.id;
       document.querySelectorAll(".worksheet-card").forEach(c => c.classList.remove("active-focus"));
       card.classList.add("active-focus");
-      if (currentProblemStepText) {
-        currentProblemStepText.textContent = `현재 ${qIdx + 1} / ${pageData.questions.length}번 (${q.orderNumber}번)`;
-      }
     });
 
     return card;
@@ -1388,39 +1380,11 @@ function renderCurrentWorksheetPage() {
   pageIndicatorText.textContent = `${pageData.pageNumber} / ${pageData.totalPages} 페이지`;
 
   currentFocusedProblemIndex = 0;
-  if (currentProblemStepText && pageData.questions.length > 0) {
-    currentProblemStepText.textContent = `현재 1 / ${pageData.questions.length}번 (${pageData.questions[0].orderNumber}번)`;
-  }
-
   requestAnimationFrame(() => {
     autoFitProblemStages();
   });
 
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-// 🌟 문제 단위 스무스 스크롤 네비게이션
-function scrollToProblemStep(index) {
-  if (!currentSession) return;
-  const pageData = currentSession.getPageQuestions();
-  const total = pageData.questions.length;
-  if (total === 0) return;
-
-  currentFocusedProblemIndex = Math.max(0, Math.min(total - 1, index));
-  const targetQ = pageData.questions[currentFocusedProblemIndex];
-  if (!targetQ) return;
-
-  const cardEl = document.querySelector(`#worksheetCard_${targetQ.id}`);
-  if (cardEl) {
-    document.querySelectorAll(".worksheet-card").forEach(c => c.classList.remove("active-focus"));
-    cardEl.classList.add("active-focus");
-    cardEl.scrollIntoView({ behavior: "smooth", block: "center" });
-    lastActiveCanvasId = targetQ.id;
-  }
-
-  if (currentProblemStepText) {
-    currentProblemStepText.textContent = `현재 ${currentFocusedProblemIndex + 1} / ${total}번 (${targetQ.orderNumber}번)`;
-  }
+  window.scrollTo({ top: 0, behavior: getPreferredScrollBehavior() });
 }
 
 // 화면 및 카드 크기에 맞춰 문제와 정답 셀을 가로/세로 기준 꽉 차게 자동 스케일링
@@ -1461,17 +1425,12 @@ function updatePencilModeUI() {
   const isDesktop = currentInputProfile === InputProfile.DESKTOP_MOUSE_PEN;
 
   let modeLabel = "✏️ 펜슬 전용";
-  let shortLabel = "펜슬만";
-
   if (isPenOnly) {
     modeLabel = "✏️ 펜슬 전용";
-    shortLabel = "펜슬만";
   } else if (isPenTouch) {
     modeLabel = "🖐️ 손+펜 공용";
-    shortLabel = "손+펜";
   } else if (isDesktop) {
     modeLabel = "🖱️ 마우스/펜";
-    shortLabel = "마우스";
   }
 
   if (pencilOnlyToggleBtn) {
@@ -1484,26 +1443,22 @@ function updatePencilModeUI() {
   if (pencilModeText) {
     pencilModeText.textContent = modeLabel;
   }
-  if (floatPencilOnlyBtn) {
-    floatPencilOnlyBtn.classList.toggle("active", isPenOnly || isDesktop);
-    floatPencilOnlyBtn.disabled = isDesktop;
-    floatPencilOnlyBtn.title = isDesktop
-      ? "PC에서는 마우스와 펜 입력이 항상 활성화됩니다."
-      : "애플 펜슬 전용 필기 모드를 전환합니다.";
-  }
-  if (floatPencilLabel) {
-    floatPencilLabel.textContent = isDesktop ? "마우스 사용 중" : shortLabel;
-  }
 }
 
-function updateFloatingToolbarUI() {
-  if (floatEraserBtn) {
-    floatEraserBtn.classList.toggle("active", currentIsEraser);
-  }
-  if (floatPenBtn) {
-    floatPenBtn.classList.toggle("active", !currentIsEraser);
-  }
+function updateToolDockUI() {
+  penModeBtn?.classList.toggle("active", !currentIsEraser);
+  penModeBtn?.setAttribute("aria-pressed", String(!currentIsEraser));
+  eraserToggleBtn?.classList.toggle("active", currentIsEraser);
+  eraserToggleBtn?.setAttribute("aria-pressed", String(currentIsEraser));
   updatePencilModeUI();
+}
+
+function handlePenMode() {
+  if (!currentIsEraser) return;
+  currentIsEraser = false;
+  updateToolDockUI();
+  activeCanvasInstances.forEach((inst) => inst.setEraser(false));
+  triggerDraftSave();
 }
 
 function handlePencilOnlyToggle() {
@@ -1527,7 +1482,7 @@ function handleColorSelect(btn) {
   currentPenColor = btn.dataset.color;
   currentIsEraser = false;
   eraserToggleBtn.classList.remove("active");
-  updateFloatingToolbarUI();
+  updateToolDockUI();
 
   colorChips.forEach((b) => b.classList.toggle("active", b === btn));
   activeCanvasInstances.forEach((inst) => inst.setColor(currentPenColor));
@@ -1544,7 +1499,7 @@ function handleWidthSelect(btn) {
 function handleEraserToggle() {
   currentIsEraser = !currentIsEraser;
   eraserToggleBtn.classList.toggle("active", currentIsEraser);
-  updateFloatingToolbarUI();
+  updateToolDockUI();
   activeCanvasInstances.forEach((inst) => inst.setEraser(currentIsEraser));
   triggerDraftSave();
 }
@@ -1628,6 +1583,8 @@ function renderGradingView() {
   gradingCanvasInstances.forEach((instance) => instance.destroy());
   gradingCanvasInstances = [];
   const questions = currentSession.questions;
+  const activeGrade = questions.find((question) => question.id === currentGradingQuestionId)?.grade;
+  if (typeof activeGrade?.isCorrect === "boolean") currentGradingQuestionId = null;
 
   toggleAnswersText.textContent = hideAnswersInGrading ? "정답 전체 보이기" : "정답 전체 숨기기";
 
@@ -1657,10 +1614,13 @@ function renderGradingView() {
     card.id = `gradingCard_${q.id}`;
 
     const currentGrade = gradingResultsMap.get(q.id) || q.grade;
-    if (currentGrade) {
+    const isGraded = typeof currentGrade?.isCorrect === "boolean";
+    if (isGraded) {
       card.classList.toggle("is-graded-correct", currentGrade.isCorrect);
       card.classList.toggle("is-graded-wrong", !currentGrade.isCorrect);
     }
+    if (!currentGradingQuestionId && !isGraded) currentGradingQuestionId = q.id;
+    if (currentGradingQuestionId === q.id) card.setAttribute("aria-current", "step");
 
     const symbol = q.operation === "div" ? "÷" : "×";
     const answerFormatted = q.answer.toLocaleString();
@@ -1669,6 +1629,7 @@ function renderGradingView() {
       <div class="card-header">
         <span class="card-order">${idx + 1}번 문제</span>
         <span class="card-level">${q.level}</span>
+        <span class="grading-state-label">${isGraded ? (currentGrade.isCorrect ? "채점됨: 맞음" : "채점됨: 틀림") : "미채점"}</span>
       </div>
 
       <!-- 채점 비교 2단 그리드: 좌측(학생 실제 필기 + 채점자 빨간펜 첨삭) / 우측(모범 정답 및 단계별 해설) -->
@@ -1705,6 +1666,11 @@ function renderGradingView() {
           <span>✖ 틀림</span>
         </button>
       </div>
+
+      <details class="grading-explanation">
+        <summary>오답 풀이 단계를 확인하기</summary>
+        <p>${Number(q.operandA).toLocaleString()} ${symbol} ${Number(q.operandB).toLocaleString()}의 정답은 <strong>${answerFormatted}</strong>입니다. 위 모범 풀이에서 자리 맞춤과 중간 계산을 순서대로 비교해 보세요.</p>
+      </details>
 
       <!-- 채점자 퀵 코멘트 칩 및 메모 입력 -->
       <div class="red-pen-zone">
@@ -1780,10 +1746,36 @@ function updateGradingStatusUI() {
   gradedCountText.textContent = `${status.graded} / ${status.total}`;
   gradedCorrectText.textContent = `정답 ${status.correct}`;
   gradedWrongText.textContent = `오답 ${status.wrong}`;
+  const remaining = Math.max(0, status.total - status.graded);
+  if (gradingRemainingText) gradingRemainingText.textContent = `미채점 ${remaining}`;
 
   finishGradingBtn.disabled = !status.allGraded;
+  finishGradingBtn.setAttribute("aria-disabled", String(!status.allGraded));
   finishGradingBtn.classList.toggle("primary-action", status.allGraded);
   finishGradingBtn.style.opacity = status.allGraded ? "1" : "0.55";
+  if (gradingFinishHint) {
+    gradingFinishHint.textContent = status.allGraded
+      ? "모든 문제의 채점이 완료되었습니다. 결과를 확인할 수 있습니다."
+      : `미채점 ${remaining}문제가 남았습니다.`;
+  }
+}
+
+function focusNextUngraded(currentId) {
+  if (!currentSession) return;
+  const questions = currentSession.questions;
+  const startIndex = Math.max(0, questions.findIndex((question) => question.id === currentId));
+  const ordered = [...questions.slice(startIndex + 1), ...questions.slice(0, startIndex + 1)];
+  const next = ordered.find((question) => {
+    const grade = gradingResultsMap.get(question.id) || question.grade;
+    return typeof grade?.isCorrect !== "boolean";
+  });
+  currentGradingQuestionId = next?.id || null;
+  document.querySelectorAll(".grading-card[aria-current]").forEach((card) => card.removeAttribute("aria-current"));
+  if (!next) return;
+  const card = document.querySelector(`#gradingCard_${next.id}`);
+  card?.setAttribute("aria-current", "step");
+  card?.scrollIntoView({ behavior: getPreferredScrollBehavior(), block: "center" });
+  card?.querySelector(".grade-btn")?.focus({ preventScroll: true });
 }
 
 // 개별 문제 채점 클릭
@@ -1815,9 +1807,12 @@ function handleGradeClick(event) {
     card.querySelectorAll(".grade-btn").forEach((b) => {
       b.classList.toggle("active", b === btn);
     });
+    const stateLabel = card.querySelector(".grading-state-label");
+    if (stateLabel) stateLabel.textContent = isCorrect ? "채점됨: 맞음" : "채점됨: 틀림";
   }
 
   updateGradingStatusUI();
+  focusNextUngraded(qId);
 }
 
 // 빨간 펜 코멘트 칩 클릭
@@ -2151,67 +2146,23 @@ widthChips.forEach((btn) => {
 });
 
 if (pencilOnlyToggleBtn) pencilOnlyToggleBtn.addEventListener("click", handlePencilOnlyToggle);
+if (penModeBtn) penModeBtn.addEventListener("click", handlePenMode);
 if (eraserToggleBtn) eraserToggleBtn.addEventListener("click", handleEraserToggle);
 if (undoBtn) undoBtn.addEventListener("click", handleUndo);
 if (redoBtn) redoBtn.addEventListener("click", handleRedo);
 if (clearAllCanvasBtn) clearAllCanvasBtn.addEventListener("click", handleClearAllCanvas);
 
-// 🌟 플로팅 퀵 액션 바 이벤트
-if (floatUndoBtn) floatUndoBtn.addEventListener("click", handleUndo);
-if (floatRedoBtn) floatRedoBtn.addEventListener("click", handleRedo);
-if (floatEraserBtn) floatEraserBtn.addEventListener("click", () => {
-  if (!currentIsEraser) handleEraserToggle();
-});
-if (floatPenBtn) floatPenBtn.addEventListener("click", () => {
-  if (currentIsEraser) handleEraserToggle();
-});
-if (floatPencilOnlyBtn) floatPencilOnlyBtn.addEventListener("click", handlePencilOnlyToggle);
-if (floatClearBtn) floatClearBtn.addEventListener("click", () => {
-  if (lastActiveCanvasId && activeCanvasInstances.has(lastActiveCanvasId)) {
-    activeCanvasInstances.get(lastActiveCanvasId).clear();
-    playClickSound();
-  } else {
-    handleClearAllCanvas();
-  }
-});
-
-// 🌟 문제 단위 스무스 스크롤 네비게이터 이벤트
-if (prevProblemStepBtn) {
-  prevProblemStepBtn.addEventListener("click", () => {
-    scrollToProblemStep(currentFocusedProblemIndex - 1);
+if (largeProblemToggleBtn) {
+  const savedLargeMode = localStorage.getItem("math_canvas_large_problems") === "true";
+  document.body.classList.toggle("large-problems", savedLargeMode);
+  largeProblemToggleBtn.setAttribute("aria-pressed", String(savedLargeMode));
+  largeProblemToggleBtn.addEventListener("click", () => {
+    const enabled = !document.body.classList.contains("large-problems");
+    document.body.classList.toggle("large-problems", enabled);
+    largeProblemToggleBtn.setAttribute("aria-pressed", String(enabled));
+    localStorage.setItem("math_canvas_large_problems", String(enabled));
+    autoFitProblemStages();
   });
-}
-if (nextProblemStepBtn) {
-  nextProblemStepBtn.addEventListener("click", () => {
-    scrollToProblemStep(currentFocusedProblemIndex + 1);
-  });
-}
-
-// 🌟 카드 헤더 인라인 미니 액션 버튼 (해당 문제 개별 되돌리기/지우기)
-if (worksheetGrid) {
-  worksheetGrid.addEventListener("click", (e) => {
-    const miniBtn = e.target.closest(".card-mini-btn");
-    if (!miniBtn) return;
-    const action = miniBtn.dataset.action;
-    const qId = miniBtn.dataset.id;
-    const canvasInst = activeCanvasInstances.get(qId);
-    if (!canvasInst) return;
-
-    if (action === "undo") {
-      canvasInst.undo();
-      playClickSound();
-    } else if (action === "clear") {
-      canvasInst.clear();
-      playClickSound();
-    }
-  });
-}
-
-// 🌟 불필요한 핀치 줌 / 더블 탭 확대 제스처 차단
-if (typeof document !== "undefined") {
-  document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
-  document.addEventListener("gesturechange", (e) => e.preventDefault(), { passive: false });
-  document.addEventListener("gestureend", (e) => e.preventDefault(), { passive: false });
 }
 
 // 대시보드 및 오답 복습 이벤트 (Phase 4)
@@ -2449,12 +2400,14 @@ setupKeyboardShortcuts({
   onToggleAnswers: handleToggleAnswers
 });
 
-// 화면 크기 변화 및 아이패드 가로/세로 회전 시 자동 맞춤
-window.addEventListener("resize", () => {
-  autoFitProblemStages();
-});
-window.addEventListener("orientationchange", () => {
-  setTimeout(autoFitProblemStages, 120);
+const viewportController = createVisualViewportController({
+  windowRef: window,
+  documentRef: document,
+  onChange: () => {
+    autoFitProblemStages();
+    activeCanvasInstances.forEach((instance) => instance.resize());
+    gradingCanvasInstances.forEach((instance) => instance.resize());
+  }
 });
 
 // 🌟 맞춤 추천 학습 카드 렌더링
@@ -2581,7 +2534,7 @@ async function checkDraftResumeOnStartup() {
             switchView(practiceView);
             renderCurrentWorksheetPage();
           }
-          updateFloatingToolbarUI();
+          updateToolDockUI();
         };
       }
 
@@ -2662,7 +2615,7 @@ updateModeInput();
 updateNetworkState();
 loadDashboardStats();
 updateSoundUI();
-updatePencilModeUI();
+updateToolDockUI();
 renderAdaptiveRecommendCard();
 checkDraftResumeOnStartup();
 setupServiceWorkerUpdates();

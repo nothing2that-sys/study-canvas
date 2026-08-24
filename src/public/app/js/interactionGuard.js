@@ -37,6 +37,9 @@ export function setupInteractionGuard(rootElement = (typeof document !== "undefi
 
   const listeners = [];
   let previousMode = AppMode.SETUP;
+  let modalDepth = 0;
+  let lastTouchEndAt = 0;
+  const documentRef = rootElement.nodeType === 9 ? rootElement : rootElement.ownerDocument;
 
   function addGuardListener(target, type, handler, options = { capture: true, passive: false }) {
     if (!target || typeof target.addEventListener !== "function") return;
@@ -67,30 +70,50 @@ export function setupInteractionGuard(rootElement = (typeof document !== "undefi
     if (e.cancelable) e.preventDefault();
   };
 
+  const onWheel = (e) => {
+    if (e.ctrlKey && e.cancelable) e.preventDefault();
+  };
+
+  const onTouchMove = (e) => {
+    if (e.touches?.length > 1 && e.cancelable) e.preventDefault();
+  };
+
+  const onTouchEnd = (e) => {
+    if (isInteractiveElement(e.target)) return;
+    const now = Date.now();
+    if (now - lastTouchEndAt < 300 && e.cancelable) e.preventDefault();
+    lastTouchEndAt = now;
+  };
+
   addGuardListener(rootElement, "selectstart", onSelectStart);
   addGuardListener(rootElement, "dragstart", onDragStart);
   addGuardListener(rootElement, "contextmenu", onContextMenu);
   addGuardListener(rootElement, "gesturestart", onGesture);
   addGuardListener(rootElement, "gesturechange", onGesture);
   addGuardListener(rootElement, "gestureend", onGesture);
+  addGuardListener(rootElement, "wheel", onWheel);
+  addGuardListener(rootElement, "touchmove", onTouchMove);
+  addGuardListener(rootElement, "touchend", onTouchEnd);
 
   return {
     setAppMode(mode) {
-      if (typeof document === "undefined" || !document.body) return;
+      if (!documentRef?.body) return;
       const allModes = Object.values(AppMode);
-      allModes.forEach((m) => document.body.classList.remove(m));
+      allModes.forEach((m) => documentRef.body.classList.remove(m));
       if (mode && allModes.includes(mode)) {
-        document.body.classList.add(mode);
+        documentRef.body.classList.add(mode);
         if (mode !== AppMode.MODAL_OPEN) {
           previousMode = mode;
         }
       }
     },
     pushModalMode() {
-      this.setAppMode(AppMode.MODAL_OPEN);
+      modalDepth += 1;
+      if (modalDepth === 1) this.setAppMode(AppMode.MODAL_OPEN);
     },
     popModalMode() {
-      this.setAppMode(previousMode || AppMode.SETUP);
+      modalDepth = Math.max(0, modalDepth - 1);
+      if (modalDepth === 0) this.setAppMode(previousMode || AppMode.SETUP);
     },
     destroy() {
       listeners.forEach(({ target, type, handler, options }) => {

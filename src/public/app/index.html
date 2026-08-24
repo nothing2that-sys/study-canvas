@@ -18,7 +18,7 @@
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-180.png">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
-    <link rel="stylesheet" href="./css/app.css?v=20260824T083500000Z-fff6b83">
+    <link rel="stylesheet" href="./css/app.css?v=20260824T113010000Z-phase-d">
   </head>
   <body>
     <div class="app-shell">
@@ -420,14 +420,6 @@
               <span class="page-badge" id="practicePageBadge">페이지 1 / 5</span>
               <span class="question-range" id="practiceQuestionRange">문제 1 ~ 4 / 20</span>
             </div>
-            <div class="practice-actions">
-              <button type="button" class="print-action-btn" id="printWorksheetBtn" title="A4 시험지 인쇄 / PDF로 저장">
-                <span>🖨️ 시험지 인쇄</span>
-              </button>
-              <button type="button" class="print-action-btn" id="printAnswerKeyBtn" title="모범 정답지 인쇄">
-                <span>📝 정답지 인쇄</span>
-              </button>
-            </div>
             <div class="timer-display" id="timerDisplay" aria-label="풀이 시간">
               <span class="timer-icon" aria-hidden="true">⏱</span>
               <strong id="timerText">00:00.0</strong>
@@ -435,49 +427,6 @@
             <div class="draft-save-status" id="draftSaveStatus" data-status="idle" role="status" aria-live="polite" hidden>
               <span id="draftSaveStatusText">저장 대기</span>
               <button type="button" id="retryDraftSaveBtn" hidden>다시 시도</button>
-            </div>
-            <div class="progress-bar-container">
-              <div class="progress-bar" id="sessionProgressBar" style="width: 20%;"></div>
-            </div>
-          </div>
-
-          <!-- iPad / Web 손계산 펜 도구바 (Pen Toolbar) -->
-          <div class="pen-toolbar" id="penToolbar">
-            <div class="tool-group">
-              <span class="tool-label">펜 색상</span>
-              <div class="color-chips" role="radiogroup" aria-label="펜 색상">
-                <button type="button" class="color-chip-btn active" data-color="#173f35" style="--chip-color: #173f35;" title="포레스트 그린"></button>
-                <button type="button" class="color-chip-btn" data-color="#1b4d89" style="--chip-color: #1b4d89;" title="오션 블루"></button>
-                <button type="button" class="color-chip-btn" data-color="#2c302e" style="--chip-color: #2c302e;" title="클래식 흑색"></button>
-                <button type="button" class="color-chip-btn" data-color="#c62828" style="--chip-color: #c62828;" title="레드 잉크"></button>
-              </div>
-            </div>
-
-            <div class="tool-group">
-              <span class="tool-label">굵기</span>
-              <div class="width-chips" role="radiogroup" aria-label="펜 굵기">
-                <button type="button" class="width-chip-btn" data-width="1.5">얇게</button>
-                <button type="button" class="width-chip-btn active" data-width="2.5">보통</button>
-                <button type="button" class="width-chip-btn" data-width="4.0">굵게</button>
-              </div>
-            </div>
-
-            <div class="tool-group actions-group">
-              <button type="button" class="tool-action-btn pencil-mode-btn" id="pencilOnlyToggleBtn" title="애플 펜슬 전용 필기 모드 토글 (켜면 펜슬로만 써지고 손가락 터치는 화면 스크롤 허용)">
-                <span class="tool-icon">✏️</span><span class="tool-text" id="pencilModeText">손+펜 공용</span>
-              </button>
-              <button type="button" class="tool-action-btn" id="eraserToggleBtn" title="획 지우개 토글">
-                <span class="tool-icon">🧹</span><span class="tool-text">지우개</span>
-              </button>
-              <button type="button" class="tool-action-btn" id="undoBtn" title="실행 취소">
-                <span class="tool-icon">↶</span><span class="tool-text">되돌리기</span>
-              </button>
-              <button type="button" class="tool-action-btn" id="redoBtn" title="다시 실행">
-                <span class="tool-icon">↷</span><span class="tool-text">다시하기</span>
-              </button>
-              <button type="button" class="tool-action-btn danger" id="clearAllCanvasBtn" title="이 페이지 필기 모두 지우기">
-                <span class="tool-icon">🗑️</span><span class="tool-text">비우기</span>
-              </button>
             </div>
           </div>
 
@@ -488,65 +437,43 @@
             </div>
           </div>
 
-          <!-- 하단 페이지 네비게이션 및 제출 툴바 -->
-          <div class="worksheet-toolbar">
-            <button class="nav-btn secondary-action" id="prevPageBtn" type="button" disabled>
-              <span>← 이전 페이지</span>
-            </button>
-            <div class="page-indicator" id="pageIndicatorText">1 / 5 페이지</div>
-            <button class="nav-btn secondary-action" id="nextPageBtn" type="button">
-              <span>다음 페이지 →</span>
-            </button>
-            <button class="nav-btn pause-btn" id="pausePracticeBtn" type="button" title="현재까지 푼 내용을 보존하고 홈으로 이동">
-              <span>⏸ 다음에 풀기</span>
-            </button>
-            <button class="nav-btn submit-btn" id="submitPracticeBtn" type="button" style="display: none;">
-              <span>풀이 완료 및 제출</span><b>✓</b>
-            </button>
-          </div>
-
-          <!-- 🌟 스크롤 따라오는 스마트 플로팅 퀵 액션 바 (Floating Quick Action Bar) -->
-          <div class="floating-quick-bar" id="floatingQuickBar" aria-label="필기 플로팅 퀵 도구바">
-            <div class="float-btn-group">
-              <button type="button" class="float-btn" id="floatUndoBtn" title="되돌리기 (1획 취소)">
-                <span class="float-icon">↶</span>
-                <span class="float-label">되돌리기</span>
-              </button>
-              <button type="button" class="float-btn" id="floatRedoBtn" title="다시하기">
-                <span class="float-icon">↷</span>
-                <span class="float-label">다시하기</span>
-              </button>
-              <div class="float-divider"></div>
-              <button type="button" class="float-btn" id="floatEraserBtn" title="획 지우개 토글">
-                <span class="float-icon">🧹</span>
-                <span class="float-label">지우개</span>
-              </button>
-              <button type="button" class="float-btn active" id="floatPenBtn" title="펜으로 쓰기">
-                <span class="float-icon">✏️</span>
-                <span class="float-label">펜</span>
-              </button>
-              <div class="float-divider"></div>
-              <button type="button" class="float-btn" id="floatPencilOnlyBtn" title="애플 펜슬 전용 모드 (손가락은 화면 스크롤, 펜슬로만 필기)">
-                <span class="float-icon">🖐️</span>
-                <span class="float-label" id="floatPencilLabel">손+펜</span>
-              </button>
-              <button type="button" class="float-btn danger" id="floatClearBtn" title="현재 문제 필기 비우기">
-                <span class="float-icon">🗑️</span>
-                <span class="float-label">비우기</span>
-              </button>
+          <nav class="adaptive-bottom-dock" id="practiceDock" aria-label="문제풀이 도구">
+            <div class="dock-progress" id="dockProgress" role="progressbar" aria-label="문제풀이 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="20">
+              <div class="dock-progress-fill" id="sessionProgressBar" style="width: 20%;"></div>
+              <span class="page-indicator" id="pageIndicatorText">1 / 5 페이지</span>
             </div>
-          </div>
-
-          <!-- 🌟 문제 단위 원터치 스무스 스크롤 네비게이터 바 (Problem Step Navigator) -->
-          <div class="problem-step-navigator" id="problemStepNavigator" aria-label="문제 단위 이동 바">
-            <button type="button" class="step-nav-btn" id="prevProblemStepBtn" title="이전 문제로 부드럽게 스크롤">
-              <span>▲ 이전 문제</span>
-            </button>
-            <span class="step-nav-status" id="currentProblemStepText">현재 1번 문제</span>
-            <button type="button" class="step-nav-btn" id="nextProblemStepBtn" title="다음 문제로 부드럽게 스크롤">
-              <span>다음 문제 ▼</span>
-            </button>
-          </div>
+            <div class="dock-controls">
+              <button class="dock-btn" id="prevPageBtn" type="button" disabled aria-label="이전 페이지">←<span>이전</span></button>
+              <button class="dock-btn" id="nextPageBtn" type="button" aria-label="다음 페이지">→<span>다음</span></button>
+              <button class="dock-btn" id="undoBtn" type="button" aria-label="되돌리기">↶<span>취소</span></button>
+              <button class="dock-btn" id="redoBtn" type="button" aria-label="다시하기">↷<span>다시</span></button>
+              <button class="dock-btn active" id="penModeBtn" type="button" aria-label="펜 도구">✏️<span>펜</span></button>
+              <button class="dock-btn" id="eraserToggleBtn" type="button" aria-label="지우개 도구">⌫<span>지우개</span></button>
+              <button class="dock-btn danger" id="clearAllCanvasBtn" type="button" aria-label="현재 페이지 필기 비우기">🗑<span>비우기</span></button>
+              <button class="dock-btn" id="pencilOnlyToggleBtn" type="button" aria-label="입력 방식 전환"><span id="pencilModeText">손+펜</span></button>
+              <button class="dock-btn pause" id="pausePracticeBtn" type="button"><span>다음에 풀기</span></button>
+              <button class="dock-btn submit" id="submitPracticeBtn" type="button" style="display: none;"><span>제출</span>✓</button>
+              <details class="dock-more" data-interactive="true">
+                <summary class="dock-btn" aria-label="추가 도구">⋯<span>더보기</span></summary>
+                <div class="dock-more-panel">
+                  <div class="color-chips" role="radiogroup" aria-label="펜 색상">
+                    <button type="button" class="color-chip-btn active" data-color="#173f35" style="--chip-color: #173f35;" title="포레스트 그린"></button>
+                    <button type="button" class="color-chip-btn" data-color="#1b4d89" style="--chip-color: #1b4d89;" title="오션 블루"></button>
+                    <button type="button" class="color-chip-btn" data-color="#2c302e" style="--chip-color: #2c302e;" title="클래식 흑색"></button>
+                    <button type="button" class="color-chip-btn" data-color="#c62828" style="--chip-color: #c62828;" title="레드 잉크"></button>
+                  </div>
+                  <div class="width-chips" role="radiogroup" aria-label="펜 굵기">
+                    <button type="button" class="width-chip-btn" data-width="1.5">얇게</button>
+                    <button type="button" class="width-chip-btn active" data-width="2.5">보통</button>
+                    <button type="button" class="width-chip-btn" data-width="4.0">굵게</button>
+                  </div>
+                  <button type="button" id="largeProblemToggleBtn">큰 문제 보기</button>
+                  <button type="button" id="printWorksheetBtn">시험지 인쇄</button>
+                  <button type="button" id="printAnswerKeyBtn">정답지 인쇄</button>
+                </div>
+              </details>
+            </div>
+          </nav>
         </div>
 
         <!-- 3. 채점자 평가 뷰 (Grading / Review View) [NEW] -->
@@ -560,9 +487,10 @@
               </div>
             </div>
             <div class="grading-toolbar">
-              <div class="grading-status-badge">
+              <div class="grading-status-badge" role="status" aria-live="polite">
                 채점 완료: <strong id="gradedCountText">0 / 20</strong>
                 (<span id="gradedCorrectText">정답 0</span>, <span id="gradedWrongText">오답 0</span>)
+                · <strong id="gradingRemainingText">미채점 20</strong>
               </div>
               <div class="draft-save-status" id="gradingDraftSaveStatus" data-status="idle" role="status" aria-live="polite" hidden>
                 <span id="gradingDraftSaveStatusText">저장 대기</span>
@@ -588,7 +516,8 @@
 
           <!-- 채점 완료 제출 버튼 -->
           <div class="grading-footer">
-            <button class="primary-action finish-grading-btn" id="finishGradingBtn" type="button">
+            <p id="gradingFinishHint" class="grading-finish-hint" role="status" aria-live="polite">모든 문제를 채점하면 결과를 볼 수 있습니다.</p>
+            <button class="primary-action finish-grading-btn" id="finishGradingBtn" type="button" aria-describedby="gradingFinishHint">
               <span>채점 완료 및 결과 보기</span><b>→</b>
             </button>
           </div>
@@ -732,6 +661,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./js/app.js?v=20260824T083500000Z-fff6b83"></script>
+    <script type="module" src="./js/app.js?v=20260824T113010000Z-phase-d"></script>
   </body>
 </html>
