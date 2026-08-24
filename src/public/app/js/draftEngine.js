@@ -125,11 +125,11 @@ export function createDraftSaveCoordinator(options = {}) {
       .catch(() => {})
       .then(() => save(snapshot))
       .then(() => {
-        if (currentRevision === revision) setStatus(DraftSaveStatus.SAVED);
+        if (!destroyed && currentRevision === revision) setStatus(DraftSaveStatus.SAVED);
         return true;
       })
       .catch((error) => {
-        if (currentRevision === revision) setStatus(DraftSaveStatus.FAILED, error);
+        if (!destroyed && currentRevision === revision) setStatus(DraftSaveStatus.FAILED, error);
         throw error;
       });
     queue = operation;
