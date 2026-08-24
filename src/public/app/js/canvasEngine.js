@@ -27,14 +27,18 @@ export const InputState = Object.freeze({
 });
 
 export function resolveInputProfile(options = {}) {
-  const savedProfile = options.savedProfile;
-  if (savedProfile && Object.values(InputProfile).includes(savedProfile)) {
-    return savedProfile;
-  }
-
   const userAgent = String(options.userAgent || "");
   const maxTouchPoints = Number(options.maxTouchPoints) || 0;
   const isIPad = /iPad/i.test(userAgent) || (/Macintosh/i.test(userAgent) && maxTouchPoints > 1);
+  const savedProfile = options.savedProfile;
+  if (savedProfile && Object.values(InputProfile).includes(savedProfile)) {
+    //+_+// PC에서는 iPad 전용 저장값을 복원하지 않고 mouse와 pen 입력을 항상 보장한다.
+    if (!isIPad && (savedProfile === InputProfile.IPAD_PEN_ONLY || savedProfile === InputProfile.IPAD_PEN_TOUCH)) {
+      return InputProfile.DESKTOP_MOUSE_PEN;
+    }
+    return savedProfile;
+  }
+
   const legacyPencilOnly = options.legacyPencilOnly;
 
   if (legacyPencilOnly !== undefined && legacyPencilOnly !== null) {
@@ -48,13 +52,15 @@ export function resolveInputProfile(options = {}) {
 }
 
 export function togglePenOnlyProfile(currentProfile, environment = {}) {
+  const nativeProfile = resolveInputProfile(environment);
+  //+_+// 데스크톱에서는 touch를 차단하면서 mouse와 pen을 유지하는 profile을 고정한다.
+  if (nativeProfile !== InputProfile.IPAD_PEN_ONLY) {
+    return InputProfile.DESKTOP_MOUSE_PEN;
+  }
   if (currentProfile !== InputProfile.IPAD_PEN_ONLY) {
     return InputProfile.IPAD_PEN_ONLY;
   }
-  const nativeProfile = resolveInputProfile(environment);
-  return nativeProfile === InputProfile.IPAD_PEN_ONLY
-    ? InputProfile.IPAD_PEN_TOUCH
-    : InputProfile.DESKTOP_MOUSE_PEN;
+  return InputProfile.IPAD_PEN_TOUCH;
 }
 
 /**

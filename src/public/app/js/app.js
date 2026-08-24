@@ -262,7 +262,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260824T080500000Z-d837374",
+    appBuildId: "20260824T081500000Z-faf4cc9",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -2537,7 +2537,12 @@ async function checkDraftResumeOnStartup() {
           }
 
           if (draft.inputProfile && Object.values(InputProfile).includes(draft.inputProfile)) {
-            currentInputProfile = draft.inputProfile;
+            currentInputProfile = resolveInputProfile({
+              savedProfile: draft.inputProfile,
+              userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+              maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
+              hasTouchStart: typeof window !== "undefined" && "ontouchstart" in window
+            });
             updatePencilModeUI();
           }
           currentPenColor = draft.penColor || currentPenColor;
