@@ -47,6 +47,16 @@ export function resolveInputProfile(options = {}) {
   return isIPad ? InputProfile.IPAD_PEN_ONLY : InputProfile.DESKTOP_MOUSE_PEN;
 }
 
+export function togglePenOnlyProfile(currentProfile, environment = {}) {
+  if (currentProfile !== InputProfile.IPAD_PEN_ONLY) {
+    return InputProfile.IPAD_PEN_ONLY;
+  }
+  const nativeProfile = resolveInputProfile(environment);
+  return nativeProfile === InputProfile.IPAD_PEN_ONLY
+    ? InputProfile.IPAD_PEN_TOUCH
+    : InputProfile.DESKTOP_MOUSE_PEN;
+}
+
 /**
  * 단일 입력 수락 판정기 (상태 머신 규칙 완벽 준수)
  */

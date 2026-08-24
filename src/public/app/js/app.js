@@ -2,7 +2,7 @@ import { generateQuestionSet, REFERENCE_CURRICULUM, mapToRefLevel, calculateCand
 import { createSession, SessionState, mistakeToQuestion, escapeHtml } from "./sessionEngine.js";
 import { createQuestionTimer, formatTime, startSessionTimer } from "./timer.js";
 import { getMultiplicationSteps, getDivisionSteps } from "./explainer.js";
-import { createDrawingCanvas, InputProfile, resolveInputProfile } from "./canvasEngine.js";
+import { createDrawingCanvas, InputProfile, resolveInputProfile, togglePenOnlyProfile } from "./canvasEngine.js";
 import { saveSessionRecord, getRecentSessions, getMistakeQuestions, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, clearAllData, saveDraftSession, getDraftSession, clearDraftSession, getRecentAttempts } from "./storage.js";
 import { playCorrectSound, playWrongSound, playFanfareSound, playClickSound, toggleSound, isSoundMuted } from "./sound.js";
 import { launchConfetti } from "./confetti.js";
@@ -1494,14 +1494,11 @@ function updateFloatingToolbarUI() {
 }
 
 function handlePencilOnlyToggle() {
-  // iPad/터치 환경: IPAD_PEN_ONLY <-> IPAD_PEN_TOUCH
-  // 데스크톱 환경: DESKTOP_MOUSE_PEN <-> IPAD_PEN_ONLY
-  if (currentInputProfile === InputProfile.IPAD_PEN_ONLY) {
-    const isTouch = typeof navigator !== "undefined" && (navigator.maxTouchPoints > 0 || (typeof window !== "undefined" && "ontouchstart" in window));
-    currentInputProfile = isTouch ? InputProfile.IPAD_PEN_TOUCH : InputProfile.DESKTOP_MOUSE_PEN;
-  } else {
-    currentInputProfile = InputProfile.IPAD_PEN_ONLY;
-  }
+  currentInputProfile = togglePenOnlyProfile(currentInputProfile, {
+    userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+    maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
+    hasTouchStart: typeof window !== "undefined" && "ontouchstart" in window
+  });
 
   try {
     localStorage.setItem("math_canvas_input_profile", currentInputProfile);
