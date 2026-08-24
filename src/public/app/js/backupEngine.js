@@ -5,7 +5,7 @@
  * - JSON Import (버전 검증, Preview, Replace vs Merge 모드, 무결성 검증)
  */
 
-import { getDB, getAllSessions, getRecentAttempts, getMistakeQuestions, clearAllData } from "./storage.js";
+import { getDB, getAllSessions, getRecentAttempts, getMistakeQuestions, getDraftSession, clearAllData } from "./storage.js";
 
 export const BACKUP_FORMAT_VERSION = "1.0";
 
@@ -17,6 +17,7 @@ export async function exportAllData() {
   const sessions = await getAllSessions();
   const attempts = await getRecentAttempts(100000);
   const mistakes = await getMistakeQuestions();
+  const currentDraft = await getDraftSession();
 
   let stageProgress = [];
   let strokes = [];
@@ -62,14 +63,16 @@ export async function exportAllData() {
       attemptCount: attempts.length,
       mistakeCount: mistakes.length,
       stageProgressCount: stageProgress.length,
-      strokeCount: strokes.length
+      strokeCount: strokes.length,
+      draftCount: currentDraft ? 1 : 0
     },
     data: {
       sessions,
       attempts,
       mistakes,
       stageProgress,
-      strokes
+      strokes,
+      drafts: currentDraft ? [currentDraft] : []
     }
   };
 
@@ -97,6 +100,7 @@ export function validateBackupData(backup) {
   const mistakes = Array.isArray(backup.data.mistakes) ? backup.data.mistakes : [];
   const stageProgress = Array.isArray(backup.data.stageProgress) ? backup.data.stageProgress : [];
   const strokes = Array.isArray(backup.data.strokes) ? backup.data.strokes : [];
+  const drafts = Array.isArray(backup.data.drafts) ? backup.data.drafts : [];
 
   let oldestDate = null;
   let newestDate = null;
@@ -120,6 +124,7 @@ export function validateBackupData(backup) {
       mistakeCount: mistakes.length,
       stageProgressCount: stageProgress.length,
       strokeCount: strokes.length,
+      draftCount: drafts.length,
       dateRange: oldestDate && newestDate
         ? `${new Date(oldestDate).toLocaleDateString("ko-KR")} ~ ${new Date(newestDate).toLocaleDateString("ko-KR")}`
         : "기록 없음"
@@ -145,7 +150,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
     await clearAllData();
   }
 
-  const { sessions, attempts, mistakes, stageProgress, strokes } = backup.data;
+  const { sessions, attempts, mistakes, stageProgress, strokes, drafts = [] } = backup.data;
 
   if (db.isMemory) {
     (sessions || []).forEach((s) => db.sessions.set(s.id, s));
@@ -156,6 +161,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
       const k = st.key || st.sessionId_questionId;
       if (k) db.strokes.set(k, st.strokes || st);
     });
+    (drafts || []).forEach((draft) => db.draftSessions.set("current_draft", { ...draft, id: "current_draft" }));
 
     return {
       success: true,
@@ -163,23 +169,26 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
       importedSessions: (sessions || []).length,
       importedAttempts: (attempts || []).length,
       importedMistakes: (mistakes || []).length,
-      importedStrokes: (strokes || []).length
+      importedStrokes: (strokes || []).length,
+      importedDrafts: (drafts || []).length
     };
   }
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes"], "readwrite");
+    const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions"], "readwrite");
     const sessionStore = tx.objectStore("sessions");
     const attemptStore = tx.objectStore("attempts");
     const mistakeStore = tx.objectStore("mistakes");
     const progressStore = tx.objectStore("stageProgress");
     const strokeStore = tx.objectStore("strokes");
+    const draftStore = tx.objectStore("draftSessions");
 
     (sessions || []).forEach((s) => sessionStore.put(s));
     (attempts || []).forEach((a) => attemptStore.put(a));
     (mistakes || []).forEach((m) => mistakeStore.put(m));
     (stageProgress || []).forEach((p) => progressStore.put(p));
     (strokes || []).forEach((st) => strokeStore.put(st));
+    (drafts || []).forEach((draft) => draftStore.put({ ...draft, id: "current_draft" }));
 
     tx.oncomplete = () => {
       resolve({
@@ -188,7 +197,8 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
         importedSessions: (sessions || []).length,
         importedAttempts: (attempts || []).length,
         importedMistakes: (mistakes || []).length,
-        importedStrokes: (strokes || []).length
+        importedStrokes: (strokes || []).length,
+        importedDrafts: (drafts || []).length
       });
     };
 

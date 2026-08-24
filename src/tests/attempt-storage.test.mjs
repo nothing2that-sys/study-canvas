@@ -70,7 +70,7 @@ test("Milestone B: Draft Session (임시 저장 및 이어하기) 검증", async
   const loaded = await getDraftSession();
   assert.ok(loaded);
   assert.equal(loaded.config.operation, "div");
-  assert.equal(loaded.currentPageIndex, 1);
+  assert.equal(loaded.currentPageIndex, 0);
   assert.equal(loaded.elapsedMs, 15000);
 
   await clearDraftSession();

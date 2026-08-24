@@ -113,7 +113,7 @@ test("R2-P0-02 & R2-P0-05: 세션 생성, Draft 저장 및 inputProfile 복원 �
   assert.equal(loaded.questions.length, 10);
   assert.equal(loaded.currentPageIndex, 1);
   assert.equal(loaded.inputProfile, InputProfile.IPAD_PEN_ONLY);
-  assert.equal(loaded.strokesMap[adaptive.questions[0].id].length, 1);
+  assert.equal(loaded.studentStrokesMap[adaptive.questions[0].id].length, 1);
 
   await clearDraftSession();
   const afterClear = await getDraftSession();

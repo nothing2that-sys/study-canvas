@@ -10,6 +10,7 @@ const APP_SHELL = [
   "./js/sessionEngine.js",
   "./js/mathGen.js",
   "./js/storage.js",
+  "./js/draftEngine.js",
   "./js/timer.js",
   "./js/explainer.js",
   "./js/sound.js",

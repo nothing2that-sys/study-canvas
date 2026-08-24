@@ -432,6 +432,10 @@
               <span class="timer-icon" aria-hidden="true">⏱</span>
               <strong id="timerText">00:00.0</strong>
             </div>
+            <div class="draft-save-status" id="draftSaveStatus" data-status="idle" role="status" aria-live="polite" hidden>
+              <span id="draftSaveStatusText">저장 대기</span>
+              <button type="button" id="retryDraftSaveBtn" hidden>다시 시도</button>
+            </div>
             <div class="progress-bar-container">
               <div class="progress-bar" id="sessionProgressBar" style="width: 20%;"></div>
             </div>
@@ -559,6 +563,10 @@
               <div class="grading-status-badge">
                 채점 완료: <strong id="gradedCountText">0 / 20</strong>
                 (<span id="gradedCorrectText">정답 0</span>, <span id="gradedWrongText">오답 0</span>)
+              </div>
+              <div class="draft-save-status" id="gradingDraftSaveStatus" data-status="idle" role="status" aria-live="polite" hidden>
+                <span id="gradingDraftSaveStatusText">저장 대기</span>
+                <button type="button" id="retryGradingDraftSaveBtn" hidden>다시 시도</button>
               </div>
               <div class="grading-quick-actions">
                 <button class="chip-action-btn" id="toggleAnswersBtn" type="button">

@@ -62,7 +62,7 @@ export function createSession(config = {}, questions = []) {
     throw new Error("세션을 시작하려면 최소 1개 이상의 문제가 필요합니다.");
   }
 
-  const id = generateSessionId();
+  const id = config.sessionId || generateSessionId();
   const startedAt = Date.now();
   let state = SessionState.IDLE;
 
@@ -106,6 +106,10 @@ export function createSession(config = {}, questions = []) {
     } else if (typeof timesMap === "object" && timesMap !== null) {
       Object.entries(timesMap).forEach(([key, val]) => questionSolveTimes.set(key, Math.max(0, Math.round(val))));
     }
+  }
+
+  function getQuestionSolveTimes() {
+    return Object.fromEntries(questionSolveTimes.entries());
   }
 
   function getPageQuestions(pageIndex = currentPageIndex) {
@@ -212,6 +216,7 @@ export function createSession(config = {}, questions = []) {
     };
 
     grades.set(questionId, gradeData);
+    question.grade = gradeData;
     return {
       questionId,
       gradeData,
@@ -357,6 +362,7 @@ export function createSession(config = {}, questions = []) {
     goToPage,
     recordQuestionSolveTime,
     setQuestionSolveTimes,
+    getQuestionSolveTimes,
     submitPractice,
     startGrading,
     gradeQuestion,

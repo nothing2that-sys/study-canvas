@@ -11,6 +11,7 @@ import { setupKeyboardShortcuts } from "./shortcuts.js";
 import { setupInteractionGuard, AppMode } from "./interactionGuard.js";
 import { composeAdaptiveSession } from "./adaptiveEngine.js";
 import { calculateStageMastery, analyzeWeaknesses } from "./masteryEngine.js";
+import { createDraftSaveCoordinator, DRAFT_SCHEMA_VERSION, DraftSaveStatus, navigateWithDraftFlush } from "./draftEngine.js";
 
 // 앱 전역 인터랙션 가드 초기화
 const interactionGuard = setupInteractionGuard(typeof document !== "undefined" ? document : null);
@@ -131,6 +132,12 @@ const printAnswerKeyBtn = document.querySelector("#printAnswerKeyBtn");
 const printTitleText = document.querySelector("#printTitleText");
 const printLevelTag = document.querySelector("#printLevelTag");
 const timerText = document.querySelector("#timerText");
+const draftSaveStatus = document.querySelector("#draftSaveStatus");
+const draftSaveStatusText = document.querySelector("#draftSaveStatusText");
+const retryDraftSaveBtn = document.querySelector("#retryDraftSaveBtn");
+const gradingDraftSaveStatus = document.querySelector("#gradingDraftSaveStatus");
+const gradingDraftSaveStatusText = document.querySelector("#gradingDraftSaveStatusText");
+const retryGradingDraftSaveBtn = document.querySelector("#retryGradingDraftSaveBtn");
 const sessionProgressBar = document.querySelector("#sessionProgressBar");
 const worksheetGrid = document.querySelector("#worksheetGrid");
 const prevPageBtn = document.querySelector("#prevPageBtn");
@@ -215,12 +222,15 @@ let currentSession = null;
 let currentQuestions = null;
 let lastSessionConfig = null;
 let hideAnswersInGrading = false;
+let currentDraftCreatedAt = Date.now();
 
 // 캔버스 필기 상태
 let currentPenColor = "#173f35";
 let currentPenWidth = 2.5;
 let currentIsEraser = false;
 const questionStrokesMap = new Map(); // questionId -> strokes array
+const gradingStrokesMap = new Map();
+const gradingResultsMap = new Map();
 let activeCanvasInstances = new Map(); // questionId -> canvas instance
 let gradingCanvasInstances = [];
 let gradingRenderRevision = 0;
@@ -233,90 +243,80 @@ const questionTimer = createQuestionTimer({
   }
 });
 
-//+_+// DraftSaveCoordinator: 저장 작업 직렬화, revision 관리, 에러 전파 보장
-class DraftSaveCoordinator {
-  constructor() {
-    this.revision = 0;
-    this.activeSavePromise = null;
-    this.debounceTimer = null;
-    this.saveStatus = "idle"; // "idle" | "saving" | "saved" | "failed"
-  }
-
-  scheduleSave(delayMs = 400) {
-    if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) return;
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
-    this.debounceTimer = setTimeout(() => {
-      this.flushSave().catch(() => {});
-    }, delayMs);
-  }
-
-  async flushSave() {
-    if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer);
-      this.debounceTimer = null;
-    }
-    if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) {
-      return true;
-    }
-
-    const currentRevision = ++this.revision;
-    const strokesObj = {};
-    questionStrokesMap.forEach((v, k) => {
-      strokesObj[k] = v;
-    });
-
-    const snapshot = {
-      schemaVersion: 2,
-      appBuildId: "20260823_3",
-      revision: currentRevision,
-      config: lastSessionConfig || currentSession.config,
-      questions: currentQuestions,
-      currentPageIndex: currentSession.currentPageIndex,
-      strokesMap: strokesObj,
-      elapsedMs: questionTimer.getElapsedMs(),
-      inputProfile: currentInputProfile,
-      sessionState: currentSession.state,
-      updatedAt: Date.now()
-    };
-
-    this.saveStatus = "saving";
-
-    const saveOp = (async () => {
-      try {
-        if (this.activeSavePromise) {
-          await this.activeSavePromise.catch(() => {});
-        }
-        if (this.revision > currentRevision) {
-          // 더 최신 snapshot이 이미 예약되었으므로 건너뜀
-          return true;
-        }
-        await saveDraftSession(snapshot);
-        this.saveStatus = "saved";
-        return true;
-      } catch (err) {
-        this.saveStatus = "failed";
-        console.error("Draft save failed:", err);
-        throw err;
-      } finally {
-        if (this.activeSavePromise === saveOp) {
-          this.activeSavePromise = null;
-        }
-      }
-    })();
-
-    this.activeSavePromise = saveOp;
-    return saveOp;
-  }
+function mapToObject(map) {
+  return Object.fromEntries(Array.from(map.entries()));
 }
 
-export const draftCoordinator = new DraftSaveCoordinator();
+function collectGradingResults() {
+  if (!currentSession) return {};
+  const results = mapToObject(gradingResultsMap);
+  currentSession.questions.forEach((question) => {
+    if (question.grade) results[question.id] = question.grade;
+  });
+  return results;
+}
+
+function captureDraftSnapshot() {
+  if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) return null;
+  const now = Date.now();
+  return {
+    schemaVersion: DRAFT_SCHEMA_VERSION,
+    appBuildId: "20260823_3",
+    sessionId: currentSession.id,
+    sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
+    sessionState: currentSession.state,
+    config: lastSessionConfig || {},
+    questions: currentQuestions,
+    currentPageIndex: currentSession.currentPageIndex,
+    studentStrokesMap: mapToObject(questionStrokesMap),
+    gradingStrokesMap: mapToObject(gradingStrokesMap),
+    gradingResults: collectGradingResults(),
+    answersHidden: hideAnswersInGrading,
+    totalElapsedMs: questionTimer.getElapsedMs(),
+    perQuestionElapsedMs: currentSession.getQuestionSolveTimes?.() || {},
+    inputProfile: currentInputProfile,
+    penColor: currentPenColor,
+    penWidth: currentPenWidth,
+    isEraser: currentIsEraser,
+    eraserRadius: 14,
+    createdAt: currentDraftCreatedAt,
+    updatedAt: now
+  };
+}
+
+function updateDraftSaveStatus(status) {
+  const labels = {
+    [DraftSaveStatus.IDLE]: "저장 대기",
+    [DraftSaveStatus.SCHEDULED]: "저장 예정",
+    [DraftSaveStatus.SAVING]: "저장 중",
+    [DraftSaveStatus.SAVED]: "저장됨",
+    [DraftSaveStatus.FAILED]: "저장 실패"
+  };
+  const targets = [
+    [draftSaveStatus, draftSaveStatusText, retryDraftSaveBtn],
+    [gradingDraftSaveStatus, gradingDraftSaveStatusText, retryGradingDraftSaveBtn]
+  ];
+  targets.forEach(([container, text, retry]) => {
+    if (!container || !text) return;
+    container.hidden = !currentSession;
+    container.dataset.status = status;
+    text.textContent = labels[status] || "저장 대기";
+    if (retry) retry.hidden = status !== DraftSaveStatus.FAILED;
+  });
+}
+
+export const draftCoordinator = createDraftSaveCoordinator({
+  captureSnapshot: captureDraftSnapshot,
+  save: saveDraftSession,
+  onStatusChange: updateDraftSaveStatus
+});
 
 export function triggerDraftSave() {
-  draftCoordinator.scheduleSave();
+  draftCoordinator.schedule();
 }
 
 export async function flushDraftSave() {
-  return draftCoordinator.flushSave();
+  return draftCoordinator.flush();
 }
 
 // 생명주기 이벤트(hidden, pagehide) 시 즉시 flush
@@ -899,11 +899,12 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
         const canvasId = `modalReviewCanvas_${session.id || "temp"}_${r.questionId || idx}`;
         const canvasEl = document.querySelector(`#${canvasId}`);
         if (canvasEl) {
-          const strokes = r.strokes || [];
-          const canvasInst = createDrawingCanvas(canvasEl, { readOnly: true });
+          const studentStrokes = r.studentStrokes || r.strokes || [];
+          const gradingStrokes = r.gradingStrokes || [];
+          const canvasInst = createDrawingCanvas(canvasEl, { readOnly: true, backgroundStrokes: studentStrokes });
           modalReviewCanvasInstances.set(canvasId, canvasInst);
-          if (strokes.length > 0) {
-            canvasInst.setStrokes(strokes);
+          if (gradingStrokes.length > 0) {
+            canvasInst.setStrokes(gradingStrokes);
           }
         }
       });
@@ -1253,8 +1254,11 @@ function renderProblemStageContent(q, options = {}) {
 function startSessionWithQuestions(questions, config) {
   if (!questions || questions.length === 0) return;
   lastSessionConfig = config;
+  currentDraftCreatedAt = Date.now();
   currentQuestions = questions;
   questionStrokesMap.clear();
+  gradingStrokesMap.clear();
+  gradingResultsMap.clear();
   activeCanvasInstances.forEach((instance) => instance.destroy());
   activeCanvasInstances.clear();
 
@@ -1518,12 +1522,14 @@ function handleColorSelect(btn) {
 
   colorChips.forEach((b) => b.classList.toggle("active", b === btn));
   activeCanvasInstances.forEach((inst) => inst.setColor(currentPenColor));
+  triggerDraftSave();
 }
 
 function handleWidthSelect(btn) {
   currentPenWidth = Number(btn.dataset.width) || 2.5;
   widthChips.forEach((b) => b.classList.toggle("active", b === btn));
   activeCanvasInstances.forEach((inst) => inst.setWidth(currentPenWidth));
+  triggerDraftSave();
 }
 
 function handleEraserToggle() {
@@ -1531,6 +1537,7 @@ function handleEraserToggle() {
   eraserToggleBtn.classList.toggle("active", currentIsEraser);
   updateFloatingToolbarUI();
   activeCanvasInstances.forEach((inst) => inst.setEraser(currentIsEraser));
+  triggerDraftSave();
 }
 
 function handleUndo() {
@@ -1563,22 +1570,34 @@ function handleClearAllCanvas() {
 // 이전 / 다음 페이지 이동
 async function handlePrevPage() {
   if (!currentSession) return;
-  await flushDraftSave();
-  currentSession.prevPage();
-  renderCurrentWorksheetPage();
+  try {
+    await navigateWithDraftFlush({
+      flush: flushDraftSave,
+      navigate: () => currentSession.prevPage(),
+      render: renderCurrentWorksheetPage
+    });
+  } catch (_) {}
 }
 
 async function handleNextPage() {
   if (!currentSession) return;
-  await flushDraftSave();
-  currentSession.nextPage();
-  renderCurrentWorksheetPage();
+  try {
+    await navigateWithDraftFlush({
+      flush: flushDraftSave,
+      navigate: () => currentSession.nextPage(),
+      render: renderCurrentWorksheetPage
+    });
+  } catch (_) {}
 }
 
 // 학생 풀이 완료 및 제출 -> 채점 모드 전환
 async function handleSubmitPractice() {
   if (!currentSession) return;
-  await flushDraftSave();
+  try {
+    await flushDraftSave();
+  } catch (_) {
+    return;
+  }
   const elapsedMs = questionTimer.stop();
   currentSession.submitPractice(elapsedMs);
   currentSession.startGrading();
@@ -1586,6 +1605,9 @@ async function handleSubmitPractice() {
   switchView(gradingView);
   hideAnswersInGrading = false;
   renderGradingView();
+  try {
+    await flushDraftSave();
+  } catch (_) {}
 }
 
 // ----------------------------------------------------
@@ -1625,7 +1647,7 @@ function renderGradingView() {
     card.className = "grading-card";
     card.id = `gradingCard_${q.id}`;
 
-    const currentGrade = q.grade;
+    const currentGrade = gradingResultsMap.get(q.id) || q.grade;
     if (currentGrade) {
       card.classList.toggle("is-graded-correct", currentGrade.isCorrect);
       card.classList.toggle("is-graded-wrong", !currentGrade.isCorrect);
@@ -1705,16 +1727,20 @@ function renderGradingView() {
       const gCanvasEl = document.querySelector(`#gradingCanvas_${q.id}`);
       if (gCanvasEl) {
         const studentStrokes = questionStrokesMap.get(q.id) || [];
+        const gradingStrokes = gradingStrokesMap.get(q.id) || [];
         const gInstance = createDrawingCanvas(gCanvasEl, {
           color: "#c62828", // 기본 빨간 펜 잉크
           width: 3.0,
           readOnly: false, // 채점자가 직접 빨간 펜으로 첨삭 가능!
+          profile: currentInputProfile,
+          backgroundStrokes: studentStrokes,
           onStrokeChange: (strokes) => {
-            questionStrokesMap.set(q.id, strokes);
+            gradingStrokesMap.set(q.id, strokes);
+            triggerDraftSave();
           }
         });
-        if (studentStrokes.length > 0) {
-          gInstance.setStrokes(studentStrokes);
+        if (gradingStrokes.length > 0) {
+          gInstance.setStrokes(gradingStrokes);
         }
         createdGradingInstances.push(gInstance);
       }
@@ -1761,7 +1787,9 @@ function handleGradeClick(event) {
   const commentInput = document.querySelector(`#redPenInput_${qId}`);
   const comment = commentInput ? commentInput.value : "";
 
-  currentSession.gradeQuestion(qId, isCorrect, comment);
+  const gradeResult = currentSession.gradeQuestion(qId, isCorrect, comment);
+  gradingResultsMap.set(qId, gradeResult.gradeData);
+  triggerDraftSave();
 
   // 사운드 및 햅틱 효과 재생
   if (isCorrect) {
@@ -1796,7 +1824,9 @@ function handleRedChipClick(event) {
     commentInput.value = text;
     const currentGrade = currentSession.questions.find((q) => q.id === qId)?.grade;
     const isCorrect = currentGrade ? currentGrade.isCorrect : (text.includes("완벽") ? true : false);
-    currentSession.gradeQuestion(qId, isCorrect, text);
+    const gradeResult = currentSession.gradeQuestion(qId, isCorrect, text);
+    gradingResultsMap.set(qId, gradeResult.gradeData);
+    triggerDraftSave();
 
     const card = document.querySelector(`#gradingCard_${qId}`);
     if (card && currentGrade) {
@@ -1816,8 +1846,12 @@ function handleRedPenInput(event) {
   const text = input.value;
   const currentGrade = currentSession.questions.find((q) => q.id === qId)?.grade;
   if (currentGrade) {
-    currentSession.gradeQuestion(qId, currentGrade.isCorrect, text);
+    const gradeResult = currentSession.gradeQuestion(qId, currentGrade.isCorrect, text);
+    gradingResultsMap.set(qId, gradeResult.gradeData);
+  } else {
+    gradingResultsMap.set(qId, { questionId: qId, isCorrect: null, comment: text });
   }
+  triggerDraftSave();
 }
 
 // 전체 정답 처리
@@ -1825,6 +1859,10 @@ function handleGradeAllCorrect() {
   if (!currentSession) return;
   playCorrectSound();
   currentSession.gradeAll(true);
+  currentSession.questions.forEach((question) => {
+    if (question.grade) gradingResultsMap.set(question.id, question.grade);
+  });
+  triggerDraftSave();
   renderGradingView();
 }
 
@@ -1832,6 +1870,7 @@ function handleGradeAllCorrect() {
 function handleToggleAnswers() {
   hideAnswersInGrading = !hideAnswersInGrading;
   renderGradingView();
+  triggerDraftSave();
 }
 
 // 채점 완료 및 최종 성적표 보기 (IndexedDB 영구 저장)
@@ -1840,9 +1879,9 @@ async function handleFinishGrading() {
   try {
     const summary = currentSession.finishGrading();
     // 영구 스토리지에 세션 및 스트로크 저장
-    await saveSessionRecord(summary, questionStrokesMap);
+    const savedRecord = await saveSessionRecord(summary, questionStrokesMap, gradingStrokesMap);
     await clearDraftSession();
-    showSessionResult(summary);
+    showSessionResult(savedRecord);
   } catch (error) {
     alert(error.message);
   }
@@ -1937,11 +1976,12 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
         const canvasId = `resultReviewCanvas_${r.questionId || idx}`;
         const canvasEl = document.querySelector(`#${canvasId}`);
         if (canvasEl) {
-          const strokes = r.strokes || questionStrokesMap.get(r.questionId) || [];
-          const canvasInst = createDrawingCanvas(canvasEl, { readOnly: true });
+          const studentStrokes = r.studentStrokes || r.strokes || questionStrokesMap.get(r.questionId) || [];
+          const gradingStrokes = r.gradingStrokes || gradingStrokesMap.get(r.questionId) || [];
+          const canvasInst = createDrawingCanvas(canvasEl, { readOnly: true, backgroundStrokes: studentStrokes });
           resultReviewCanvasInstances.set(canvasId, canvasInst);
-          if (strokes.length > 0) {
-            canvasInst.setStrokes(strokes);
+          if (gradingStrokes.length > 0) {
+            canvasInst.setStrokes(gradingStrokes);
           }
         }
       });
@@ -1973,6 +2013,9 @@ async function terminateSession() {
   gradingRenderRevision += 1;
   currentSession = null;
   questionStrokesMap.clear();
+  gradingStrokesMap.clear();
+  gradingResultsMap.clear();
+  updateDraftSaveStatus(DraftSaveStatus.IDLE);
   switchView(setupView);
   loadDashboardStats();
   if (confirmModal?.open) confirmModal.close();
@@ -2172,6 +2215,17 @@ if (clearHistoryBtn) {
 
 if (prevPageBtn) prevPageBtn.addEventListener("click", handlePrevPage);
 if (nextPageBtn) nextPageBtn.addEventListener("click", handleNextPage);
+function bindDraftRetryButton(button) {
+  if (!button) return;
+  button.addEventListener("click", () => {
+    button.disabled = true;
+    draftCoordinator.retry().catch(() => {}).finally(() => {
+      button.disabled = false;
+    });
+  });
+}
+bindDraftRetryButton(retryDraftSaveBtn);
+bindDraftRetryButton(retryGradingDraftSaveBtn);
 if (pausePracticeBtn) {
   pausePracticeBtn.addEventListener("click", () => {
     if (confirm("현재까지 푼 연습을 중단하고 홈으로 돌아갈까요?")) {
@@ -2460,29 +2514,60 @@ async function checkDraftResumeOnStartup() {
           draftModal.close();
           // 세션 복원
           lastSessionConfig = draft.config;
+          currentDraftCreatedAt = draft.createdAt || Date.now();
           currentQuestions = draft.questions;
-          currentSession = createSession(draft.config, draft.questions);
+          currentSession = createSession({ ...draft.config, sessionId: draft.sessionId }, draft.questions);
           questionStrokesMap.clear();
+          gradingStrokesMap.clear();
+          gradingResultsMap.clear();
 
-          if (draft.strokesMap) {
-            Object.entries(draft.strokesMap).forEach(([k, v]) => {
+          if (draft.studentStrokesMap) {
+            Object.entries(draft.studentStrokesMap).forEach(([k, v]) => {
               questionStrokesMap.set(k, v);
             });
+          }
+          if (draft.gradingStrokesMap) {
+            Object.entries(draft.gradingStrokesMap).forEach(([k, v]) => {
+              gradingStrokesMap.set(k, v);
+            });
+          }
+          if (draft.gradingResults) {
+            Object.entries(draft.gradingResults).forEach(([k, v]) => gradingResultsMap.set(k, v));
           }
 
           if (draft.inputProfile && Object.values(InputProfile).includes(draft.inputProfile)) {
             currentInputProfile = draft.inputProfile;
             updatePencilModeUI();
           }
+          currentPenColor = draft.penColor || currentPenColor;
+          currentPenWidth = Number(draft.penWidth) || currentPenWidth;
+          currentIsEraser = Boolean(draft.isEraser);
 
           currentSession.start();
+          currentSession.setQuestionSolveTimes(draft.perQuestionElapsedMs || {});
           currentSession.goToPage(draft.currentPageIndex || 0);
+          draftCoordinator.setRevision(draft.revision || 0);
 
           //+_+// 단일 계약으로 복원 시간부터 정밀 흐름 시작!
-          startSessionTimer(questionTimer, draft.elapsedMs || 0);
+          startSessionTimer(questionTimer, draft.totalElapsedMs || 0);
 
-          switchView(practiceView);
-          renderCurrentWorksheetPage();
+          if (draft.sessionState === SessionState.GRADING_ACTIVE || draft.sessionType === "grading") {
+            hideAnswersInGrading = Boolean(draft.answersHidden);
+            currentSession.submitPractice(draft.totalElapsedMs || 0);
+            currentSession.startGrading();
+            questionTimer.stop();
+            Object.entries(draft.gradingResults || {}).forEach(([questionId, grade]) => {
+              if (typeof grade.isCorrect === "boolean") {
+                currentSession.gradeQuestion(questionId, grade.isCorrect, grade.comment || "");
+              }
+            });
+            switchView(gradingView);
+            renderGradingView();
+          } else {
+            switchView(practiceView);
+            renderCurrentWorksheetPage();
+          }
+          updateFloatingToolbarUI();
         };
       }
 
@@ -2493,7 +2578,9 @@ async function checkDraftResumeOnStartup() {
         };
       }
     }
-  } catch (_) {}
+  } catch (error) {
+    alert(`저장된 풀이를 복원할 수 없습니다. ${error.message || "Draft 데이터가 손상되었습니다."}`);
+  }
 }
 
 // 🌟 PWA 업데이트 감지 및 배너 연동

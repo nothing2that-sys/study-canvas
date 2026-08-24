@@ -2946,3 +2946,28 @@ button, .icon-button, .float-btn, .step-nav-btn {
   min-height: 44px;
 }
 
+.draft-save-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+  color: var(--ink-soft, #52645f);
+  font-size: 0.85rem;
+}
+
+.draft-save-status[hidden] {
+  display: none;
+}
+
+.draft-save-status[data-status="failed"] {
+  color: #b42318;
+  font-weight: 700;
+}
+
+.draft-save-status button {
+  min-height: 2rem;
+  border: 1px solid currentColor;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+}

@@ -1,3 +1,5 @@
+import { normalizeDraft } from "./draftEngine.js";
+
 /**
  * Math Canvas Pro - IndexedDB 로컬 영구 스토리지 관리자 (Phase 4)
  * SSOT Section 95~108 명세 준수
@@ -109,7 +111,7 @@ export function resolveSessionOperation(session) {
 /**
  * 완료된 세션 기록 및 스트로크, 오답 큐 저장
  */
-export async function saveSessionRecord(summary, strokesMap = new Map()) {
+export async function saveSessionRecord(summary, strokesMap = new Map(), gradingStrokesMap = new Map()) {
   const db = await getDB();
   const sessionId = summary.sessionId || `session_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const now = Date.now();
@@ -134,7 +136,9 @@ export async function saveSessionRecord(summary, strokesMap = new Map()) {
         operation: r.operation || operation,
         answer: qAns,
         expectedAnswer: qAns,
-        strokes: strokesMap.get(r.questionId) || r.strokes || []
+        strokes: strokesMap.get(r.questionId) || r.strokes || [],
+        studentStrokes: strokesMap.get(r.questionId) || r.studentStrokes || r.strokes || [],
+        gradingStrokes: gradingStrokesMap.get(r.questionId) || r.gradingStrokes || []
       };
     })
   };
@@ -306,7 +310,7 @@ export async function getRecentAttempts(limit = 50, filter = {}) {
  */
 export async function saveDraftSession(draft) {
   const db = await getDB();
-  const draftRecord = { ...draft, id: "current_draft", updatedAt: Date.now() };
+  const draftRecord = { ...normalizeDraft(draft), id: "current_draft", updatedAt: Date.now() };
 
   if (db.isMemory) {
     db.draftSessions.set("current_draft", draftRecord);
@@ -325,14 +329,21 @@ export async function getDraftSession() {
   const db = await getDB();
 
   if (db.isMemory) {
-    return db.draftSessions.get("current_draft") || null;
+    const record = db.draftSessions.get("current_draft") || null;
+    return record ? normalizeDraft(record) : null;
   }
 
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     try {
       const tx = db.transaction("draftSessions", "readonly");
       const req = tx.objectStore("draftSessions").get("current_draft");
-      req.onsuccess = () => resolve(req.result || null);
+      req.onsuccess = () => {
+        try {
+          resolve(req.result ? normalizeDraft(req.result) : null);
+        } catch (error) {
+          reject(error);
+        }
+      };
       req.onerror = () => resolve(null);
     } catch (_) {
       resolve(null);

@@ -106,6 +106,7 @@ export function shouldAcceptPointer(event, profile, state = InputState.IDLE) {
 export function createDrawingCanvas(canvasElement, options = {}) {
   const ctx = canvasElement.getContext("2d", { alpha: true });
   let strokes = []; // [{ id, color, width, isEraser, points: [{x, y, relX, relY}], gridWidth, gridHeight, gridLeft, gridTop }]
+  let backgroundStrokes = Array.isArray(options.backgroundStrokes) ? cloneStrokes(options.backgroundStrokes) : [];
   let undoStack = [];
   let redoStack = [];
 
@@ -118,6 +119,10 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   let lastPenEndTime = 0;
   let cooldownTimer = null;
   let destroyed = false;
+
+  function cloneStrokes(value) {
+    return JSON.parse(JSON.stringify(Array.isArray(value) ? value : []));
+  }
 
   function getEnvironmentProfile() {
     return resolveInputProfile({
@@ -193,6 +198,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
+    for (const stroke of backgroundStrokes) {
+      drawFullStroke(stroke);
+    }
     for (const stroke of strokes) {
       drawFullStroke(stroke);
     }
@@ -762,6 +770,13 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     },
     getStrokes() {
       return JSON.parse(JSON.stringify(strokes));
+    },
+    getBackgroundStrokes() {
+      return cloneStrokes(backgroundStrokes);
+    },
+    setBackgroundStrokes(newStrokes) {
+      backgroundStrokes = cloneStrokes(newStrokes);
+      redraw();
     },
     setStrokes(newStrokes) {
       strokes = Array.isArray(newStrokes) ? JSON.parse(JSON.stringify(newStrokes)) : [];
