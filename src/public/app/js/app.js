@@ -259,7 +259,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260824T114822000Z-ux-fixes",
+    appBuildId: "20260824T120901000Z-recommend-fix",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -2427,6 +2427,71 @@ async function renderAdaptiveRecommendCard() {
 
   if (!cardTitle || !reasonText || !startBtn) return;
 
+  async function handleStartAdaptiveSession() {
+    if (startBtn.disabled) return;
+    const label = startBtn.querySelector("span");
+    const originalLabel = label?.textContent || "추천 학습 시작하기";
+    startBtn.disabled = true;
+    startBtn.setAttribute("aria-busy", "true");
+    if (label) label.textContent = "새 문제 준비 중...";
+
+    try {
+      let attempts = [];
+      let mistakes = [];
+      try {
+        [attempts, mistakes] = await Promise.all([
+          getRecentAttempts(50),
+          getMistakeQuestions()
+        ]);
+      } catch (error) {
+        console.warn("추천 학습 기록 조회 실패, 기본 추천으로 시작합니다.", error);
+      }
+
+      const weaknessAnalysis = analyzeWeaknesses(attempts, mistakes);
+      const requestedStageId = weaknessAnalysis.weaknesses[0]?.stageId || "M2-2";
+      let currentStageId = requestedStageId;
+      let freshSession;
+
+      try {
+        freshSession = composeAdaptiveSession({
+          count: 10,
+          currentStageId,
+          attempts,
+          mistakes
+        });
+      } catch (error) {
+        console.warn("추천 단계 생성 실패, 기본 단계로 시작합니다.", error);
+        currentStageId = "M2-2";
+        freshSession = composeAdaptiveSession({
+          count: 10,
+          currentStageId,
+          attempts: [],
+          mistakes: []
+        });
+      }
+
+      startSessionWithQuestions(freshSession.questions, {
+        operation: freshSession.questions[0]?.operation || "mul",
+        count: freshSession.questions.length,
+        pageSize: 4,
+        cols: 2,
+        rows: 2,
+        mathFormat: "vertical",
+        stageId: currentStageId
+      });
+    } catch (error) {
+      console.error("추천 학습 시작 실패:", error);
+      alert("추천 학습을 시작하지 못했습니다. 잠시 후 다시 눌러주세요.");
+    } finally {
+      startBtn.disabled = false;
+      startBtn.removeAttribute("aria-busy");
+      if (label) label.textContent = originalLabel;
+    }
+  }
+
+  //+_+// 통계 조회가 실패해도 버튼 자체는 항상 즉시 동작하도록 먼저 연결한다.
+  startBtn.onclick = handleStartAdaptiveSession;
+
   try {
     const attempts = await getRecentAttempts(50);
     const mistakes = await getMistakeQuestions();
@@ -2452,25 +2517,9 @@ async function renderAdaptiveRecommendCard() {
       `;
     }
 
-    startBtn.onclick = () => {
-      //+_+// 추천 버튼을 누르는 시점마다 새 문제 세트를 생성해 이전 배열이 재사용되지 않게 한다.
-      const freshSession = composeAdaptiveSession({
-        count: 10,
-        currentStageId,
-        attempts,
-        mistakes
-      });
-      startSessionWithQuestions(freshSession.questions, {
-        operation: freshSession.questions[0]?.operation || "mul",
-        count: freshSession.questions.length,
-        pageSize: 4,
-        cols: 2,
-        rows: 2,
-        mathFormat: "vertical",
-        stageId: currentStageId
-      });
-    };
-  } catch (_) {}
+  } catch (error) {
+    console.warn("추천 카드 표시 갱신 실패, 기본 추천을 유지합니다.", error);
+  }
 }
 
 // 🌟 미완료 Draft 복구 체크
