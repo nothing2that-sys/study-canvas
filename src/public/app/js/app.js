@@ -118,6 +118,8 @@ const detailModalSummary = document.querySelector("#detailModalSummary");
 const detailModalList = document.querySelector("#detailModalList");
 const modalViewCompactBtn = document.querySelector("#modalViewCompactBtn");
 const modalViewDetailBtn = document.querySelector("#modalViewDetailBtn");
+let currentModalSession = null;
+let currentModalViewMode = "detail";
 
 // 결과 화면 보기 모드 탭
 const resultViewCompactBtn = document.querySelector("#resultViewCompactBtn");
@@ -257,7 +259,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260824T114500000Z-phase-d",
+    appBuildId: "20260824T114822000Z-ux-fixes",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -2451,9 +2453,16 @@ async function renderAdaptiveRecommendCard() {
     }
 
     startBtn.onclick = () => {
-      startSessionWithQuestions(composed.questions, {
-        operation: composed.questions[0]?.operation || "mul",
-        count: composed.questions.length,
+      //+_+// 추천 버튼을 누르는 시점마다 새 문제 세트를 생성해 이전 배열이 재사용되지 않게 한다.
+      const freshSession = composeAdaptiveSession({
+        count: 10,
+        currentStageId,
+        attempts,
+        mistakes
+      });
+      startSessionWithQuestions(freshSession.questions, {
+        operation: freshSession.questions[0]?.operation || "mul",
+        count: freshSession.questions.length,
         pageSize: 4,
         cols: 2,
         rows: 2,

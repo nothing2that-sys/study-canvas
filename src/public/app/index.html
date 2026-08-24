@@ -18,7 +18,7 @@
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-180.png">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
-    <link rel="stylesheet" href="./css/app.css?v=20260824T114500000Z-phase-d">
+    <link rel="stylesheet" href="./css/app.css?v=20260824T114822000Z-ux-fixes">
   </head>
   <body>
     <div class="app-shell">
@@ -443,35 +443,43 @@
               <span class="page-indicator" id="pageIndicatorText">1 / 5 페이지</span>
             </div>
             <div class="dock-controls">
-              <button class="dock-btn" id="prevPageBtn" type="button" disabled aria-label="이전 페이지">←<span>이전</span></button>
-              <button class="dock-btn" id="nextPageBtn" type="button" aria-label="다음 페이지">→<span>다음</span></button>
-              <button class="dock-btn" id="undoBtn" type="button" aria-label="되돌리기">↶<span>취소</span></button>
-              <button class="dock-btn" id="redoBtn" type="button" aria-label="다시하기">↷<span>다시</span></button>
-              <button class="dock-btn active" id="penModeBtn" type="button" aria-label="펜 도구">✏️<span>펜</span></button>
-              <button class="dock-btn" id="eraserToggleBtn" type="button" aria-label="지우개 도구">⌫<span>지우개</span></button>
-              <button class="dock-btn danger" id="clearAllCanvasBtn" type="button" aria-label="현재 페이지 필기 비우기">🗑<span>비우기</span></button>
-              <button class="dock-btn" id="pencilOnlyToggleBtn" type="button" aria-label="입력 방식 전환"><span id="pencilModeText">손+펜</span></button>
-              <button class="dock-btn pause" id="pausePracticeBtn" type="button"><span>다음에 풀기</span></button>
-              <button class="dock-btn submit" id="submitPracticeBtn" type="button" style="display: none;"><span>제출</span>✓</button>
-              <details class="dock-more" data-interactive="true">
-                <summary class="dock-btn" aria-label="추가 도구">⋯<span>더보기</span></summary>
-                <div class="dock-more-panel">
-                  <div class="color-chips" role="radiogroup" aria-label="펜 색상">
-                    <button type="button" class="color-chip-btn active" data-color="#173f35" style="--chip-color: #173f35;" title="포레스트 그린"></button>
-                    <button type="button" class="color-chip-btn" data-color="#1b4d89" style="--chip-color: #1b4d89;" title="오션 블루"></button>
-                    <button type="button" class="color-chip-btn" data-color="#2c302e" style="--chip-color: #2c302e;" title="클래식 흑색"></button>
-                    <button type="button" class="color-chip-btn" data-color="#c62828" style="--chip-color: #c62828;" title="레드 잉크"></button>
-                  </div>
-                  <div class="width-chips" role="radiogroup" aria-label="펜 굵기">
-                    <button type="button" class="width-chip-btn" data-width="1.5">얇게</button>
-                    <button type="button" class="width-chip-btn active" data-width="2.5">보통</button>
-                    <button type="button" class="width-chip-btn" data-width="4.0">굵게</button>
-                  </div>
-                  <button type="button" id="largeProblemToggleBtn">큰 문제 보기</button>
-                  <button type="button" id="printWorksheetBtn">시험지 인쇄</button>
-                  <button type="button" id="printAnswerKeyBtn">정답지 인쇄</button>
+              <div class="dock-primary-actions" aria-label="페이지 이동 및 풀이 완료">
+                <div class="dock-navigation-group">
+                  <button class="dock-btn dock-btn-primary" id="prevPageBtn" type="button" disabled aria-label="이전 페이지">←<span>이전 페이지</span></button>
+                  <button class="dock-btn dock-btn-primary" id="nextPageBtn" type="button" aria-label="다음 페이지"><span>다음 페이지</span>→</button>
                 </div>
-              </details>
+                <div class="dock-session-group">
+                  <button class="dock-btn pause" id="pausePracticeBtn" type="button"><span>다음에 풀기</span></button>
+                  <button class="dock-btn submit" id="submitPracticeBtn" type="button" style="display: none;"><span>풀이 제출하기</span>✓</button>
+                </div>
+              </div>
+              <div class="dock-tool-row" aria-label="필기 도구">
+                <button class="dock-btn" id="undoBtn" type="button" aria-label="되돌리기">↶<span>취소</span></button>
+                <button class="dock-btn" id="redoBtn" type="button" aria-label="다시하기">↷<span>다시</span></button>
+                <button class="dock-btn active" id="penModeBtn" type="button" aria-label="펜 도구">✏️<span>펜</span></button>
+                <button class="dock-btn" id="eraserToggleBtn" type="button" aria-label="지우개 도구">⌫<span>지우개</span></button>
+                <button class="dock-btn danger" id="clearAllCanvasBtn" type="button" aria-label="현재 페이지 필기 비우기">🗑<span>비우기</span></button>
+                <button class="dock-btn" id="pencilOnlyToggleBtn" type="button" aria-label="입력 방식 전환"><span id="pencilModeText">손+펜</span></button>
+                <details class="dock-more" data-interactive="true">
+                  <summary class="dock-btn" aria-label="추가 도구">⋯<span>더보기</span></summary>
+                  <div class="dock-more-panel">
+                    <div class="color-chips" role="radiogroup" aria-label="펜 색상">
+                      <button type="button" class="color-chip-btn active" data-color="#173f35" style="--chip-color: #173f35;" title="포레스트 그린"></button>
+                      <button type="button" class="color-chip-btn" data-color="#1b4d89" style="--chip-color: #1b4d89;" title="오션 블루"></button>
+                      <button type="button" class="color-chip-btn" data-color="#2c302e" style="--chip-color: #2c302e;" title="클래식 흑색"></button>
+                      <button type="button" class="color-chip-btn" data-color="#c62828" style="--chip-color: #c62828;" title="레드 잉크"></button>
+                    </div>
+                    <div class="width-chips" role="radiogroup" aria-label="펜 굵기">
+                      <button type="button" class="width-chip-btn" data-width="1.5">얇게</button>
+                      <button type="button" class="width-chip-btn active" data-width="2.5">보통</button>
+                      <button type="button" class="width-chip-btn" data-width="4.0">굵게</button>
+                    </div>
+                    <button type="button" id="largeProblemToggleBtn">큰 문제 보기</button>
+                    <button type="button" id="printWorksheetBtn">시험지 인쇄</button>
+                    <button type="button" id="printAnswerKeyBtn">정답지 인쇄</button>
+                  </div>
+                </details>
+              </div>
             </div>
           </nav>
         </div>
@@ -661,6 +669,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./js/app.js?v=20260824T114500000Z-phase-d"></script>
+    <script type="module" src="./js/app.js?v=20260824T114822000Z-ux-fixes"></script>
   </body>
 </html>

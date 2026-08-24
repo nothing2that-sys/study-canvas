@@ -2991,7 +2991,7 @@ body.mode-grading {
 }
 
 #practiceView {
-  padding-bottom: calc(116px + var(--safe-bottom) + var(--keyboard-inset));
+  padding-bottom: calc(184px + var(--safe-bottom) + var(--keyboard-inset));
 }
 
 .practice-header {
@@ -3044,16 +3044,38 @@ body.mode-grading {
 }
 
 .dock-controls {
+  display: grid;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+.dock-primary-actions,
+.dock-navigation-group,
+.dock-session-group,
+.dock-tool-row {
   display: flex;
   align-items: stretch;
-  gap: 6px;
-  margin-top: 7px;
+  gap: 8px;
+}
+
+.dock-primary-actions {
+  justify-content: space-between;
+}
+
+.dock-navigation-group,
+.dock-session-group {
+  flex: 1 1 0;
+}
+
+.dock-tool-row {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
 }
 
-.dock-controls::-webkit-scrollbar {
+.dock-tool-row::-webkit-scrollbar {
   display: none;
 }
 
@@ -3079,6 +3101,34 @@ body.mode-grading {
   padding: 6px 9px;
 }
 
+.dock-btn-primary,
+.dock-btn.pause,
+.dock-btn.submit {
+  min-height: 56px;
+  flex: 1 1 0;
+  padding: 10px 18px;
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.dock-btn-primary {
+  border-width: 2px;
+  border-color: var(--green);
+  color: var(--green);
+  background: var(--green-soft);
+}
+
+.dock-btn-primary:disabled {
+  border-color: var(--line);
+  background: var(--cream);
+  color: var(--muted);
+}
+
+.dock-btn.pause {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--paper));
+}
+
 .dock-btn.active,
 .dock-btn[aria-pressed="true"] {
   border-color: var(--green);
@@ -3095,6 +3145,26 @@ body.mode-grading {
   background: var(--accent);
   border-color: var(--accent);
   color: white;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+@media (max-width: 720px) {
+  #practiceView {
+    padding-bottom: calc(238px + var(--safe-bottom) + var(--keyboard-inset));
+  }
+
+  .dock-primary-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .dock-btn-primary,
+  .dock-btn.pause,
+  .dock-btn.submit {
+    min-height: 54px;
+    padding-inline: 12px;
+    font-size: 14px;
+  }
 }
 
 .dock-more {
