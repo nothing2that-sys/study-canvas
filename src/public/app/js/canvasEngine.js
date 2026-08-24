@@ -26,6 +26,27 @@ export const InputState = Object.freeze({
   CANCELING: "canceling"
 });
 
+export function resolveInputProfile(options = {}) {
+  const savedProfile = options.savedProfile;
+  if (savedProfile && Object.values(InputProfile).includes(savedProfile)) {
+    return savedProfile;
+  }
+
+  const userAgent = String(options.userAgent || "");
+  const maxTouchPoints = Number(options.maxTouchPoints) || 0;
+  const isIPad = /iPad/i.test(userAgent) || (/Macintosh/i.test(userAgent) && maxTouchPoints > 1);
+  const legacyPencilOnly = options.legacyPencilOnly;
+
+  if (legacyPencilOnly !== undefined && legacyPencilOnly !== null) {
+    if (String(legacyPencilOnly) === "true") {
+      return isIPad ? InputProfile.IPAD_PEN_ONLY : InputProfile.DESKTOP_MOUSE_PEN;
+    }
+    return isIPad ? InputProfile.IPAD_PEN_TOUCH : InputProfile.DESKTOP_MOUSE_PEN;
+  }
+
+  return isIPad ? InputProfile.IPAD_PEN_ONLY : InputProfile.DESKTOP_MOUSE_PEN;
+}
+
 /**
  * 단일 입력 수락 판정기 (상태 머신 규칙 완벽 준수)
  */
@@ -82,13 +103,18 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   let isDrawing = false;
   let activePenPointerId = null;
   let activeTouchPointerId = null;
+  let activeTouchPointerType = null;
   let currentState = InputState.IDLE;
   let lastPenEndTime = 0;
   let cooldownTimer = null;
+  let destroyed = false;
 
-  // 터치 기기 여부 판정
-  function isTouchEnvironment() {
-    return typeof navigator !== "undefined" && (navigator.maxTouchPoints > 0 || (typeof window !== "undefined" && "ontouchstart" in window));
+  function getEnvironmentProfile() {
+    return resolveInputProfile({
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+      maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
+      hasTouchStart: typeof window !== "undefined" && "ontouchstart" in window
+    });
   }
 
   // 입력 프로필 결정
@@ -97,7 +123,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     if (options.pencilOnly) {
       currentProfile = InputProfile.IPAD_PEN_ONLY;
     } else {
-      currentProfile = isTouchEnvironment() ? InputProfile.IPAD_PEN_TOUCH : InputProfile.DESKTOP_MOUSE_PEN;
+      currentProfile = getEnvironmentProfile();
     }
   }
   if (options.readOnly) currentProfile = InputProfile.READ_ONLY;
@@ -132,6 +158,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   updateTouchAction();
 
   function resize() {
+    if (destroyed) return;
     const rect = canvasElement.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
 
@@ -142,6 +169,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   function redraw() {
+    if (destroyed) return;
     const rect = canvasElement.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
 
@@ -298,10 +326,12 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   function scheduleRender() {
+    if (destroyed) return;
     if (typeof requestAnimationFrame === "function") {
       if (rafId) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;
+        if (destroyed) return;
         renderIncremental();
       });
     } else {
@@ -371,7 +401,8 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   // Pointer Event Handlers
   // ----------------------------------------------------
   function onPointerDown(e) {
-    if (settings.readOnly) return;
+    if (destroyed || settings.readOnly) return;
+    if (activePenPointerId !== null) return;
 
     // Cooldown 검사
     const now = Date.now();
@@ -387,15 +418,23 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     // Pen 입력인 경우 이전 터치 드로잉 즉시 취소 및 Pen Active Lock 획득
     if (e.pointerType === "pen") {
       if (currentState === InputState.TOUCH_DRAWING && currentStroke) {
-        // 터치 스트로크 폐기
         currentStroke = null;
+      }
+      if (activeTouchPointerId !== null) {
+        try {
+          if (typeof canvasElement.releasePointerCapture === "function") {
+            canvasElement.releasePointerCapture(activeTouchPointerId);
+          }
+        } catch (_) {}
       }
       currentState = InputState.PEN_DRAWING;
       activePenPointerId = e.pointerId;
       activeTouchPointerId = null;
+      activeTouchPointerType = null;
     } else {
       currentState = InputState.TOUCH_DRAWING;
       activeTouchPointerId = e.pointerId;
+      activeTouchPointerType = e.pointerType;
     }
 
     if (e.cancelable) e.preventDefault();
@@ -444,16 +483,19 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     scheduleRender();
   }
 
-  function onPointerMove(e) {
-    if (!isDrawing) return;
-
-    if (e.pointerType === "pen") {
-      if (activePenPointerId !== null && e.pointerId !== undefined && e.pointerId !== activePenPointerId) return;
-    } else {
-      if (activeTouchPointerId !== null && e.pointerId !== undefined && e.pointerId !== activeTouchPointerId) return;
+  function matchesActivePointer(e) {
+    if (!e) return false;
+    if (activePenPointerId !== null) {
+      return e.pointerType === "pen" && e.pointerId === activePenPointerId;
     }
+    if (activeTouchPointerId !== null) {
+      return e.pointerType === activeTouchPointerType && e.pointerId === activeTouchPointerId;
+    }
+    return false;
+  }
 
-    if (!shouldAcceptPointer(e, settings.profile, currentState)) return;
+  function onPointerMove(e) {
+    if (destroyed || !isDrawing || !matchesActivePointer(e)) return;
 
     if (e.cancelable) e.preventDefault();
 
@@ -472,27 +514,16 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   function onPointerUp(e) {
-    if (!isDrawing) return;
+    if (destroyed || !isDrawing || !matchesActivePointer(e)) return;
 
     const isPen = e.pointerType === "pen";
-    const isTouch = e.pointerType === "touch";
-
-    // 활성 포인터와 일치하지 않는 다른 포인터의 up 이벤트는 무시
-    if (activePenPointerId !== null) {
-      if (!isPen || (e.pointerId !== undefined && e.pointerId !== activePenPointerId)) {
-        return;
-      }
-    } else if (activeTouchPointerId !== null) {
-      if (!isTouch || (e.pointerId !== undefined && e.pointerId !== activeTouchPointerId)) {
-        return;
-      }
-    }
 
     if (e.cancelable) e.preventDefault();
 
     isDrawing = false;
     activePenPointerId = null;
     activeTouchPointerId = null;
+    activeTouchPointerType = null;
     cachedCanvasRect = null;
     cachedGridInfo = null;
 
@@ -524,27 +555,16 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   function onPointerCancel(e) {
-    if (!isDrawing) return;
+    if (destroyed || !isDrawing || !matchesActivePointer(e)) return;
 
     const isPen = e.pointerType === "pen";
-    const isTouch = e.pointerType === "touch";
-
-    // 활성 포인터와 일치하지 않는 다른 포인터의 cancel 이벤트는 무시
-    if (activePenPointerId !== null) {
-      if (!isPen || (e.pointerId !== undefined && e.pointerId !== activePenPointerId)) {
-        return;
-      }
-    } else if (activeTouchPointerId !== null) {
-      if (!isTouch || (e.pointerId !== undefined && e.pointerId !== activeTouchPointerId)) {
-        return;
-      }
-    }
 
     if (e.cancelable) e.preventDefault();
 
     isDrawing = false;
     activePenPointerId = null;
     activeTouchPointerId = null;
+    activeTouchPointerType = null;
     cachedCanvasRect = null;
     cachedGridInfo = null;
 
@@ -580,16 +600,26 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   function onLostPointerCapture(e) {
-    if (isDrawing) {
-      if (activePenPointerId !== null && e.pointerId === activePenPointerId) {
-        onPointerUp(e);
-      } else if (activeTouchPointerId !== null && e.pointerId === activeTouchPointerId) {
-        onPointerUp(e);
-      }
-    }
+    if (!destroyed && isDrawing && matchesActivePointer(e)) onPointerUp(e);
   }
 
   function resetActivePointers() {
+    const activePointerId = activePenPointerId !== null ? activePenPointerId : activeTouchPointerId;
+    if (activePointerId !== null) {
+      try {
+        if (typeof canvasElement.releasePointerCapture === "function") {
+          canvasElement.releasePointerCapture(activePointerId);
+        }
+      } catch (_) {}
+    }
+    if (rafId && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    if (cooldownTimer) {
+      clearTimeout(cooldownTimer);
+      cooldownTimer = null;
+    }
     if (isDrawing) {
       if (currentStroke && currentStroke.points.length > 0) {
         strokes.push(currentStroke);
@@ -601,9 +631,16 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     }
     activePenPointerId = null;
     activeTouchPointerId = null;
+    activeTouchPointerType = null;
     currentState = InputState.IDLE;
     cachedCanvasRect = null;
     cachedGridInfo = null;
+  }
+
+  function handleVisibilityChange() {
+    if (typeof document !== "undefined" && document.hidden) {
+      resetActivePointers();
+    }
   }
 
   // ----------------------------------------------------
@@ -626,6 +663,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     addManagedListener(window, "blur", resetActivePointers);
     addManagedListener(window, "pagehide", resetActivePointers);
   }
+  if (typeof document !== "undefined") {
+    addManagedListener(document, "visibilitychange", handleVisibilityChange);
+  }
 
   const preventDefaults = (e) => {
     if (e.cancelable) e.preventDefault();
@@ -637,6 +677,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   let resizeObserver = null;
   if (typeof ResizeObserver !== "undefined") {
     resizeObserver = new ResizeObserver(() => {
+      if (destroyed) return;
       resize();
     });
     resizeObserver.observe(canvasElement);
@@ -662,7 +703,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       if (pencilOnly) {
         settings.profile = InputProfile.IPAD_PEN_ONLY;
       } else {
-        settings.profile = isTouchEnvironment() ? InputProfile.IPAD_PEN_TOUCH : InputProfile.DESKTOP_MOUSE_PEN;
+        settings.profile = getEnvironmentProfile() === InputProfile.IPAD_PEN_ONLY
+          ? InputProfile.IPAD_PEN_TOUCH
+          : InputProfile.DESKTOP_MOUSE_PEN;
       }
       updateTouchAction();
     },
@@ -720,11 +763,11 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       return strokes.length === 0;
     },
     resize,
+    redraw,
     destroy() {
-      if (rafId && typeof cancelAnimationFrame === "function") {
-        cancelAnimationFrame(rafId);
-      }
-      if (cooldownTimer) clearTimeout(cooldownTimer);
+      if (destroyed) return;
+      resetActivePointers();
+      destroyed = true;
       if (resizeObserver) {
         resizeObserver.disconnect();
         resizeObserver = null;

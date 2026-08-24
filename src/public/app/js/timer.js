@@ -183,6 +183,18 @@ export function createQuestionTimer(options = {}) {
   };
 }
 
+export function startSessionTimer(timer, initialElapsedMs = 0) {
+  if (!timer || typeof timer.reset !== "function" || typeof timer.start !== "function") {
+    throw new TypeError("유효한 QuestionTimer 인스턴스가 필요합니다.");
+  }
+  const safeElapsedMs = Number.isFinite(initialElapsedMs) && initialElapsedMs > 0
+    ? Number(initialElapsedMs)
+    : 0;
+  timer.reset();
+  timer.start(safeElapsedMs);
+  return safeElapsedMs;
+}
+
 export function formatTime(ms, mode = "digital") {
   const safeMs = Math.max(0, Math.round(ms || 0));
   const totalSeconds = safeMs / 1000;

@@ -1,8 +1,8 @@
 import { generateQuestionSet, REFERENCE_CURRICULUM, mapToRefLevel, calculateCandidateCapacity } from "./mathGen.js";
 import { createSession, SessionState, mistakeToQuestion, escapeHtml } from "./sessionEngine.js";
-import { createQuestionTimer, formatTime } from "./timer.js";
+import { createQuestionTimer, formatTime, startSessionTimer } from "./timer.js";
 import { getMultiplicationSteps, getDivisionSteps } from "./explainer.js";
-import { createDrawingCanvas, InputProfile } from "./canvasEngine.js";
+import { createDrawingCanvas, InputProfile, resolveInputProfile } from "./canvasEngine.js";
 import { saveSessionRecord, getRecentSessions, getMistakeQuestions, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, clearAllData, saveDraftSession, getDraftSession, clearDraftSession, getRecentAttempts } from "./storage.js";
 import { playCorrectSound, playWrongSound, playFanfareSound, playClickSound, toggleSound, isSoundMuted } from "./sound.js";
 import { launchConfetti } from "./confetti.js";
@@ -170,24 +170,13 @@ let currentFocusedProblemIndex = 0;
 //+_+// 명시적 입력 프로필 결정 (기기 환경 및 사용자 저장값 반영)
 function resolveDefaultInputProfile() {
   try {
-    const saved = localStorage.getItem("math_canvas_input_profile");
-    if (saved && Object.values(InputProfile).includes(saved)) {
-      return saved;
-    }
-    const legacySaved = localStorage.getItem("math_canvas_pencil_only");
-    const isTouch = typeof navigator !== "undefined" && (navigator.maxTouchPoints > 0 || (typeof window !== "undefined" && "ontouchstart" in window));
-    const isAppleTablet = typeof navigator !== "undefined" && (/iPad|Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-
-    if (legacySaved !== null) {
-      if (legacySaved === "true") {
-        return isAppleTablet ? InputProfile.IPAD_PEN_ONLY : InputProfile.DESKTOP_MOUSE_PEN;
-      } else {
-        return isTouch ? InputProfile.IPAD_PEN_TOUCH : InputProfile.DESKTOP_MOUSE_PEN;
-      }
-    }
-
-    if (isAppleTablet) return InputProfile.IPAD_PEN_ONLY;
-    return isTouch ? InputProfile.IPAD_PEN_TOUCH : InputProfile.DESKTOP_MOUSE_PEN;
+    return resolveInputProfile({
+      savedProfile: localStorage.getItem("math_canvas_input_profile"),
+      legacyPencilOnly: localStorage.getItem("math_canvas_pencil_only"),
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+      maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
+      hasTouchStart: typeof window !== "undefined" && "ontouchstart" in window
+    });
   } catch (_) {
     return InputProfile.DESKTOP_MOUSE_PEN;
   }
@@ -233,6 +222,8 @@ let currentPenWidth = 2.5;
 let currentIsEraser = false;
 const questionStrokesMap = new Map(); // questionId -> strokes array
 let activeCanvasInstances = new Map(); // questionId -> canvas instance
+let gradingCanvasInstances = [];
+let gradingRenderRevision = 0;
 let lastActiveCanvasId = null;
 
 // 정밀 타이머 인스턴스
@@ -1270,8 +1261,7 @@ function startSessionWithQuestions(questions, config) {
   currentSession = createSession(config, questions);
   currentSession.start();
 
-  questionTimer.reset();
-  questionTimer.start(0);
+  startSessionTimer(questionTimer, 0);
 
   switchView(practiceView);
   renderCurrentWorksheetPage();
@@ -1606,6 +1596,9 @@ async function handleSubmitPractice() {
 // ----------------------------------------------------
 function renderGradingView() {
   if (!currentSession) return;
+  const renderRevision = ++gradingRenderRevision;
+  gradingCanvasInstances.forEach((instance) => instance.destroy());
+  gradingCanvasInstances = [];
   const questions = currentSession.questions;
 
   toggleAnswersText.textContent = hideAnswersInGrading ? "정답 전체 보이기" : "정답 전체 숨기기";
@@ -1706,6 +1699,7 @@ function renderGradingView() {
 
   // 채점 뷰에서 학생 필기 캔버스 복원 및 채점자 빨간 펜 필기 활성화
   requestAnimationFrame(() => {
+    if (renderRevision !== gradingRenderRevision) return;
     // 1. 먼저 autoFitProblemStages를 실행하여 수식 그리드의 transform scale을 확정
     autoFitProblemStages();
 
@@ -1728,9 +1722,14 @@ function renderGradingView() {
         createdGradingInstances.push(gInstance);
       }
     });
+    gradingCanvasInstances = createdGradingInstances;
 
     // 2. DOM 레이아웃 정착 후 2차 정밀 redraw로 1:1 완벽 정렬 보장
     setTimeout(() => {
+      if (renderRevision !== gradingRenderRevision) {
+        createdGradingInstances.forEach((instance) => instance.destroy());
+        return;
+      }
       autoFitProblemStages();
       createdGradingInstances.forEach((inst) => {
         inst.resize();
@@ -1972,6 +1971,9 @@ async function terminateSession() {
   questionTimer.stop();
   activeCanvasInstances.forEach((inst) => inst.destroy());
   activeCanvasInstances.clear();
+  gradingCanvasInstances.forEach((inst) => inst.destroy());
+  gradingCanvasInstances = [];
+  gradingRenderRevision += 1;
   currentSession = null;
   questionStrokesMap.clear();
   switchView(setupView);
@@ -2480,8 +2482,7 @@ async function checkDraftResumeOnStartup() {
           currentSession.goToPage(draft.currentPageIndex || 0);
 
           //+_+// 단일 계약으로 복원 시간부터 정밀 흐름 시작!
-          questionTimer.reset();
-          questionTimer.start(draft.elapsedMs || 0);
+          startSessionTimer(questionTimer, draft.elapsedMs || 0);
 
           switchView(practiceView);
           renderCurrentWorksheetPage();
@@ -2566,5 +2567,3 @@ updatePencilModeUI();
 renderAdaptiveRecommendCard();
 checkDraftResumeOnStartup();
 setupServiceWorkerUpdates();
-
-

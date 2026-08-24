@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createQuestionTimer, formatTime } from "../public/app/js/timer.js";
+import { createQuestionTimer, formatTime, startSessionTimer } from "../public/app/js/timer.js";
 import { createSession } from "../public/app/js/sessionEngine.js";
 import { saveDraftSession, getDraftSession, clearDraftSession } from "../public/app/js/storage.js";
 import { composeAdaptiveSession } from "../public/app/js/adaptiveEngine.js";
@@ -42,6 +42,21 @@ test("R2-P0-01: QuestionTimer start(initialElapsedMs) 단일 계약 및 복원 �
   assert.equal(formatTime(12340, "korean"), "12.3초");
 
   timer.destroy();
+});
+
+test("Phase A: 실제 앱 세션 타이머 진입점은 새 세션과 이어풀기에 동일한 계약을 사용한다", () => {
+  const calls = [];
+  const timer = {
+    reset: () => calls.push(["reset"]),
+    start: (elapsedMs) => calls.push(["start", elapsedMs])
+  };
+
+  assert.equal(startSessionTimer(timer, 0), 0);
+  assert.deepEqual(calls, [["reset"], ["start", 0]]);
+
+  calls.length = 0;
+  assert.equal(startSessionTimer(timer, 25400), 25400);
+  assert.deepEqual(calls, [["reset"], ["start", 25400]]);
 });
 
 test("R2-P0-02 & R2-P0-05: 세션 생성, Draft 저장 및 inputProfile 복원 무결성 검증", async () => {
