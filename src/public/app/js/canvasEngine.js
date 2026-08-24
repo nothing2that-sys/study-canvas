@@ -404,7 +404,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       cachedGridInfo = getGridBoundingInfo();
     }
 
-    const events = (typeof e.getCoalescedEvents === "function") ? e.getCoalescedEvents() : [e];
+    const coalescedEvents = typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : null;
+    //+_+// Chrome이 빈 coalesced 배열을 반환하면 원본 PointerEvent를 사용해 시작 좌표를 보존한다.
+    const events = Array.isArray(coalescedEvents) && coalescedEvents.length > 0 ? coalescedEvents : [e];
     const points = [];
 
     for (const evt of events) {

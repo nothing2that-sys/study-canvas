@@ -262,7 +262,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260824T081500000Z-faf4cc9",
+    appBuildId: "20260824T083500000Z-fff6b83",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -1475,16 +1475,24 @@ function updatePencilModeUI() {
   }
 
   if (pencilOnlyToggleBtn) {
-    pencilOnlyToggleBtn.classList.toggle("active", isPenOnly);
+    pencilOnlyToggleBtn.classList.toggle("active", isPenOnly || isDesktop);
+    pencilOnlyToggleBtn.disabled = isDesktop;
+    pencilOnlyToggleBtn.title = isDesktop
+      ? "PC에서는 마우스와 펜 입력이 항상 활성화됩니다."
+      : "애플 펜슬 전용 필기 모드를 전환합니다.";
   }
   if (pencilModeText) {
     pencilModeText.textContent = modeLabel;
   }
   if (floatPencilOnlyBtn) {
-    floatPencilOnlyBtn.classList.toggle("active", isPenOnly);
+    floatPencilOnlyBtn.classList.toggle("active", isPenOnly || isDesktop);
+    floatPencilOnlyBtn.disabled = isDesktop;
+    floatPencilOnlyBtn.title = isDesktop
+      ? "PC에서는 마우스와 펜 입력이 항상 활성화됩니다."
+      : "애플 펜슬 전용 필기 모드를 전환합니다.";
   }
   if (floatPencilLabel) {
-    floatPencilLabel.textContent = shortLabel;
+    floatPencilLabel.textContent = isDesktop ? "마우스 사용 중" : shortLabel;
   }
 }
 
