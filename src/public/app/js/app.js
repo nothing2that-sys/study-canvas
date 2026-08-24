@@ -12,6 +12,7 @@ import { setupInteractionGuard, AppMode } from "./interactionGuard.js";
 import { composeAdaptiveSession } from "./adaptiveEngine.js";
 import { calculateStageMastery, analyzeWeaknesses } from "./masteryEngine.js";
 import { createDraftSaveCoordinator, DRAFT_SCHEMA_VERSION, DraftSaveStatus, navigateWithDraftFlush } from "./draftEngine.js";
+import { createUpdateCoordinator, waitForServiceWorkerControllerChange } from "./updateEngine.js";
 
 // 앱 전역 인터랙션 가드 초기화
 const interactionGuard = setupInteractionGuard(typeof document !== "undefined" ? document : null);
@@ -261,7 +262,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260823_3",
+    appBuildId: "20260824T080500000Z-d837374",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -2583,7 +2584,7 @@ async function checkDraftResumeOnStartup() {
   }
 }
 
-// 🌟 PWA 업데이트 감지 및 배너 연동
+//+_+// PWA 업데이트는 Draft 저장과 새 controller 확인이 모두 성공한 경우에만 적용한다.
 function setupServiceWorkerUpdates() {
   if (!("serviceWorker" in navigator)) return;
 
@@ -2597,12 +2598,11 @@ function setupServiceWorkerUpdates() {
     });
   }
 
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!refreshing) {
-      refreshing = true;
-      window.location.reload();
-    }
+  const updateCoordinator = createUpdateCoordinator({
+    flush: flushDraftSave,
+    getController: () => navigator.serviceWorker.controller,
+    waitForControllerChange: () => waitForServiceWorkerControllerChange(navigator.serviceWorker),
+    reload: () => window.location.reload()
   });
 
   navigator.serviceWorker.register("./service-worker.js").then((reg) => {
@@ -2611,13 +2611,15 @@ function setupServiceWorkerUpdates() {
       if (updateBanner) updateBanner.hidden = false;
       if (applyUpdateBtn) {
         applyUpdateBtn.onclick = async () => {
+          if (updateCoordinator.isUpdating) return;
+          applyUpdateBtn.disabled = true;
           try {
-            await flushDraftSave();
+            await updateCoordinator.apply(worker);
           } catch (err) {
-            alert("임시 저장에 실패하여 업데이트를 중단합니다. 저장 후 다시 시도해 주세요.");
-            return;
+            alert(`업데이트를 중단했습니다. ${err.message || "저장 또는 앱 교체에 실패했습니다."}`);
+          } finally {
+            applyUpdateBtn.disabled = false;
           }
-          worker.postMessage({ type: "SKIP_WAITING" });
         };
       }
     }

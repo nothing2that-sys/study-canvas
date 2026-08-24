@@ -130,12 +130,15 @@ export function composeAdaptiveSession(options = {}) {
   let addedVariants = 0;
   for (const m of mistakes) {
     if (addedVariants >= variantCount) break;
-    try {
-      const variant = generateSimilarQuestion(m, rand);
-      if (addQuestion(variant)) {
-        addedVariants += 1;
+    //+_+// 앞 단계 문제와 key가 겹치면 제한 횟수 안에서 새 변형을 다시 생성한다.
+    for (let attempt = 0; attempt < 20 && addedVariants < variantCount; attempt += 1) {
+      try {
+        const variant = generateSimilarQuestion(m, rand);
+        if (addQuestion(variant)) addedVariants += 1;
+      } catch (_) {
+        break;
       }
-    } catch (_) {}
+    }
   }
 
   // 4. 이전 완료 단계 복습 문제 10%

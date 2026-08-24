@@ -1,16 +1,17 @@
-const CACHE_NAME = "math-canvas-pro-v20260823_3";
+const CACHE_NAME = "math-canvas-pro-v20260824T080500000Z-d837374";
 
 //+_+// PWA 오프라인 구동을 위한 필수 App Shell 자산 목록
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/app.css",
-  "./js/app.js",
+  "./css/app.css?v=20260824T080500000Z-d837374",
+  "./js/app.js?v=20260824T080500000Z-d837374",
   "./js/canvasEngine.js",
   "./js/sessionEngine.js",
   "./js/mathGen.js",
   "./js/storage.js",
   "./js/draftEngine.js",
+  "./js/updateEngine.js",
   "./js/timer.js",
   "./js/explainer.js",
   "./js/sound.js",
@@ -23,6 +24,7 @@ const APP_SHELL = [
   "./js/adaptiveEngine.js",
   "./js/interactionGuard.js",
   "./manifest.webmanifest",
+  "./build-manifest.json",
   "./icon.svg",
   "./icon-180.png",
   "./icon-192.png",
@@ -64,16 +66,20 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
   const isNavigation = event.request.mode === "navigate" || event.request.destination === "document";
 
   if (isNavigation) {
     // Navigation: Network First -> Cache Fallback (index.html)
     event.respondWith(
       fetch(event.request)
-        .then((response) => {
+        .then(async (response) => {
           if (response && response.status === 200) {
             const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+            try {
+              const cache = await caches.open(CACHE_NAME);
+              await cache.put("./index.html", copy);
+            } catch {}
           }
           return response;
         })
@@ -84,23 +90,17 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 정적 Asset: Cache First with Network Fallback & Update
+  //+_+// 정적 Asset은 BUILD_ID cache 단위로 Cache First와 Network Fallback을 사용한다.
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // 백그라운드에서 캐시 최신화 시도
-        fetch(event.request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
-          }
-        }).catch(() => {});
-        return cachedResponse;
-      }
-
-      return fetch(event.request).then((response) => {
+    caches.match(event.request).then(async (cachedResponse) => {
+      if (cachedResponse) return cachedResponse;
+      return fetch(event.request).then(async (response) => {
         if (response && response.status === 200) {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          try {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(event.request, copy);
+          } catch {}
         }
         return response;
       });
