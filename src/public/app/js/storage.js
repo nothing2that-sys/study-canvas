@@ -70,6 +70,53 @@ export function clearCurrentLearner() {
   }
 }
 
+export function _resetActiveLearnerInMemoryForTesting() {
+  activeLearnerId = null;
+}
+
+export async function restoreActiveLearner(options = {}) {
+  let storedId = null;
+  if (typeof localStorage !== "undefined") {
+    try {
+      storedId = localStorage.getItem(ACTIVE_LEARNER_STORAGE_KEY);
+    } catch (_) {}
+  }
+  if (!storedId) {
+    storedId = activeLearnerId;
+  }
+
+  if (storedId) {
+    const profile = await getLearnerProfile(storedId);
+    if (profile && !profile.archived) {
+      activeLearnerId = profile.id;
+      return profile.id;
+    }
+  }
+
+  // storedId가 없거나 유효하지 않거나(미존재) 보관(archived)된 경우 -> 활성 목록에서 fallback
+  const activeLearners = await getActiveLearners();
+  if (activeLearners.length > 0) {
+    const fallbackId = activeLearners[0].id;
+    setCurrentLearnerId(fallbackId);
+    return fallbackId;
+  }
+
+  clearCurrentLearner();
+  return null;
+}
+
+export async function closeDB() {
+  if (dbPromise) {
+    try {
+      const db = await dbPromise;
+      if (db && typeof db.close === "function") {
+        db.close();
+      }
+    } catch (_) {}
+    dbPromise = null;
+  }
+}
+
 // ============================================================================
 // 2. IndexedDB 연결 및 스키마 관리
 // ============================================================================
@@ -705,6 +752,121 @@ export async function clearDraftSession(options = {}) {
 }
 
 /**
+ * 단계별 학습 진도 및 마스터리 기록 저장 (learnerId 격리)
+ */
+export async function saveStageProgress(progressData, options = {}) {
+  if (!progressData) throw new Error("저장할 stageProgress 데이터가 필요합니다.");
+  const db = await getDB();
+  const stageId = progressData.stageId || progressData.stageKey;
+  if (!stageId) throw new Error("stageId 또는 stageKey가 필요합니다.");
+
+  const targetLearnerId = progressData.learnerId || options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
+  const storageKey = (!targetLearnerId || targetLearnerId === DEFAULT_LEGACY_LEARNER_ID)
+    ? stageId
+    : `${targetLearnerId}:${stageId}`;
+
+  const record = {
+    ...progressData,
+    stageKey: storageKey,
+    stageId: stageId,
+    learnerId: targetLearnerId,
+    updatedAt: progressData.updatedAt || Date.now()
+  };
+
+  if (db.isMemory) {
+    db.stageProgress.set(storageKey, record);
+    return record;
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("stageProgress", "readwrite");
+    tx.objectStore("stageProgress").put(record);
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/**
+ * 특정 단계의 학습 진도 조회 (learnerId 격리)
+ */
+export async function getStageProgress(stageId, options = {}) {
+  if (!stageId) return null;
+  const db = await getDB();
+  const targetLearnerId = options.learnerId !== undefined
+    ? options.learnerId
+    : (getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID);
+
+  const storageKey = (!targetLearnerId || targetLearnerId === DEFAULT_LEGACY_LEARNER_ID)
+    ? stageId
+    : `${targetLearnerId}:${stageId}`;
+
+  if (db.isMemory) {
+    let rec = db.stageProgress.get(storageKey);
+    if (!rec && targetLearnerId === DEFAULT_LEGACY_LEARNER_ID) {
+      rec = db.stageProgress.get(stageId);
+    }
+    return rec || null;
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction("stageProgress", "readonly");
+      const store = tx.objectStore("stageProgress");
+      const req = store.get(storageKey);
+      req.onsuccess = () => {
+        if (req.result) {
+          resolve(req.result);
+        } else if (targetLearnerId === DEFAULT_LEGACY_LEARNER_ID) {
+          const fallbackReq = store.get(stageId);
+          fallbackReq.onsuccess = () => resolve(fallbackReq.result || null);
+          fallbackReq.onerror = () => resolve(null);
+        } else {
+          resolve(null);
+        }
+      };
+      req.onerror = () => resolve(null);
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * 전체 단계 학습 진도 목록 조회 (learnerId 격리)
+ */
+export async function getAllStageProgress(options = {}) {
+  const db = await getDB();
+  const targetLearnerId = options.allLearners ? null : resolveActiveLearnerId(options);
+  let all = [];
+
+  if (db.isMemory) {
+    all = Array.from(db.stageProgress.values());
+  } else {
+    all = await new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction("stageProgress", "readonly");
+        const store = tx.objectStore("stageProgress");
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = (e) => reject(e.target.error);
+      } catch (_) {
+        resolve([]);
+      }
+    });
+  }
+
+  if (targetLearnerId) {
+    if (targetLearnerId === DEFAULT_LEGACY_LEARNER_ID) {
+      all = all.filter((p) => (!p.learnerId || p.learnerId === DEFAULT_LEGACY_LEARNER_ID || !String(p.stageKey || "").includes(":")));
+    } else {
+      all = all.filter((p) => p.learnerId === targetLearnerId);
+    }
+  }
+
+  return all.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+/**
  * 특정 세션의 문제별 스트로크 조회
  */
 export async function getSessionStrokesMap(sessionId) {
@@ -1104,7 +1266,7 @@ export async function clearAllData(options = {}) {
         if ((p.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.stageProgress.delete(key);
       }
       for (const [key, st] of db.strokes.entries()) {
-        if (st.learnerId === targetLearnerId) db.strokes.delete(key);
+        if ((st.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.strokes.delete(key);
       }
       const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
       db.draftSessions.delete(draftKey);
@@ -1143,6 +1305,15 @@ export async function clearAllData(options = {}) {
       // stageProgress
       const progressStore = tx.objectStore("stageProgress");
       progressStore.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if ((cursor.value.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) cursor.delete();
+          cursor.continue();
+        }
+      };
+      // strokes
+      const strokeStore = tx.objectStore("strokes");
+      strokeStore.openCursor().onsuccess = (e) => {
         const cursor = e.target.result;
         if (cursor) {
           if ((cursor.value.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) cursor.delete();
