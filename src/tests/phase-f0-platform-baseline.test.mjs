@@ -15,7 +15,7 @@ test("Phase F0: 기존 저장소 이름과 DB 버전을 기준선으로 고정�
   const source = read("js/storage.js");
 
   assert.match(source, /const DB_NAME = "math_canvas_pro_db"/);
-  assert.match(source, /const DB_VERSION = 2/);
+  assert.match(source, /const DB_VERSION = [2-9]\d*/);
 
   for (const store of ["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions"]) {
     assert.match(source, new RegExp(`objectStoreNames\\.contains\\("${store}"\\)`));

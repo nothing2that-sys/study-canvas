@@ -1,23 +1,83 @@
 import { normalizeDraft } from "./draftEngine.js";
 
 /**
- * Math Canvas Pro - IndexedDB 로컬 영구 스토리지 관리자 (Phase 4)
- * SSOT Section 95~108 명세 준수
- * - 세션 기록, 문제별 채점 결과, 빨간 펜 코멘트 영구 저장
- * - 캔버스 손계산 필기 스트로크 영구 저장
- * - 오답 큐(Mistake Queue) 추적 및 관리
+ * Math Canvas Pro - IndexedDB 로컬 영구 스토리지 관리자 (Phase F1: 스키마 버전 및 학습자 프로필)
+ * SSOT Section 95~108 및 Phase F1 명세 준수
+ * - DB_VERSION 3 업그레이드 및 learnerProfiles Store 추가
+ * - 학습자별 데이터 격리 (sessions, attempts, mistakes, stageProgress, strokes, draftSessions)
+ * - 레거시 데이터 호환 계약 (DEFAULT_LEGACY_LEARNER_ID)
+ * - 현재 선택 학습자(Active Learner) 상태 관리
  */
 
 const DB_NAME = "math_canvas_pro_db";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
+
+//+_+// 기존 레거시 데이터 및 미지정 데이터용 기본 학습자 식별자
+export const DEFAULT_LEGACY_LEARNER_ID = "legacy_default_learner";
+const ACTIVE_LEARNER_STORAGE_KEY = "math_canvas_pro_active_learner_id";
 
 let dbPromise = null;
+let activeLearnerId = null;
+
+// ============================================================================
+// 1. 현재 학습자 상태 관리
+// ============================================================================
+
+export function setCurrentLearnerId(learnerId) {
+  if (learnerId !== null && learnerId !== undefined) {
+    activeLearnerId = String(learnerId).trim();
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.setItem(ACTIVE_LEARNER_STORAGE_KEY, activeLearnerId);
+      } catch (_) {}
+    }
+  } else {
+    activeLearnerId = null;
+    if (typeof localStorage !== "undefined") {
+      try {
+        localStorage.removeItem(ACTIVE_LEARNER_STORAGE_KEY);
+      } catch (_) {}
+    }
+  }
+  return activeLearnerId;
+}
+
+export function getCurrentLearnerId() {
+  if (activeLearnerId) return activeLearnerId;
+  if (typeof localStorage !== "undefined") {
+    try {
+      const saved = localStorage.getItem(ACTIVE_LEARNER_STORAGE_KEY);
+      if (saved) {
+        activeLearnerId = saved;
+        return activeLearnerId;
+      }
+    } catch (_) {}
+  }
+  return null;
+}
+
+export function resolveActiveLearnerId(options = {}) {
+  if (options.learnerId) return options.learnerId;
+  return getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
+}
+
+export function clearCurrentLearner() {
+  activeLearnerId = null;
+  if (typeof localStorage !== "undefined") {
+    try {
+      localStorage.removeItem(ACTIVE_LEARNER_STORAGE_KEY);
+    } catch (_) {}
+  }
+}
+
+// ============================================================================
+// 2. IndexedDB 연결 및 스키마 관리
+// ============================================================================
 
 export function getDB() {
   if (dbPromise) return dbPromise;
 
   if (typeof indexedDB === "undefined") {
-    // Node.js 테스트 환경 등 indexedDB 미지원 시 메모리 mock fallback
     return Promise.resolve(createMemoryFallbackDB());
   }
 
@@ -27,12 +87,20 @@ export function getDB() {
     request.onupgradeneeded = (event) => {
       const db = event.target.result;
 
+      // 1. sessions store
       if (!db.objectStoreNames.contains("sessions")) {
         const sessionStore = db.createObjectStore("sessions", { keyPath: "id" });
         sessionStore.createIndex("completedAt", "completedAt", { unique: false });
         sessionStore.createIndex("operation", "operation", { unique: false });
+        sessionStore.createIndex("learnerId", "learnerId", { unique: false });
+      } else {
+        const sessionStore = request.transaction.objectStore("sessions");
+        if (!sessionStore.indexNames.contains("learnerId")) {
+          sessionStore.createIndex("learnerId", "learnerId", { unique: false });
+        }
       }
 
+      // 2. attempts store
       if (!db.objectStoreNames.contains("attempts")) {
         const attemptStore = db.createObjectStore("attempts", { keyPath: "id" });
         attemptStore.createIndex("sessionId", "sessionId", { unique: false });
@@ -40,26 +108,62 @@ export function getDB() {
         attemptStore.createIndex("stageId", "stageId", { unique: false });
         attemptStore.createIndex("completedAt", "completedAt", { unique: false });
         attemptStore.createIndex("isCorrect", "isCorrect", { unique: false });
+        attemptStore.createIndex("learnerId", "learnerId", { unique: false });
+      } else {
+        const attemptStore = request.transaction.objectStore("attempts");
+        if (!attemptStore.indexNames.contains("learnerId")) {
+          attemptStore.createIndex("learnerId", "learnerId", { unique: false });
+        }
       }
 
+      // 3. mistakes store
       if (!db.objectStoreNames.contains("mistakes")) {
         const mistakeStore = db.createObjectStore("mistakes", { keyPath: "key" });
         mistakeStore.createIndex("lastWrongAt", "lastWrongAt", { unique: false });
         mistakeStore.createIndex("stageId", "stageId", { unique: false });
+        mistakeStore.createIndex("learnerId", "learnerId", { unique: false });
+      } else {
+        const mistakeStore = request.transaction.objectStore("mistakes");
+        if (!mistakeStore.indexNames.contains("learnerId")) {
+          mistakeStore.createIndex("learnerId", "learnerId", { unique: false });
+        }
       }
 
+      // 4. stageProgress store
       if (!db.objectStoreNames.contains("stageProgress")) {
         const progressStore = db.createObjectStore("stageProgress", { keyPath: "stageKey" });
         progressStore.createIndex("macroLevelId", "macroLevelId", { unique: false });
         progressStore.createIndex("status", "status", { unique: false });
+        progressStore.createIndex("learnerId", "learnerId", { unique: false });
+      } else {
+        const progressStore = request.transaction.objectStore("stageProgress");
+        if (!progressStore.indexNames.contains("learnerId")) {
+          progressStore.createIndex("learnerId", "learnerId", { unique: false });
+        }
       }
 
+      // 5. strokes store
       if (!db.objectStoreNames.contains("strokes")) {
         db.createObjectStore("strokes", { keyPath: "sessionId_questionId" });
       }
 
+      // 6. draftSessions store
       if (!db.objectStoreNames.contains("draftSessions")) {
-        db.createObjectStore("draftSessions", { keyPath: "id" });
+        const draftStore = db.createObjectStore("draftSessions", { keyPath: "id" });
+        draftStore.createIndex("learnerId", "learnerId", { unique: false });
+      } else {
+        const draftStore = request.transaction.objectStore("draftSessions");
+        if (!draftStore.indexNames.contains("learnerId")) {
+          draftStore.createIndex("learnerId", "learnerId", { unique: false });
+        }
+      }
+
+      //+_+// 7. learnerProfiles store (Phase F1 신규 추가)
+      if (!db.objectStoreNames.contains("learnerProfiles")) {
+        const profileStore = db.createObjectStore("learnerProfiles", { keyPath: "id" });
+        profileStore.createIndex("updatedAt", "updatedAt", { unique: false });
+        profileStore.createIndex("lastActiveAt", "lastActiveAt", { unique: false });
+        profileStore.createIndex("archived", "archived", { unique: false });
       }
     };
 
@@ -75,8 +179,12 @@ export function getDB() {
   return dbPromise;
 }
 
-// 메모리 Fallback DB (IndexedDB 미지원 환경용)
+// ============================================================================
+// 3. 메모리 Fallback DB (Node.js 테스트 및 mock 환경용)
+// ============================================================================
+
 let memoryStore = {
+  learnerProfiles: new Map(),
   sessions: new Map(),
   attempts: new Map(),
   mistakes: new Map(),
@@ -88,6 +196,7 @@ let memoryStore = {
 function createMemoryFallbackDB() {
   return {
     isMemory: true,
+    learnerProfiles: memoryStore.learnerProfiles,
     sessions: memoryStore.sessions,
     attempts: memoryStore.attempts,
     mistakes: memoryStore.mistakes,
@@ -97,7 +206,197 @@ function createMemoryFallbackDB() {
   };
 }
 
-//+_+// 세션의 실제 연산 종류를 우선순위에 따라 안전하게 확인
+// ============================================================================
+// 4. 학습자 프로필(LearnerProfile) CRUD API
+// ============================================================================
+
+export async function createLearnerProfile({ name, icon, avatarKey } = {}) {
+  const trimmedName = String(name || "").trim();
+  if (!trimmedName) {
+    throw new Error("학습자 이름이 필요합니다.");
+  }
+
+  const db = await getDB();
+  const id = `learner_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const now = Date.now();
+  const selectedIcon = icon || avatarKey || "avatar_1";
+
+  const profile = {
+    id,
+    name: trimmedName,
+    icon: selectedIcon,
+    avatarKey: selectedIcon,
+    createdAt: now,
+    updatedAt: now,
+    lastActiveAt: now,
+    archived: false,
+    archivedAt: null
+  };
+
+  if (db.isMemory) {
+    db.learnerProfiles.set(id, profile);
+    if (!getCurrentLearnerId()) {
+      setCurrentLearnerId(id);
+    }
+    return profile;
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("learnerProfiles", "readwrite");
+    tx.objectStore("learnerProfiles").put(profile);
+    tx.oncomplete = () => {
+      if (!getCurrentLearnerId()) {
+        setCurrentLearnerId(id);
+      }
+      resolve(profile);
+    };
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+export async function updateLearnerProfile(id, updates = {}) {
+  if (!id) throw new Error("업데이트할 학습자 ID가 필요합니다.");
+  const db = await getDB();
+  const existing = await getLearnerProfile(id);
+  if (!existing) {
+    throw new Error(`해당 ID(${id})의 학습자 프로필을 찾을 수 없습니다.`);
+  }
+
+  const now = Date.now();
+  const updatedProfile = {
+    ...existing,
+    name: updates.name !== undefined ? String(updates.name).trim() : existing.name,
+    icon: updates.icon || updates.avatarKey || existing.icon,
+    avatarKey: updates.icon || updates.avatarKey || existing.avatarKey,
+    archived: updates.archived !== undefined ? Boolean(updates.archived) : existing.archived,
+    archivedAt: updates.archivedAt !== undefined ? updates.archivedAt : existing.archivedAt,
+    lastActiveAt: updates.lastActiveAt !== undefined ? updates.lastActiveAt : existing.lastActiveAt,
+    updatedAt: now
+  };
+
+  if (!updatedProfile.name) {
+    throw new Error("학습자 이름은 비워둘 수 없습니다.");
+  }
+
+  if (db.isMemory) {
+    db.learnerProfiles.set(id, updatedProfile);
+    return updatedProfile;
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("learnerProfiles", "readwrite");
+    tx.objectStore("learnerProfiles").put(updatedProfile);
+    tx.oncomplete = () => resolve(updatedProfile);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+export async function archiveLearnerProfile(id) {
+  const updated = await updateLearnerProfile(id, {
+    archived: true,
+    archivedAt: Date.now()
+  });
+
+  // 현재 선택된 학습자가 보관된 경우 다른 활성 학습자 또는 기본값으로 전환
+  if (getCurrentLearnerId() === id) {
+    const activeLearners = await getActiveLearners();
+    if (activeLearners.length > 0) {
+      setCurrentLearnerId(activeLearners[0].id);
+    } else {
+      clearCurrentLearner();
+    }
+  }
+
+  return updated;
+}
+
+export async function unarchiveLearnerProfile(id) {
+  return updateLearnerProfile(id, {
+    archived: false,
+    archivedAt: null
+  });
+}
+
+export async function getLearnerProfile(id) {
+  if (!id) return null;
+  const db = await getDB();
+
+  if (db.isMemory) {
+    return db.learnerProfiles.get(id) || null;
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction("learnerProfiles", "readonly");
+      const req = tx.objectStore("learnerProfiles").get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = (e) => reject(e.target.error);
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+export async function getAllLearnerProfiles({ includeArchived = false } = {}) {
+  const db = await getDB();
+  let all = [];
+
+  if (db.isMemory) {
+    all = Array.from(db.learnerProfiles.values());
+  } else {
+    all = await new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction("learnerProfiles", "readonly");
+        const req = tx.objectStore("learnerProfiles").getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = (e) => reject(e.target.error);
+      } catch (_) {
+        resolve([]);
+      }
+    });
+  }
+
+  if (!includeArchived) {
+    all = all.filter((p) => !p.archived);
+  }
+
+  return all.sort((a, b) => (b.lastActiveAt || b.createdAt || 0) - (a.lastActiveAt || a.createdAt || 0));
+}
+
+export async function getActiveLearners() {
+  return getAllLearnerProfiles({ includeArchived: false });
+}
+
+export async function deleteLearnerProfile(id) {
+  if (!id) return false;
+  const db = await getDB();
+
+  if (getCurrentLearnerId() === id) {
+    const activeLearners = (await getActiveLearners()).filter((p) => p.id !== id);
+    if (activeLearners.length > 0) {
+      setCurrentLearnerId(activeLearners[0].id);
+    } else {
+      clearCurrentLearner();
+    }
+  }
+
+  if (db.isMemory) {
+    db.learnerProfiles.delete(id);
+    return true;
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("learnerProfiles", "readwrite");
+    tx.objectStore("learnerProfiles").delete(id);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+// ============================================================================
+// 5. 세션 및 학습 기록 저장 / 조회 API (learnerId 격리)
+// ============================================================================
+
 export function resolveSessionOperation(session) {
   if (!session) return "mul";
   if (session.operation === "div" || session.operation === "mul") return session.operation;
@@ -109,12 +408,14 @@ export function resolveSessionOperation(session) {
 }
 
 /**
- * 완료된 세션 기록 및 스트로크, 오답 큐 저장
+ * 완료된 세션 기록 및 스트로크, 오답 큐 저장 (learnerId 격리 적용)
  */
-export async function saveSessionRecord(summary, strokesMap = new Map(), gradingStrokesMap = new Map()) {
+export async function saveSessionRecord(summary, strokesMap = new Map(), gradingStrokesMap = new Map(), options = {}) {
   const db = await getDB();
   const sessionId = summary.sessionId || `session_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const now = Date.now();
+
+  const learnerId = summary.learnerId || options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
 
   const operation = summary.operation || summary.config?.operation || summary.results?.[0]?.operation || "mul";
   const mathFormat = summary.mathFormat || summary.config?.mathFormat || "vertical";
@@ -124,6 +425,7 @@ export async function saveSessionRecord(summary, strokesMap = new Map(), grading
   const sessionRecord = {
     ...summary,
     id: sessionId,
+    learnerId,
     operation,
     mathFormat,
     macroLevelId,
@@ -133,6 +435,7 @@ export async function saveSessionRecord(summary, strokesMap = new Map(), grading
       const qAns = r.answer !== undefined ? r.answer : r.expectedAnswer;
       return {
         ...r,
+        learnerId,
         operation: r.operation || operation,
         answer: qAns,
         expectedAnswer: qAns,
@@ -148,12 +451,14 @@ export async function saveSessionRecord(summary, strokesMap = new Map(), grading
 
     sessionRecord.results.forEach((r, idx) => {
       const qKey = r.questionKey || r.key || `${r.operation || operation}:${r.operandA}:${r.operandB}`;
-      
-      //+_+// 개별 Attempt 객체 생성 및 저장
+      const mistakeCompoundKey = (!learnerId || learnerId === DEFAULT_LEGACY_LEARNER_ID) ? qKey : `${learnerId}:${qKey}`;
+
+      // 개별 Attempt 객체 생성 및 저장
       const attemptId = `att_${sessionId}_${r.questionId || idx}_${now}`;
       const attemptRecord = {
         id: attemptId,
         sessionId,
+        learnerId,
         questionId: r.questionId || `q_${idx}`,
         questionKey: qKey,
         operation: r.operation || operation,
@@ -173,10 +478,13 @@ export async function saveSessionRecord(summary, strokesMap = new Map(), grading
       db.attempts.set(attemptId, attemptRecord);
 
       if (!r.isCorrect) {
-        const prev = db.mistakes.get(qKey) || { wrongCount: 0 };
-        db.mistakes.set(qKey, {
+        const prev = db.mistakes.get(mistakeCompoundKey) || { wrongCount: 0 };
+        db.mistakes.set(mistakeCompoundKey, {
           ...r,
           key: qKey,
+          id: mistakeCompoundKey,
+          compoundKey: mistakeCompoundKey,
+          learnerId,
           questionKey: qKey,
           operation: r.operation || operation,
           macroLevelId: r.macroLevelId || macroLevelId,
@@ -187,12 +495,18 @@ export async function saveSessionRecord(summary, strokesMap = new Map(), grading
           lastWrongAt: now
         });
       } else {
-        // 정답을 맞춘 경우 오답 큐에서 해제
-        db.mistakes.delete(qKey);
+        // 정답을 맞춘 경우 해당 학습자의 오답 큐에서만 해제
+        db.mistakes.delete(mistakeCompoundKey);
       }
 
       if (strokesMap.has(r.questionId)) {
-        db.strokes.set(`${sessionId}_${r.questionId}`, strokesMap.get(r.questionId));
+        db.strokes.set(`${sessionId}_${r.questionId}`, {
+          sessionId_questionId: `${sessionId}_${r.questionId}`,
+          sessionId,
+          learnerId,
+          questionId: r.questionId,
+          strokes: strokesMap.get(r.questionId)
+        });
       }
     });
 
@@ -210,12 +524,13 @@ export async function saveSessionRecord(summary, strokesMap = new Map(), grading
 
     sessionRecord.results.forEach((r, idx) => {
       const qKey = r.questionKey || r.key || `${r.operation || operation}:${r.operandA}:${r.operandB}`;
+      const mistakeCompoundKey = (!learnerId || learnerId === DEFAULT_LEGACY_LEARNER_ID) ? qKey : `${learnerId}:${qKey}`;
 
-      //+_+// 개별 Attempt 객체 저장
       const attemptId = `att_${sessionId}_${r.questionId || idx}_${now}`;
       const attemptRecord = {
         id: attemptId,
         sessionId,
+        learnerId,
         questionId: r.questionId || `q_${idx}`,
         questionKey: qKey,
         operation: r.operation || operation,
@@ -235,12 +550,15 @@ export async function saveSessionRecord(summary, strokesMap = new Map(), grading
       attemptStore.put(attemptRecord);
 
       if (!r.isCorrect) {
-        const getReq = mistakeStore.get(qKey);
+        const getReq = mistakeStore.get(mistakeCompoundKey);
         getReq.onsuccess = () => {
           const prev = getReq.result || { wrongCount: 0 };
           mistakeStore.put({
             ...r,
-            key: qKey,
+            key: mistakeCompoundKey,
+            id: mistakeCompoundKey,
+            compoundKey: mistakeCompoundKey,
+            learnerId,
             questionKey: qKey,
             operation: r.operation || operation,
             macroLevelId: r.macroLevelId || macroLevelId,
@@ -252,13 +570,14 @@ export async function saveSessionRecord(summary, strokesMap = new Map(), grading
           });
         };
       } else {
-        mistakeStore.delete(qKey);
+        mistakeStore.delete(mistakeCompoundKey);
       }
 
       if (strokesMap.has(r.questionId)) {
         strokeStore.put({
           sessionId_questionId: `${sessionId}_${r.questionId}`,
           sessionId,
+          learnerId,
           questionId: r.questionId,
           strokes: strokesMap.get(r.questionId)
         });
@@ -271,10 +590,11 @@ export async function saveSessionRecord(summary, strokesMap = new Map(), grading
 }
 
 /**
- * Attempt 단위 목록 조회
+ * Attempt 단위 목록 조회 (learnerId 격리)
  */
 export async function getRecentAttempts(limit = 50, filter = {}) {
   const db = await getDB();
+  const targetLearnerId = filter.allLearners ? null : resolveActiveLearnerId(filter);
   let all = [];
 
   if (db.isMemory) {
@@ -289,7 +609,12 @@ export async function getRecentAttempts(limit = 50, filter = {}) {
     });
   }
 
-  // 필터링 적용
+  // learnerId 필터링
+  if (targetLearnerId) {
+    all = all.filter((a) => (a.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId);
+  }
+
+  // 추가 필터링
   if (filter.operation) {
     all = all.filter((a) => a.operation === filter.operation);
   }
@@ -306,14 +631,22 @@ export async function getRecentAttempts(limit = 50, filter = {}) {
 }
 
 /**
- * Draft Session (세션 중단 및 이어하기) 관리
+ * Draft Session (세션 중단 및 이어하기) 관리 (learnerId 격리)
  */
-export async function saveDraftSession(draft) {
+export async function saveDraftSession(draft, options = {}) {
   const db = await getDB();
-  const draftRecord = { ...normalizeDraft(draft), id: "current_draft", updatedAt: Date.now() };
+  const targetLearnerId = draft.learnerId || options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
+  const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
+
+  const draftRecord = {
+    ...normalizeDraft(draft),
+    id: draftKey,
+    learnerId: targetLearnerId,
+    updatedAt: Date.now()
+  };
 
   if (db.isMemory) {
-    db.draftSessions.set("current_draft", draftRecord);
+    db.draftSessions.set(draftKey, draftRecord);
     return draftRecord;
   }
 
@@ -325,18 +658,20 @@ export async function saveDraftSession(draft) {
   });
 }
 
-export async function getDraftSession() {
+export async function getDraftSession(options = {}) {
   const db = await getDB();
+  const targetLearnerId = options.learnerId !== undefined ? options.learnerId : getCurrentLearnerId();
+  const draftKey = !targetLearnerId || targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
 
   if (db.isMemory) {
-    const record = db.draftSessions.get("current_draft") || null;
+    const record = db.draftSessions.get(draftKey) || (targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? db.draftSessions.get("current_draft") : null);
     return record ? normalizeDraft(record) : null;
   }
 
   return new Promise((resolve, reject) => {
     try {
       const tx = db.transaction("draftSessions", "readonly");
-      const req = tx.objectStore("draftSessions").get("current_draft");
+      const req = tx.objectStore("draftSessions").get(draftKey);
       req.onsuccess = () => {
         try {
           resolve(req.result ? normalizeDraft(req.result) : null);
@@ -351,17 +686,19 @@ export async function getDraftSession() {
   });
 }
 
-export async function clearDraftSession() {
+export async function clearDraftSession(options = {}) {
   const db = await getDB();
+  const targetLearnerId = options.learnerId !== undefined ? options.learnerId : getCurrentLearnerId();
+  const draftKey = !targetLearnerId || targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
 
   if (db.isMemory) {
-    db.draftSessions.delete("current_draft");
+    db.draftSessions.delete(draftKey);
     return true;
   }
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction("draftSessions", "readwrite");
-    tx.objectStore("draftSessions").delete("current_draft");
+    tx.objectStore("draftSessions").delete(draftKey);
     tx.oncomplete = () => resolve(true);
     tx.onerror = (e) => reject(e.target.error);
   });
@@ -407,87 +744,102 @@ export async function getSessionStrokesMap(sessionId) {
 }
 
 /**
- * 최근 완료 세션 목록 조회
+ * 최근 완료 세션 목록 조회 (learnerId 격리)
  */
-export async function getRecentSessions(limit = 10) {
+export async function getRecentSessions(limit = 10, filter = {}) {
   const db = await getDB();
+  const targetLearnerId = filter.allLearners ? null : resolveActiveLearnerId(filter);
+  let all = [];
 
   if (db.isMemory) {
-    return Array.from(db.sessions.values())
-      .sort((a, b) => b.completedAt - a.completedAt)
-      .slice(0, limit);
+    all = Array.from(db.sessions.values());
+  } else {
+    all = await new Promise((resolve, reject) => {
+      const tx = db.transaction("sessions", "readonly");
+      const store = tx.objectStore("sessions");
+      const req = store.getAll();
+
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = (e) => reject(e.target.error);
+    });
   }
 
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("sessions", "readonly");
-    const store = tx.objectStore("sessions");
-    const req = store.getAll();
+  if (targetLearnerId) {
+    all = all.filter((s) => (s.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId);
+  }
 
-    req.onsuccess = () => {
-      const sorted = (req.result || [])
-        .sort((a, b) => b.completedAt - a.completedAt)
-        .slice(0, limit);
-      resolve(sorted);
-    };
-    req.onerror = (e) => reject(e.target.error);
-  });
+  return all
+    .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))
+    .slice(0, limit);
 }
 
 /**
- * 누적 오답 문제 목록 조회 (오답 복습용)
+ * 누적 오답 문제 목록 조회 (learnerId 격리)
  */
-export async function getMistakeQuestions() {
+export async function getMistakeQuestions(filter = {}) {
   const db = await getDB();
+  const targetLearnerId = filter.allLearners ? null : resolveActiveLearnerId(filter);
+  let all = [];
 
   if (db.isMemory) {
-    return Array.from(db.mistakes.values())
-      .sort((a, b) => b.lastWrongAt - a.lastWrongAt);
+    all = Array.from(db.mistakes.values());
+  } else {
+    all = await new Promise((resolve, reject) => {
+      const tx = db.transaction("mistakes", "readonly");
+      const store = tx.objectStore("mistakes");
+      const req = store.getAll();
+
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = (e) => reject(e.target.error);
+    });
   }
 
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("mistakes", "readonly");
-    const store = tx.objectStore("mistakes");
-    const req = store.getAll();
+  if (targetLearnerId) {
+    all = all.filter((m) => (m.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId);
+  }
 
-    req.onsuccess = () => {
-      const sorted = (req.result || []).sort((a, b) => b.lastWrongAt - a.lastWrongAt);
-      resolve(sorted);
-    };
-    req.onerror = (e) => reject(e.target.error);
-  });
+  return all
+    .map((m) => ({
+      ...m,
+      key: m.questionKey || m.key
+    }))
+    .sort((a, b) => (b.lastWrongAt || 0) - (a.lastWrongAt || 0));
 }
 
 /**
- * 전체 완료 세션 목록 조회 (누적 통계용, 제한 없음)
+ * 전체 완료 세션 목록 조회 (누적 통계용, learnerId 격리)
  */
-export async function getAllSessions() {
+export async function getAllSessions(filter = {}) {
   const db = await getDB();
+  const targetLearnerId = filter.allLearners ? null : resolveActiveLearnerId(filter);
+  let all = [];
 
   if (db.isMemory) {
-    return Array.from(db.sessions.values())
-      .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+    all = Array.from(db.sessions.values());
+  } else {
+    all = await new Promise((resolve, reject) => {
+      const tx = db.transaction("sessions", "readonly");
+      const store = tx.objectStore("sessions");
+      const req = store.getAll();
+
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = (e) => reject(e.target.error);
+    });
   }
 
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("sessions", "readonly");
-    const store = tx.objectStore("sessions");
-    const req = store.getAll();
+  if (targetLearnerId) {
+    all = all.filter((s) => (s.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId);
+  }
 
-    req.onsuccess = () => {
-      const sorted = (req.result || [])
-        .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
-      resolve(sorted);
-    };
-    req.onerror = (e) => reject(e.target.error);
-  });
+  return all.sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
 }
 
 /**
- * 전체 학습 누적 통계 집계 (제한 없이 모든 세션 데이터 합산)
+ * 전체 학습 누적 통계 집계 (learnerId 격리)
  */
-export async function getLearningStats() {
-  const sessions = await getAllSessions();
-  const mistakes = await getMistakeQuestions();
+export async function getLearningStats(filter = {}) {
+  const sessions = await getAllSessions(filter);
+  const mistakes = await getMistakeQuestions(filter);
 
   let totalQuestions = 0;
   let totalCorrect = 0;
@@ -512,11 +864,11 @@ export async function getLearningStats() {
 }
 
 /**
- * 최근 통계 집계 (최근 20문제 및 최근 5세션 기준)
+ * 최근 통계 집계 (learnerId 격리)
  */
-export async function getRecentStats(attemptLimit = 20) {
-  const recentAttempts = await getRecentAttempts(attemptLimit);
-  const recentSessions = await getRecentSessions(5);
+export async function getRecentStats(attemptLimit = 20, filter = {}) {
+  const recentAttempts = await getRecentAttempts(attemptLimit, filter);
+  const recentSessions = await getRecentSessions(5, filter);
 
   let recentQuestions = recentAttempts.length;
   let recentCorrect = 0;
@@ -541,10 +893,10 @@ export async function getRecentStats(attemptLimit = 20) {
 }
 
 /**
- * 표준 레퍼런스 교육과정별(Lv.1~Lv.6) 누적 학습 진행도 및 마스터리 집계
+ * 표준 레퍼런스 교육과정별(Lv.1~Lv.6) 누적 학습 진행도 및 마스터리 집계 (learnerId 격리)
  */
-export async function getCurriculumProgress() {
-  const sessions = await getRecentSessions(200);
+export async function getCurriculumProgress(filter = {}) {
+  const sessions = await getRecentSessions(200, filter);
 
   const initProgress = () => ([
     { level: 1, solved: 0, correct: 0, accuracy: 0, status: "unstarted" },
@@ -565,7 +917,6 @@ export async function getCurriculumProgress() {
     const results = session.results || [];
 
     results.forEach((r) => {
-      // 레벨 추정 (r.level e.g. "M1" -> 1, "M2" -> 2, "M5" -> 4, "M6" -> 5, "M9" -> 6)
       let lvl = 1;
       const code = String(r.level || "");
       if (op === "mul") {
@@ -599,11 +950,11 @@ export async function getCurriculumProgress() {
     progress[op].forEach((item) => {
       item.accuracy = item.solved > 0 ? Math.round((item.correct / item.solved) * 100) : 0;
       if (item.solved === 0) {
-        item.status = "unstarted"; // 시작 전 🌱
+        item.status = "unstarted";
       } else if (item.solved >= 15 && item.accuracy >= 85) {
-        item.status = "mastered"; // 마스터 ⭐
+        item.status = "mastered";
       } else {
-        item.status = "learning"; // 학습 중 🏃
+        item.status = "learning";
       }
     });
   });
@@ -612,10 +963,10 @@ export async function getCurriculumProgress() {
 }
 
 /**
- * 날짜별(YYYY-MM-DD) 학습 데이터 및 잔디 집계
+ * 날짜별(YYYY-MM-DD) 학습 데이터 및 잔디 집계 (learnerId 격리)
  */
-export async function getDailyLearningMap() {
-  const sessions = await getRecentSessions(200);
+export async function getDailyLearningMap(filter = {}) {
+  const sessions = await getRecentSessions(200, filter);
   const map = new Map();
 
   sessions.forEach((s) => {
@@ -644,7 +995,6 @@ export async function getDailyLearningMap() {
     entry.sessions.push(s);
   });
 
-  // 정답률 계산
   map.forEach((entry) => {
     entry.accuracy = entry.totalQuestions > 0 ? Math.round((entry.correctQuestions / entry.totalQuestions) * 100) : 0;
   });
@@ -653,10 +1003,10 @@ export async function getDailyLearningMap() {
 }
 
 /**
- * 연속 학습 일수 (Streak) 계산
+ * 연속 학습 일수 (Streak) 계산 (learnerId 격리)
  */
-export async function getCurrentStreak() {
-  const dailyMap = await getDailyLearningMap();
+export async function getCurrentStreak(filter = {}) {
+  const dailyMap = await getDailyLearningMap(filter);
   if (dailyMap.size === 0) return { currentStreak: 0, maxStreak: 0, todayActive: false };
 
   const today = new Date();
@@ -679,7 +1029,6 @@ export async function getCurrentStreak() {
     return { currentStreak: 0, maxStreak: calculateMaxStreak(dailyMap), todayActive: false };
   }
 
-  // 오늘 또는 어제부터 시작해서 과거로 거슬러 올라가며 연속 일수 계산
   let streak = 0;
   let checkDate = new Date(todayActive ? today : yesterday);
 
@@ -724,21 +1073,97 @@ function calculateMaxStreak(dailyMap) {
 }
 
 /**
- * 특정 날짜에 완료된 세션 목록 반환
+ * 특정 날짜에 완료된 세션 목록 반환 (learnerId 격리)
  */
-export async function getSessionsByDate(dateKey) {
-  const dailyMap = await getDailyLearningMap();
+export async function getSessionsByDate(dateKey, filter = {}) {
+  const dailyMap = await getDailyLearningMap(filter);
   const entry = dailyMap.get(dateKey);
   return entry ? entry.sessions : [];
 }
 
 /**
- * 저장소 전체 초기화
+ * 저장소 초기화 (특정 learnerId 지정 시 해당 학습자 데이터만 초기화, 미지정 시 전체 초기화)
  */
-export async function clearAllData() {
+export async function clearAllData(options = {}) {
   const db = await getDB();
+  const targetLearnerId = options.learnerId;
+
+  if (targetLearnerId) {
+    // 특정 학습자의 데이터만 필터링 삭제
+    if (db.isMemory) {
+      for (const [key, s] of db.sessions.entries()) {
+        if ((s.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.sessions.delete(key);
+      }
+      for (const [key, a] of db.attempts.entries()) {
+        if ((a.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.attempts.delete(key);
+      }
+      for (const [key, m] of db.mistakes.entries()) {
+        if ((m.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.mistakes.delete(key);
+      }
+      for (const [key, p] of db.stageProgress.entries()) {
+        if ((p.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.stageProgress.delete(key);
+      }
+      for (const [key, st] of db.strokes.entries()) {
+        if (st.learnerId === targetLearnerId) db.strokes.delete(key);
+      }
+      const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
+      db.draftSessions.delete(draftKey);
+      return true;
+    }
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions"], "readwrite");
+      // sessions
+      const sessionStore = tx.objectStore("sessions");
+      sessionStore.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if ((cursor.value.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) cursor.delete();
+          cursor.continue();
+        }
+      };
+      // attempts
+      const attemptStore = tx.objectStore("attempts");
+      attemptStore.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if ((cursor.value.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) cursor.delete();
+          cursor.continue();
+        }
+      };
+      // mistakes
+      const mistakeStore = tx.objectStore("mistakes");
+      mistakeStore.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if ((cursor.value.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) cursor.delete();
+          cursor.continue();
+        }
+      };
+      // stageProgress
+      const progressStore = tx.objectStore("stageProgress");
+      progressStore.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if ((cursor.value.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) cursor.delete();
+          cursor.continue();
+        }
+      };
+      // draftSessions
+      const draftStore = tx.objectStore("draftSessions");
+      const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
+      draftStore.delete(draftKey);
+
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  // 전체 초기화
+  clearCurrentLearner();
 
   if (db.isMemory) {
+    db.learnerProfiles.clear();
     db.sessions.clear();
     db.attempts.clear();
     db.mistakes.clear();
@@ -749,7 +1174,8 @@ export async function clearAllData() {
   }
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions"], "readwrite");
+    const tx = db.transaction(["learnerProfiles", "sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions"], "readwrite");
+    tx.objectStore("learnerProfiles").clear();
     tx.objectStore("sessions").clear();
     tx.objectStore("attempts").clear();
     tx.objectStore("mistakes").clear();

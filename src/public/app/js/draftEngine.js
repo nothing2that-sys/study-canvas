@@ -44,8 +44,10 @@ export function normalizeDraft(input) {
   const now = Date.now();
 
   const totalElapsedMs = Math.max(0, Number(input.totalElapsedMs ?? input.elapsedMs) || 0);
+  //+_+// Phase F1: learnerId 및 draft ID 보존
   return {
-    id: "current_draft",
+    id: input.id || "current_draft",
+    learnerId: input.learnerId || null,
     schemaVersion: DRAFT_SCHEMA_VERSION,
     appBuildId: String(input.appBuildId || "unknown"),
     revision: Math.max(0, Number(input.revision) || 0),
