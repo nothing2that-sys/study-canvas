@@ -274,10 +274,17 @@ export const STAGE_REGISTRY = {
     order: 105,
     title: "세 자리 ÷ 한 자리 (표준 세로셈)",
     desc: "3자리 수 나누기 1자리 수 표준 세로셈 연산",
+    //+_+// 3자리 피제수(100~999) 범위 보장
     generate: (rand = Math.random) => {
-      const dvr = randomInt(2, 9, rand);
-      const q = randomInt(15, Math.floor(999 / dvr), rand);
-      const dvd = dvr * q;
+      let dvd, dvr, q;
+      for (let i = 0; i < 500; i++) {
+        dvr = randomInt(2, 9, rand);
+        const minQ = Math.ceil(100 / dvr);
+        const maxQ = Math.floor(999 / dvr);
+        q = randomInt(minQ, maxQ, rand);
+        dvd = dvr * q;
+        if (digitCount(dvd) === 3 && dvd % dvr === 0) break;
+      }
       return createDivisionStageQuestion(dvd, dvr, q, "D3-1", "D3");
     }
   }
