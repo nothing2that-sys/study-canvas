@@ -266,7 +266,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260830T100222350Z-615cb00",
+    appBuildId: "20260830T100231530Z-44f44a9",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
