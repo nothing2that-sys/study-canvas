@@ -257,7 +257,7 @@ function createMemoryFallbackDB() {
 // 4. 학습자 프로필(LearnerProfile) CRUD API
 // ============================================================================
 
-export async function createLearnerProfile({ name, icon, avatarKey } = {}) {
+export async function createLearnerProfile({ name, icon, avatarKey, migrationSource, isLegacyDefault } = {}) {
   const trimmedName = String(name || "").trim();
   if (!trimmedName) {
     throw new Error("학습자 이름이 필요합니다.");
@@ -277,7 +277,9 @@ export async function createLearnerProfile({ name, icon, avatarKey } = {}) {
     updatedAt: now,
     lastActiveAt: now,
     archived: false,
-    archivedAt: null
+    archivedAt: null,
+    ...(migrationSource !== undefined ? { migrationSource } : {}),
+    ...(isLegacyDefault !== undefined ? { isLegacyDefault } : {})
   };
 
   if (db.isMemory) {
