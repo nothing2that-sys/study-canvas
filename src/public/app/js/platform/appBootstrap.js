@@ -110,9 +110,12 @@ export async function bootstrapApp(options = {}) {
 
     //+_+// 세션 활성 및 복원 가능 여부 콜백 구성
     const hasActiveSession = (mode) => {
-      //+_+// 인메모리 세션 우선 확인
+      //+_+// 인메모리 세션 우선 확인 (practice_active, grading_active, active_session 등)
       if (options.hasActiveSession && options.hasActiveSession(mode)) {
         return true;
+      }
+      if (mode === "practice_active" || mode === "grading_active" || mode === "active_session") {
+        return false;
       }
       //+_+// 영구 저장된 Draft 소유권 및 상태 검증
       if (persistedDraft && persistedDraft.learnerId === restoredLearnerId && persistedDraft.questions?.length > 0) {

@@ -181,7 +181,7 @@ export async function renderLearnerSelectView() {
         return;
       }
 
-      await selectLearner(learner.id, { isSessionActive: isSessionActiveFn });
+      await selectLearner(learner.id);
       navigate(ROUTES.HOME);
     };
 

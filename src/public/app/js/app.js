@@ -6,7 +6,7 @@ import { createDrawingCanvas, InputProfile, resolveInputProfile, togglePenOnlyPr
 import { saveSession, saveDraft, clearDraft, clearLearnerData } from "./data/learningCommands.js";
 import { getRecentSessions, getMistakes, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, getDraft, getRecentAttempts } from "./data/learningQueries.js";
 import { getActiveLearner, getActiveLearnerId, getLearners } from "./learners/learnerQueries.js";
-import { selectLearner, createLearner } from "./learners/learnerCommands.js";
+import { selectLearner, createLearner, configureLearnerSessionGuard } from "./learners/learnerCommands.js";
 import { bootstrapApp } from "./platform/appBootstrap.js";
 import { navigate, replace, ROUTES, initRouter, addRouteListener, getCurrentRoute, resolveGuardedPath } from "./platform/appRouter.js";
 import { initAppShell, updateShellHeader, renderRouteView } from "./platform/appShell.js";
@@ -266,7 +266,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260830T030141064Z-061b5a5",
+    appBuildId: "20260830T031850486Z-d4e9ad3",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -2711,6 +2711,8 @@ if (typeof document !== "undefined") {
     currentSession && (currentSession.state === SessionState.PRACTICE_ACTIVE || currentSession.state === SessionState.GRADING_ACTIVE)
   );
 
+  configureLearnerSessionGuard(isCurrentSessionActive);
+
   initLearnerView({
     isSessionActive: isCurrentSessionActive
   });
@@ -2737,8 +2739,9 @@ if (typeof document !== "undefined") {
     isSessionActive: isCurrentSessionActive,
     hasActiveSession: (mode) => {
       if (!currentSession) return false;
-      if (mode === "practice") return currentSession.state === SessionState.PRACTICE_ACTIVE;
-      if (mode === "grading") return currentSession.state === SessionState.GRADING_ACTIVE;
+      if (mode === "practice_active" || mode === "practice") return currentSession.state === SessionState.PRACTICE_ACTIVE;
+      if (mode === "grading_active" || mode === "grading") return currentSession.state === SessionState.GRADING_ACTIVE;
+      if (mode === "active_session") return currentSession.state === SessionState.PRACTICE_ACTIVE || currentSession.state === SessionState.GRADING_ACTIVE;
       if (mode === "result") return currentSession.state === SessionState.SESSION_COMPLETE;
       return true;
     }
