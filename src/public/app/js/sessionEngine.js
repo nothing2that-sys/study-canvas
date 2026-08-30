@@ -7,7 +7,10 @@ export const SessionState = Object.freeze({
   IDLE: "IDLE",
   SESSION_SETUP: "SESSION_SETUP",
   PRACTICE_ACTIVE: "PRACTICE_ACTIVE",
+  SUBMITTING: "SUBMITTING",
   SUBMITTED: "SUBMITTED",
+  SUBMITTED_LOCKED: "SUBMITTED",
+  PARENT_GRADING_PENDING: "PARENT_GRADING_PENDING",
   GRADING_ACTIVE: "GRADING_ACTIVE",
   SESSION_COMPLETE: "SESSION_COMPLETE"
 });
@@ -164,7 +167,7 @@ export function createSession(config = {}, questions = []) {
       setQuestionSolveTimes(individualTimes);
     }
     submittedAt = Date.now();
-    state = SessionState.SUBMITTED;
+    state = SessionState.SUBMITTED_LOCKED;
     return {
       submittedAt,
       totalSolveTimeMs,
@@ -174,7 +177,12 @@ export function createSession(config = {}, questions = []) {
 
   // 채점자 평가 모드 시작
   function startGrading() {
-    if (state !== SessionState.SUBMITTED && state !== SessionState.PRACTICE_ACTIVE) {
+    if (
+      state !== SessionState.SUBMITTED &&
+      state !== SessionState.SUBMITTED_LOCKED &&
+      state !== SessionState.PARENT_GRADING_PENDING &&
+      state !== SessionState.PRACTICE_ACTIVE
+    ) {
       throw new Error(`채점을 시작할 수 없는 상태입니다. 현재 상태: ${state}`);
     }
     state = SessionState.GRADING_ACTIVE;
@@ -183,7 +191,12 @@ export function createSession(config = {}, questions = []) {
 
   // 개별 문제 채점
   function gradeQuestion(questionId, isCorrect, comment = "") {
-    if (state !== SessionState.GRADING_ACTIVE && state !== SessionState.SUBMITTED) {
+    if (
+      state !== SessionState.GRADING_ACTIVE &&
+      state !== SessionState.SUBMITTED &&
+      state !== SessionState.SUBMITTED_LOCKED &&
+      state !== SessionState.PARENT_GRADING_PENDING
+    ) {
       throw new Error(`채점할 수 없는 상태입니다. 현재 상태: ${state}`);
     }
 
@@ -267,6 +280,55 @@ export function createSession(config = {}, questions = []) {
     completedAt = Date.now();
     state = SessionState.SESSION_COMPLETE;
     return getSummary();
+  }
+
+  //+_+// Phase F4: 불변 제출 Snapshot 객체 생성
+  function createSubmissionSnapshot(options = {}) {
+    const now = Date.now();
+    const sId = options.sessionId || id;
+    const targetLearnerId = options.learnerId || null;
+    const studentStrokesMapObj = options.studentStrokesMap instanceof Map
+      ? Object.fromEntries(options.studentStrokesMap.entries())
+      : (options.studentStrokesMap || {});
+
+    return {
+      id: options.id || `sub_${sId}`,
+      sessionId: sId,
+      learnerId: targetLearnerId,
+      subjectId: options.subjectId || "math",
+      moduleId: options.moduleId || "arithmetic",
+      status: options.status || "PARENT_GRADING_PENDING",
+      config: {
+        ...config,
+        operation,
+        mathFormat,
+        macroLevelId,
+        stageId,
+        pageSize,
+        cols: config.cols || (pageSize <= 2 ? pageSize : 2),
+        rows: config.rows || Math.ceil(pageSize / (config.cols || 2))
+      },
+      questions: questions.map((q, idx) => ({
+        ...q,
+        orderNumber: idx + 1,
+        expectedAnswer: q.answer !== undefined ? q.answer : q.expectedAnswer
+      })),
+      studentStrokesMap: studentStrokesMapObj,
+      gradingStrokesMap: {},
+      gradingResults: {},
+      totalSolveTimeMs: totalSolveTimeMs || Math.max(0, Math.round(options.totalSolveTimeMs || 0)),
+      perQuestionElapsedMs: options.perQuestionElapsedMs || getQuestionSolveTimes(),
+      totalPages,
+      pageSize,
+      cols: config.cols || (pageSize <= 2 ? pageSize : 2),
+      rows: config.rows || Math.ceil(pageSize / (config.cols || 2)),
+      inputProfile: options.inputProfile || "DESKTOP_MOUSE_PEN",
+      submittedAt: submittedAt || now,
+      schemaVersion: 4,
+      appBuildId: String(options.appBuildId || "unknown"),
+      gradedAt: null,
+      completedAt: null
+    };
   }
 
   // 최종 통계 집계
@@ -355,6 +417,7 @@ export function createSession(config = {}, questions = []) {
     get totalPages() { return totalPages; },
     get questions() { return questions; },
     get totalQuestions() { return questions.length; },
+    isLocked: () => state === SessionState.SUBMITTED || state === SessionState.SUBMITTED_LOCKED || state === SessionState.PARENT_GRADING_PENDING || state === SessionState.GRADING_ACTIVE || state === SessionState.SESSION_COMPLETE,
     start,
     getPageQuestions,
     nextPage,
@@ -369,6 +432,7 @@ export function createSession(config = {}, questions = []) {
     gradeAll,
     getGradingStatus,
     finishGrading,
+    createSubmissionSnapshot,
     getSummary
   };
 }

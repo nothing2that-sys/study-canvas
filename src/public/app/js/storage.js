@@ -205,12 +205,27 @@ export function getDB() {
         }
       }
 
-      //+_+// 7. learnerProfiles store (Phase F1 신규 추가)
+      //+_+// 7. learnerProfiles store (Phase F1)
       if (!db.objectStoreNames.contains("learnerProfiles")) {
         const profileStore = db.createObjectStore("learnerProfiles", { keyPath: "id" });
         profileStore.createIndex("updatedAt", "updatedAt", { unique: false });
         profileStore.createIndex("lastActiveAt", "lastActiveAt", { unique: false });
         profileStore.createIndex("archived", "archived", { unique: false });
+      }
+
+      //+_+// 8. submissions store (Phase F4: 불변 제출 Snapshot & Lock)
+      if (!db.objectStoreNames.contains("submissions")) {
+        const submissionStore = db.createObjectStore("submissions", { keyPath: "id" });
+        submissionStore.createIndex("sessionId", "sessionId", { unique: false });
+        submissionStore.createIndex("learnerId", "learnerId", { unique: false });
+        submissionStore.createIndex("submittedAt", "submittedAt", { unique: false });
+        submissionStore.createIndex("status", "status", { unique: false });
+        submissionStore.createIndex("subjectId", "subjectId", { unique: false });
+      } else {
+        const submissionStore = request.transaction.objectStore("submissions");
+        if (!submissionStore.indexNames.contains("learnerId")) {
+          submissionStore.createIndex("learnerId", "learnerId", { unique: false });
+        }
       }
     };
 
@@ -237,7 +252,8 @@ let memoryStore = {
   mistakes: new Map(),
   stageProgress: new Map(),
   strokes: new Map(),
-  draftSessions: new Map()
+  draftSessions: new Map(),
+  submissions: new Map()
 };
 
 function createMemoryFallbackDB() {
@@ -249,7 +265,8 @@ function createMemoryFallbackDB() {
     mistakes: memoryStore.mistakes,
     stageProgress: memoryStore.stageProgress,
     strokes: memoryStore.strokes,
-    draftSessions: memoryStore.draftSessions
+    draftSessions: memoryStore.draftSessions,
+    submissions: memoryStore.submissions
   };
 }
 
@@ -1271,13 +1288,16 @@ export async function clearAllData(options = {}) {
       for (const [key, st] of db.strokes.entries()) {
         if ((st.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.strokes.delete(key);
       }
+      for (const [key, sub] of db.submissions.entries()) {
+        if ((sub.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.submissions.delete(key);
+      }
       const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
       db.draftSessions.delete(draftKey);
       return true;
     }
 
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions"], "readwrite");
+      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions"], "readwrite");
       // sessions
       const sessionStore = tx.objectStore("sessions");
       sessionStore.openCursor().onsuccess = (e) => {
@@ -1328,6 +1348,16 @@ export async function clearAllData(options = {}) {
       const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
       draftStore.delete(draftKey);
 
+      // submissions
+      const submissionStore = tx.objectStore("submissions");
+      submissionStore.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if ((cursor.value.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) cursor.delete();
+          cursor.continue();
+        }
+      };
+
       tx.oncomplete = () => resolve(true);
       tx.onerror = (e) => reject(e.target.error);
     });
@@ -1344,11 +1374,12 @@ export async function clearAllData(options = {}) {
     db.stageProgress.clear();
     db.strokes.clear();
     db.draftSessions.clear();
+    db.submissions.clear();
     return true;
   }
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(["learnerProfiles", "sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions"], "readwrite");
+    const tx = db.transaction(["learnerProfiles", "sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions"], "readwrite");
     tx.objectStore("learnerProfiles").clear();
     tx.objectStore("sessions").clear();
     tx.objectStore("attempts").clear();
@@ -1356,7 +1387,191 @@ export async function clearAllData(options = {}) {
     tx.objectStore("stageProgress").clear();
     tx.objectStore("strokes").clear();
     tx.objectStore("draftSessions").clear();
+    tx.objectStore("submissions").clear();
     tx.oncomplete = () => resolve(true);
     tx.onerror = (e) => reject(e.target.error);
   });
 }
+
+//+_+// ============================================================================
+//+_+// 6. Phase F4: 불변 제출 Snapshot & Lock API
+//+_+// ============================================================================
+
+function mapToObject(mapOrObj) {
+  if (mapOrObj instanceof Map) {
+    return Object.fromEntries(mapOrObj.entries());
+  }
+  return mapOrObj && typeof mapOrObj === "object" ? { ...mapOrObj } : {};
+}
+
+export async function saveSubmissionSnapshot(snapshotData, options = {}) {
+  if (!snapshotData) throw new Error("저장할 submission snapshot 데이터가 필요합니다.");
+  const db = await getDB();
+  const sessionId = snapshotData.sessionId || snapshotData.id;
+  if (!sessionId) throw new Error("submission snapshot에 sessionId가 필요합니다.");
+
+  const id = snapshotData.id || (String(sessionId).startsWith("sub_") ? sessionId : `sub_${sessionId}`);
+  const learnerId = snapshotData.learnerId || options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
+
+  //+_+// 멱등성 보장: 이미 동일 id 또는 sessionId로 저장된 submission이 존재하면 기존 레코드 반환
+  const existing = await getSubmission(id);
+  if (existing) {
+    return existing;
+  }
+
+  const now = Date.now();
+  const studentStrokesMapObj = mapToObject(snapshotData.studentStrokesMap || snapshotData.strokesMap);
+  const gradingStrokesMapObj = mapToObject(snapshotData.gradingStrokesMap);
+  const gradingResultsObj = mapToObject(snapshotData.gradingResults);
+
+  const snapshotRecord = {
+    id,
+    sessionId,
+    learnerId,
+    subjectId: snapshotData.subjectId || "math",
+    moduleId: snapshotData.moduleId || "arithmetic",
+    status: snapshotData.status || "PARENT_GRADING_PENDING",
+    config: snapshotData.config ? { ...snapshotData.config } : {},
+    questions: Array.isArray(snapshotData.questions) ? JSON.parse(JSON.stringify(snapshotData.questions)) : [],
+    studentStrokesMap: studentStrokesMapObj,
+    gradingStrokesMap: gradingStrokesMapObj,
+    gradingResults: gradingResultsObj,
+    totalSolveTimeMs: Math.max(0, Number(snapshotData.totalSolveTimeMs) || 0),
+    perQuestionElapsedMs: snapshotData.perQuestionElapsedMs ? { ...snapshotData.perQuestionElapsedMs } : {},
+    totalPages: Math.max(1, Number(snapshotData.totalPages) || 1),
+    pageSize: Math.max(1, Number(snapshotData.pageSize) || 4),
+    cols: Math.max(1, Number(snapshotData.cols) || 2),
+    rows: Math.max(1, Number(snapshotData.rows) || 2),
+    inputProfile: snapshotData.inputProfile || "DESKTOP_MOUSE_PEN",
+    submittedAt: Number(snapshotData.submittedAt) || now,
+    schemaVersion: 4,
+    appBuildId: String(snapshotData.appBuildId || "unknown"),
+    gradedAt: snapshotData.gradedAt || null,
+    completedAt: snapshotData.completedAt || null
+  };
+
+  if (db.isMemory) {
+    db.submissions.set(id, snapshotRecord);
+    return snapshotRecord;
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("submissions", "readwrite");
+    tx.objectStore("submissions").put(snapshotRecord);
+    tx.oncomplete = () => resolve(snapshotRecord);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+export async function getSubmission(id) {
+  if (!id) return null;
+  const db = await getDB();
+
+  if (db.isMemory) {
+    return db.submissions.get(id) || null;
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction("submissions", "readonly");
+      const req = tx.objectStore("submissions").get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = (e) => reject(e.target.error);
+    } catch (_) {
+      resolve(null);
+    }
+  });
+}
+
+export async function getSubmissionBySessionId(sessionId, options = {}) {
+  if (!sessionId) return null;
+  const db = await getDB();
+  const targetId = String(sessionId).startsWith("sub_") ? sessionId : `sub_${sessionId}`;
+  const direct = await getSubmission(targetId);
+  if (direct) {
+    if (!options.learnerId || (direct.learnerId || DEFAULT_LEGACY_LEARNER_ID) === options.learnerId) {
+      return direct;
+    }
+  }
+
+  const all = await getAllSubmissions(options);
+  return all.find((s) => s.sessionId === sessionId) || null;
+}
+
+export async function getAllSubmissions(filter = {}) {
+  const db = await getDB();
+  const targetLearnerId = filter.allLearners ? null : resolveActiveLearnerId(filter);
+  let all = [];
+
+  if (db.isMemory) {
+    all = Array.from(db.submissions.values());
+  } else {
+    all = await new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction("submissions", "readonly");
+        const req = tx.objectStore("submissions").getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = (e) => reject(e.target.error);
+      } catch (_) {
+        resolve([]);
+      }
+    });
+  }
+
+  if (targetLearnerId) {
+    all = all.filter((s) => (s.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId);
+  }
+  if (filter.status) {
+    all = all.filter((s) => s.status === filter.status);
+  }
+  if (filter.subjectId) {
+    all = all.filter((s) => s.subjectId === filter.subjectId);
+  }
+
+  return all.sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+}
+
+export async function getPendingSubmissions(filter = {}) {
+  return getAllSubmissions({ ...filter, status: "PARENT_GRADING_PENDING" });
+}
+
+export async function updateSubmissionGrading(id, gradingResults = {}, gradingStrokesMap = new Map(), options = {}) {
+  if (!id) throw new Error("업데이트할 submission ID가 필요합니다.");
+  const existing = await getSubmission(id);
+  if (!existing) {
+    throw new Error(`해당 ID(${id})의 submission snapshot을 찾을 수 없습니다.`);
+  }
+
+  const db = await getDB();
+  const now = Date.now();
+  const updatedGradingResults = {
+    ...(existing.gradingResults || {}),
+    ...mapToObject(gradingResults)
+  };
+  const updatedGradingStrokes = {
+    ...(existing.gradingStrokesMap || {}),
+    ...mapToObject(gradingStrokesMap)
+  };
+
+  const updatedRecord = {
+    ...existing,
+    gradingResults: updatedGradingResults,
+    gradingStrokesMap: updatedGradingStrokes,
+    status: options.status || existing.status,
+    gradedAt: options.gradedAt || existing.gradedAt || now,
+    completedAt: options.completedAt !== undefined ? options.completedAt : existing.completedAt
+  };
+
+  if (db.isMemory) {
+    db.submissions.set(id, updatedRecord);
+    return updatedRecord;
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("submissions", "readwrite");
+    tx.objectStore("submissions").put(updatedRecord);
+    tx.oncomplete = () => resolve(updatedRecord);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+

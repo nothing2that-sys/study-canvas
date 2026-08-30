@@ -3,8 +3,8 @@ import { createSession, SessionState, mistakeToQuestion, escapeHtml } from "./se
 import { createQuestionTimer, formatTime, startSessionTimer } from "./timer.js";
 import { getMultiplicationSteps, getDivisionSteps } from "./explainer.js";
 import { createDrawingCanvas, InputProfile, resolveInputProfile, togglePenOnlyProfile } from "./canvasEngine.js";
-import { saveSession, saveDraft, clearDraft, clearLearnerData } from "./data/learningCommands.js";
-import { getRecentSessions, getMistakes, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, getDraft, getRecentAttempts } from "./data/learningQueries.js";
+import { saveSession, saveDraft, clearDraft, clearLearnerData, submitLearningSession, updateSubmissionGrading } from "./data/learningCommands.js";
+import { getRecentSessions, getMistakes, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, getDraft, getRecentAttempts, getSubmission, getSubmissionBySessionId, getPendingSubmissions } from "./data/learningQueries.js";
 import { getActiveLearner, getActiveLearnerId, getLearners } from "./learners/learnerQueries.js";
 import { selectLearner, createLearner, configureLearnerSessionGuard } from "./learners/learnerCommands.js";
 import { bootstrapApp } from "./platform/appBootstrap.js";
@@ -266,7 +266,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260830T031929000Z-05820af",
+    appBuildId: "20260830T093247437Z-4407579",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -1575,7 +1575,7 @@ async function handleNextPage() {
   } catch (_) {}
 }
 
-// 학생 풀이 완료 및 제출 -> 채점 모드 전환
+// 학생 풀이 완료 및 제출 -> 불변 Snapshot 저장 후 채점 모드 전환
 async function handleSubmitPractice() {
   if (!currentSession) return;
   try {
@@ -1584,6 +1584,28 @@ async function handleSubmitPractice() {
     return;
   }
   const elapsedMs = questionTimer.stop();
+  const activeLId = getActiveLearnerId();
+
+  try {
+    //+_+// 1. 불변 제출 Snapshot 영구 스토리지에 원자적 저장 및 Active Draft 정리
+    await submitLearningSession({
+      session: currentSession,
+      learnerId: activeLId,
+      subjectId: "math",
+      moduleId: "arithmetic",
+      inputProfile: currentInputProfile,
+      totalSolveTimeMs: elapsedMs,
+      perQuestionElapsedMs: currentSession.getQuestionSolveTimes?.() || {},
+      studentStrokesMap: questionStrokesMap,
+      appBuildId: typeof BUILD_ID !== "undefined" ? BUILD_ID : "unknown"
+    });
+  } catch (err) {
+    console.error("제출 Snapshot 저장 실패:", err);
+    alert("풀이 제출 저장에 실패했습니다. 다시 시도해 주세요.");
+    questionTimer.start(); // 세션 유지
+    return;
+  }
+
   currentSession.submitPractice(elapsedMs);
   currentSession.startGrading();
 
@@ -1904,14 +1926,26 @@ function handleToggleAnswers() {
   triggerDraftSave();
 }
 
-// 채점 완료 및 최종 성적표 보기 (IndexedDB 영구 저장)
+// 채점 완료 및 최종 성적표 보기 (IndexedDB 영구 저장 및 submission 상태 GRADED 갱신)
 async function handleFinishGrading() {
   if (!currentSession) return;
   try {
     const summary = currentSession.finishGrading();
+    const activeLId = getActiveLearnerId();
     // 영구 스토리지에 세션 및 스트로크 저장
-    const savedRecord = await saveSession(summary, questionStrokesMap, gradingStrokesMap);
-    await clearDraft();
+    const savedRecord = await saveSession(summary, questionStrokesMap, gradingStrokesMap, { learnerId: activeLId });
+    await clearDraft({ learnerId: activeLId });
+
+    //+_+// 제출본 상태를 GRADED로 동기화
+    try {
+      await updateSubmissionGrading(
+        `sub_${currentSession.id}`,
+        gradingResultsMap,
+        gradingStrokesMap,
+        { status: "GRADED", completedAt: Date.now() }
+      );
+    } catch (_) {}
+
     showSessionResult(savedRecord);
   } catch (error) {
     alert(error.message);

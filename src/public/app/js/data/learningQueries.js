@@ -1,5 +1,5 @@
 //+_+// Math Canvas Pro - 학습 데이터 읽기 전용 Query 계층
-//+_+// SSOT Section 3 & 9 및 Phase F3 명세 준수
+//+_+// SSOT Section 3 & 9 및 Phase F4 명세 준수
 //+_+// - UI -> Query -> storage.js 읽기 전용 경계 제공
 
 import {
@@ -11,7 +11,11 @@ import {
   getRecentAttempts as storageGetRecentAttempts,
   getDailyLearningMap as storageGetDailyLearningMap,
   getCurrentStreak as storageGetCurrentStreak,
-  getSessionsByDate as storageGetSessionsByDate
+  getSessionsByDate as storageGetSessionsByDate,
+  getSubmission as storageGetSubmission,
+  getSubmissionBySessionId as storageGetSubmissionBySessionId,
+  getPendingSubmissions as storageGetPendingSubmissions,
+  getAllSubmissions as storageGetAllSubmissions
 } from "../storage.js";
 
 //+_+// 최근 완료 세션 목록 조회
@@ -77,3 +81,24 @@ export async function getLearnerHomeSummary(learnerId) {
     recentSessionsCount: recentSessions.length
   };
 }
+
+//+_+// Phase F4: 특정 제출 Snapshot 조회 (ID 기준)
+export async function getSubmission(id) {
+  return await storageGetSubmission(id);
+}
+
+//+_+// Phase F4: 특정 세션 ID 기준 제출 Snapshot 조회
+export async function getSubmissionBySessionId(sessionId, options = {}) {
+  return await storageGetSubmissionBySessionId(sessionId, options);
+}
+
+//+_+// Phase F4: 보호자 채점 대기(PARENT_GRADING_PENDING) 목록 조회 (learnerId 격리)
+export async function getPendingSubmissions(options = {}) {
+  return await storageGetPendingSubmissions(options);
+}
+
+//+_+// Phase F4: 전체 제출본 목록 조회 (learnerId 격리)
+export async function getAllSubmissions(filter = {}) {
+  return await storageGetAllSubmissions(filter);
+}
+
