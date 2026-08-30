@@ -3,6 +3,7 @@
 //+_+// - 미변환 레거시 데이터(learnerId 없는 데이터 및 DEFAULT_LEGACY_LEARNER_ID) 정밀 감지
 //+_+// - 변환 전 원본 6대 Store 백업 및 실패 시 원자적 롤백(Rollback) 안전성 보장
 //+_+// - 명시적 기본 학습자(LearnerProfile) 생성/재사용 및 바인딩 계약
+//+_+// - 기존 학습자 소유권(learnerId) 보존 (learnerId 보유 레코드는 타 프로필로 재귀속 금지)
 //+_+// - migration key 충돌 preflight 검사 (TARGET_CONFLICT 시 0건 변경 및 안전 중단)
 //+_+// - partial migration ownership 무결성 검증 (부모 session 소유권 계승 및 불일치 시 OWNERSHIP_CONFLICT)
 //+_+// - strokes Store 100% 무손실 보존
@@ -20,6 +21,14 @@ import {
 } from "./storage.js";
 
 export const MIGRATION_VERSION = "2.0";
+
+//+_+// 레코드의 실제 소유 학습자 ID 결정 헬퍼
+function resolveRecordOwner(record, defaultTargetId) {
+  if (record && record.learnerId && record.learnerId !== DEFAULT_LEGACY_LEARNER_ID) {
+    return record.learnerId;
+  }
+  return defaultTargetId;
+}
 
 /**
  * //+_+// 6대 Store 내 미변환 레거시 데이터 감지
@@ -290,7 +299,7 @@ export async function restoreMigrationBackup(snapshot) {
  * //+_+// 마이그레이션 대상 학습자 프로필 결정 (기존 active learner 임의 선택 금지)
  */
 async function resolveDefaultMigrationProfile(options = {}) {
-  // 1. 명시적으로 전달된 targetLearnerId가 있는 경우
+  //+_+// 1. 명시적으로 전달된 targetLearnerId가 있는 경우
   if (options.targetLearnerId) {
     const profile = await getLearnerProfile(options.targetLearnerId);
     if (!profile) {
@@ -302,15 +311,15 @@ async function resolveDefaultMigrationProfile(options = {}) {
     return { profile, isNewlyCreated: false };
   }
 
-  // 2. targetLearnerId 미지정 시: 기존 active learner 임의 선택 금지.
-  //    전용 migration 프로필(migrationSource: "legacy_migration" 또는 isLegacyDefault: true) 검색 및 재사용
+  //+_+// 2. targetLearnerId 미지정 시: 기존 active learner 임의 선택 금지.
+  //+_+//    전용 migration 프로필(migrationSource: "legacy_migration" 또는 isLegacyDefault: true) 검색 및 재사용
   const allProfiles = await getAllLearnerProfiles({ includeArchived: true });
   const existingMigrationProfile = allProfiles.find(p => !p.archived && (p.migrationSource === "legacy_migration" || p.isLegacyDefault === true));
   if (existingMigrationProfile) {
     return { profile: existingMigrationProfile, isNewlyCreated: false };
   }
 
-  // 3. 전용 프로필이 없으면 신규 생성
+  //+_+// 3. 전용 프로필이 없으면 신규 생성
   const created = await createLearnerProfile({
     name: options.defaultLearnerName || "기본 학습자",
     icon: "avatar_boy",
@@ -325,17 +334,17 @@ async function resolveDefaultMigrationProfile(options = {}) {
 /**
  * //+_+// 마이그레이션 실행 전 대상 Key 충돌 및 부분 소유권(ownership) 일관성 Preflight 검사
  */
-function runPreflightCheck(snapshot, targetLearnerId) {
+function runPreflightCheck(snapshot, defaultTargetId) {
   const { sessions = [], attempts = [], mistakes = [], stageProgress = [], strokes = [], draftSessions = [] } = snapshot.stores;
 
-  // 1. 부모 세션 소유권 매핑 구성
+  //+_+// 1. 부모 세션 소유권 매핑 구성
   const sessionLearnerMap = new Map();
   sessions.forEach(s => {
-    const sLearner = (s.learnerId && s.learnerId !== DEFAULT_LEGACY_LEARNER_ID) ? s.learnerId : targetLearnerId;
+    const sLearner = (s.learnerId && s.learnerId !== DEFAULT_LEGACY_LEARNER_ID) ? s.learnerId : defaultTargetId;
     sessionLearnerMap.set(s.id, sLearner);
   });
 
-  // 2. Attempts 소유권 일치 검사
+  //+_+// 2. Attempts 소유권 일치 검사
   for (const a of attempts) {
     if (a.sessionId && sessionLearnerMap.has(a.sessionId)) {
       const expectedLearner = sessionLearnerMap.get(a.sessionId);
@@ -349,7 +358,7 @@ function runPreflightCheck(snapshot, targetLearnerId) {
     }
   }
 
-  // 3. Strokes 소유권 일치 검사
+  //+_+// 3. Strokes 소유권 일치 검사
   for (const st of strokes) {
     const sessionId = st.sessionId || (st.sessionId_questionId ? st.sessionId_questionId.split("_")[0] : null);
     if (sessionId && sessionLearnerMap.has(sessionId)) {
@@ -364,22 +373,19 @@ function runPreflightCheck(snapshot, targetLearnerId) {
     }
   }
 
-  // 4. Target Key 충돌 검사
+  //+_+// 4. Target Key 충돌 검사 (각 record의 실제 resolved owner 기준)
   const conflicts = [];
 
-  // 4.1 mistakes 대상 키 충돌 검사
-  const existingTargetMistakeKeys = new Set(
-    mistakes
-      .filter(m => m.learnerId === targetLearnerId && String(m.key || "").startsWith(`${targetLearnerId}:`))
-      .map(m => m.key)
-  );
-
+  //+_+// 4.1 mistakes 대상 키 충돌 검사
   for (const m of mistakes) {
     const isLegacy = !m.learnerId || m.learnerId === DEFAULT_LEGACY_LEARNER_ID || !String(m.key || "").startsWith(`${m.learnerId}:`);
     if (isLegacy) {
+      const ownerId = resolveRecordOwner(m, defaultTargetId);
       const rawQKey = m.questionKey || String(m.key || "").replace(new RegExp(`^(${DEFAULT_LEGACY_LEARNER_ID}:|${m.learnerId || ""}:)`), "");
-      const targetCompoundKey = `${targetLearnerId}:${rawQKey}`;
-      if (existingTargetMistakeKeys.has(targetCompoundKey)) {
+      const targetCompoundKey = `${ownerId}:${rawQKey}`;
+
+      const existingForOwner = mistakes.find(em => em.learnerId === ownerId && em.key === targetCompoundKey && em !== m);
+      if (existingForOwner) {
         conflicts.push({
           store: "mistakes",
           key: targetCompoundKey,
@@ -389,19 +395,16 @@ function runPreflightCheck(snapshot, targetLearnerId) {
     }
   }
 
-  // 4.2 stageProgress 대상 키 충돌 검사
-  const existingTargetStageKeys = new Set(
-    stageProgress
-      .filter(p => p.learnerId === targetLearnerId && String(p.stageKey || "").startsWith(`${targetLearnerId}:`))
-      .map(p => p.stageKey)
-  );
-
+  //+_+// 4.2 stageProgress 대상 키 충돌 검사
   for (const p of stageProgress) {
     const isLegacy = !p.learnerId || p.learnerId === DEFAULT_LEGACY_LEARNER_ID || !String(p.stageKey || "").startsWith(`${p.learnerId}:`);
     if (isLegacy) {
+      const ownerId = resolveRecordOwner(p, defaultTargetId);
       const rawStageId = p.stageId || String(p.stageKey || "").replace(new RegExp(`^(${DEFAULT_LEGACY_LEARNER_ID}:|${p.learnerId || ""}:)`), "");
-      const targetCompoundKey = `${targetLearnerId}:${rawStageId}`;
-      if (existingTargetStageKeys.has(targetCompoundKey)) {
+      const targetCompoundKey = `${ownerId}:${rawStageId}`;
+
+      const existingForOwner = stageProgress.find(ep => ep.learnerId === ownerId && ep.stageKey === targetCompoundKey && ep !== p);
+      if (existingForOwner) {
         conflicts.push({
           store: "stageProgress",
           key: targetCompoundKey,
@@ -411,16 +414,22 @@ function runPreflightCheck(snapshot, targetLearnerId) {
     }
   }
 
-  // 4.3 draftSessions 대상 키 충돌 검사
-  const existingTargetDraft = draftSessions.find(d => d.id === `current_draft_${targetLearnerId}`);
-  const hasLegacyDraft = draftSessions.some(d => d.id === "current_draft" || !d.learnerId || d.learnerId === DEFAULT_LEGACY_LEARNER_ID || d.id !== `current_draft_${d.learnerId}`);
+  //+_+// 4.3 draftSessions 대상 키 충돌 검사
+  for (const d of draftSessions) {
+    const isLegacy = d.id === "current_draft" || !d.learnerId || d.learnerId === DEFAULT_LEGACY_LEARNER_ID || d.id !== `current_draft_${d.learnerId}`;
+    if (isLegacy) {
+      const ownerId = resolveRecordOwner(d, defaultTargetId);
+      const targetDraftKey = `current_draft_${ownerId}`;
 
-  if (existingTargetDraft && hasLegacyDraft) {
-    conflicts.push({
-      store: "draftSessions",
-      key: `current_draft_${targetLearnerId}`,
-      message: `임시 저장 대상 키(current_draft_${targetLearnerId})가 이미 존재합니다.`
-    });
+      const existingDraftForOwner = draftSessions.find(ed => ed.id === targetDraftKey && ed !== d);
+      if (existingDraftForOwner) {
+        conflicts.push({
+          store: "draftSessions",
+          key: targetDraftKey,
+          message: `임시 저장 대상 키(${targetDraftKey})가 이미 존재합니다.`
+        });
+      }
+    }
   }
 
   if (conflicts.length > 0) {
@@ -438,11 +447,11 @@ function runPreflightCheck(snapshot, targetLearnerId) {
 /**
  * //+_+// 실제 6대 Store 마이그레이션 변환 트랜잭션 실행
  */
-async function executeMigrationTransaction(backupSnapshot, targetLearnerId, options = {}) {
+async function executeMigrationTransaction(backupSnapshot, defaultTargetId, options = {}) {
   const db = await getDB();
   const sessionLearnerMap = new Map();
   backupSnapshot.stores.sessions.forEach(s => {
-    const sLearner = (s.learnerId && s.learnerId !== DEFAULT_LEGACY_LEARNER_ID) ? s.learnerId : targetLearnerId;
+    const sLearner = (s.learnerId && s.learnerId !== DEFAULT_LEGACY_LEARNER_ID) ? s.learnerId : defaultTargetId;
     sessionLearnerMap.set(s.id, sLearner);
   });
 
@@ -451,13 +460,13 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
       throw new Error("Simulated memory migration failure at pre");
     }
 
-    // 1) sessions
+    //+_+// 1) sessions (기존 정상 learnerId는 보존)
     for (const [key, s] of Array.from(db.sessions.entries())) {
       if (!s.learnerId || s.learnerId === DEFAULT_LEGACY_LEARNER_ID) {
         const updated = {
           ...s,
-          learnerId: targetLearnerId,
-          results: (s.results || []).map(r => ({ ...r, learnerId: targetLearnerId }))
+          learnerId: defaultTargetId,
+          results: (s.results || []).map(r => ({ ...r, learnerId: defaultTargetId }))
         };
         db.sessions.set(key, updated);
       }
@@ -467,13 +476,12 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
       throw new Error("Simulated memory migration failure at sessions");
     }
 
-    // 2) attempts (부모 session 소유권 반영)
+    //+_+// 2) attempts (부모 session 소유권 반영)
     for (const [key, a] of Array.from(db.attempts.entries())) {
-      const assignedLearnerId = (a.sessionId && sessionLearnerMap.has(a.sessionId))
-        ? sessionLearnerMap.get(a.sessionId)
-        : targetLearnerId;
-
       if (!a.learnerId || a.learnerId === DEFAULT_LEGACY_LEARNER_ID) {
+        const assignedLearnerId = (a.sessionId && sessionLearnerMap.has(a.sessionId))
+          ? sessionLearnerMap.get(a.sessionId)
+          : defaultTargetId;
         db.attempts.set(key, { ...a, learnerId: assignedLearnerId });
       }
     }
@@ -482,19 +490,20 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
       throw new Error("Simulated memory migration failure at attempts");
     }
 
-    // 3) mistakes (복합 키 변환)
+    //+_+// 3) mistakes (소유자 learnerId 유지하며 복합 키 변환)
     for (const [key, m] of Array.from(db.mistakes.entries())) {
       const isLegacy = !m.learnerId || m.learnerId === DEFAULT_LEGACY_LEARNER_ID || !String(m.key || "").startsWith(`${m.learnerId}:`);
       if (isLegacy) {
         db.mistakes.delete(key);
+        const ownerId = resolveRecordOwner(m, defaultTargetId);
         const rawQKey = m.questionKey || String(m.key || "").replace(new RegExp(`^(${DEFAULT_LEGACY_LEARNER_ID}:|${m.learnerId || ""}:)`), "");
-        const compoundKey = `${targetLearnerId}:${rawQKey}`;
+        const compoundKey = `${ownerId}:${rawQKey}`;
         db.mistakes.set(compoundKey, {
           ...m,
           key: compoundKey,
           id: compoundKey,
           compoundKey: compoundKey,
-          learnerId: targetLearnerId,
+          learnerId: ownerId,
           questionKey: rawQKey
         });
       }
@@ -504,18 +513,19 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
       throw new Error("Simulated memory migration failure at mistakes");
     }
 
-    // 4) stageProgress (복합 키 변환)
+    //+_+// 4) stageProgress (소유자 learnerId 유지하며 복합 키 변환)
     for (const [key, p] of Array.from(db.stageProgress.entries())) {
       const isLegacy = !p.learnerId || p.learnerId === DEFAULT_LEGACY_LEARNER_ID || !String(p.stageKey || "").startsWith(`${p.learnerId}:`);
       if (isLegacy) {
         db.stageProgress.delete(key);
+        const ownerId = resolveRecordOwner(p, defaultTargetId);
         const rawStageId = p.stageId || String(p.stageKey || "").replace(new RegExp(`^(${DEFAULT_LEGACY_LEARNER_ID}:|${p.learnerId || ""}:)`), "");
-        const compoundKey = `${targetLearnerId}:${rawStageId}`;
+        const compoundKey = `${ownerId}:${rawStageId}`;
         db.stageProgress.set(compoundKey, {
           ...p,
           stageKey: compoundKey,
           stageId: rawStageId,
-          learnerId: targetLearnerId
+          learnerId: ownerId
         });
       }
     }
@@ -524,14 +534,13 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
       throw new Error("Simulated memory migration failure at stageProgress");
     }
 
-    // 5) strokes (부모 session 소유권 반영 및 필기 무손실 보존)
+    //+_+// 5) strokes (부모 session 소유권 반영 및 필기 무손실 보존)
     for (const [key, st] of Array.from(db.strokes.entries())) {
-      const sessionId = st.sessionId || (st.sessionId_questionId ? st.sessionId_questionId.split("_")[0] : null);
-      const assignedLearnerId = (sessionId && sessionLearnerMap.has(sessionId))
-        ? sessionLearnerMap.get(sessionId)
-        : targetLearnerId;
-
       if (!st.learnerId || st.learnerId === DEFAULT_LEGACY_LEARNER_ID) {
+        const sessionId = st.sessionId || (st.sessionId_questionId ? st.sessionId_questionId.split("_")[0] : null);
+        const assignedLearnerId = (sessionId && sessionLearnerMap.has(sessionId))
+          ? sessionLearnerMap.get(sessionId)
+          : defaultTargetId;
         db.strokes.set(key, { ...st, learnerId: assignedLearnerId });
       }
     }
@@ -540,16 +549,17 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
       throw new Error("Simulated memory migration failure at strokes");
     }
 
-    // 6) draftSessions (current_draft_${targetLearnerId} 변환)
+    //+_+// 6) draftSessions (소유자 learnerId 유지하며 current_draft_${ownerId} 변환)
     for (const [key, d] of Array.from(db.draftSessions.entries())) {
       const isLegacy = d.id === "current_draft" || !d.learnerId || d.learnerId === DEFAULT_LEGACY_LEARNER_ID || d.id !== `current_draft_${d.learnerId}`;
       if (isLegacy) {
         db.draftSessions.delete(key);
-        const draftKey = `current_draft_${targetLearnerId}`;
+        const ownerId = resolveRecordOwner(d, defaultTargetId);
+        const draftKey = `current_draft_${ownerId}`;
         db.draftSessions.set(draftKey, {
           ...d,
           id: draftKey,
-          learnerId: targetLearnerId
+          learnerId: ownerId
         });
       }
     }
@@ -575,7 +585,7 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
 
       let injectionError = null;
 
-      // 1) sessions 변환
+      //+_+// 1) sessions 변환
       sStore.openCursor().onsuccess = (e) => {
         try {
           if (options._failInjection?.failAtStore === "sessions") {
@@ -585,8 +595,8 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
           if (cursor) {
             const val = cursor.value;
             if (!val.learnerId || val.learnerId === DEFAULT_LEGACY_LEARNER_ID) {
-              val.learnerId = targetLearnerId;
-              val.results = (val.results || []).map(r => ({ ...r, learnerId: targetLearnerId }));
+              val.learnerId = defaultTargetId;
+              val.results = (val.results || []).map(r => ({ ...r, learnerId: defaultTargetId }));
               cursor.update(val);
             }
             cursor.continue();
@@ -597,7 +607,7 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
         }
       };
 
-      // 2) attempts 변환 (부모 세션 소유권 반영)
+      //+_+// 2) attempts 변환 (부모 세션 소유권 반영)
       aStore.openCursor().onsuccess = (e) => {
         try {
           if (options._failInjection?.failAtStore === "attempts") {
@@ -606,11 +616,10 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
           const cursor = e.target.result;
           if (cursor) {
             const val = cursor.value;
-            const assignedLearnerId = (val.sessionId && sessionLearnerMap.has(val.sessionId))
-              ? sessionLearnerMap.get(val.sessionId)
-              : targetLearnerId;
-
             if (!val.learnerId || val.learnerId === DEFAULT_LEGACY_LEARNER_ID) {
+              const assignedLearnerId = (val.sessionId && sessionLearnerMap.has(val.sessionId))
+                ? sessionLearnerMap.get(val.sessionId)
+                : defaultTargetId;
               val.learnerId = assignedLearnerId;
               cursor.update(val);
             }
@@ -622,7 +631,7 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
         }
       };
 
-      // 3) mistakes 변환 (복합 키)
+      //+_+// 3) mistakes 변환 (소유자 learnerId 유지하며 복합 키 변환)
       mStore.openCursor().onsuccess = (e) => {
         try {
           if (options._failInjection?.failAtStore === "mistakes") {
@@ -634,14 +643,15 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
             const isLegacy = !val.learnerId || val.learnerId === DEFAULT_LEGACY_LEARNER_ID || !String(val.key || "").startsWith(`${val.learnerId}:`);
             if (isLegacy) {
               cursor.delete();
+              const ownerId = resolveRecordOwner(val, defaultTargetId);
               const rawQKey = val.questionKey || String(val.key || "").replace(new RegExp(`^(${DEFAULT_LEGACY_LEARNER_ID}:|${val.learnerId || ""}:)`), "");
-              const compoundKey = `${targetLearnerId}:${rawQKey}`;
+              const compoundKey = `${ownerId}:${rawQKey}`;
               mStore.put({
                 ...val,
                 key: compoundKey,
                 id: compoundKey,
                 compoundKey: compoundKey,
-                learnerId: targetLearnerId,
+                learnerId: ownerId,
                 questionKey: rawQKey
               });
             }
@@ -653,7 +663,7 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
         }
       };
 
-      // 4) stageProgress 변환 (복합 키)
+      //+_+// 4) stageProgress 변환 (소유자 learnerId 유지하며 복합 키 변환)
       pStore.openCursor().onsuccess = (e) => {
         try {
           if (options._failInjection?.failAtStore === "stageProgress") {
@@ -665,13 +675,14 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
             const isLegacy = !val.learnerId || val.learnerId === DEFAULT_LEGACY_LEARNER_ID || !String(val.stageKey || "").startsWith(`${val.learnerId}:`);
             if (isLegacy) {
               cursor.delete();
+              const ownerId = resolveRecordOwner(val, defaultTargetId);
               const rawStageId = val.stageId || String(val.stageKey || "").replace(new RegExp(`^(${DEFAULT_LEGACY_LEARNER_ID}:|${val.learnerId || ""}:)`), "");
-              const compoundKey = `${targetLearnerId}:${rawStageId}`;
+              const compoundKey = `${ownerId}:${rawStageId}`;
               pStore.put({
                 ...val,
                 stageKey: compoundKey,
                 stageId: rawStageId,
-                learnerId: targetLearnerId
+                learnerId: ownerId
               });
             }
             cursor.continue();
@@ -682,7 +693,7 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
         }
       };
 
-      // 5) strokes 변환 (부모 세션 소유권 반영 및 필기 데이터 100% 보존)
+      //+_+// 5) strokes 변환 (부모 세션 소유권 반영 및 필기 데이터 100% 보존)
       stStore.openCursor().onsuccess = (e) => {
         try {
           if (options._failInjection?.failAtStore === "strokes") {
@@ -691,12 +702,11 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
           const cursor = e.target.result;
           if (cursor) {
             const val = cursor.value;
-            const sessionId = val.sessionId || (val.sessionId_questionId ? val.sessionId_questionId.split("_")[0] : null);
-            const assignedLearnerId = (sessionId && sessionLearnerMap.has(sessionId))
-              ? sessionLearnerMap.get(sessionId)
-              : targetLearnerId;
-
             if (!val.learnerId || val.learnerId === DEFAULT_LEGACY_LEARNER_ID) {
+              const sessionId = val.sessionId || (val.sessionId_questionId ? val.sessionId_questionId.split("_")[0] : null);
+              const assignedLearnerId = (sessionId && sessionLearnerMap.has(sessionId))
+                ? sessionLearnerMap.get(sessionId)
+                : defaultTargetId;
               val.learnerId = assignedLearnerId;
               cursor.update(val);
             }
@@ -708,7 +718,7 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
         }
       };
 
-      // 6) draftSessions 변환
+      //+_+// 6) draftSessions 변환 (소유자 learnerId 유지하며 current_draft_${ownerId} 변환)
       dStore.openCursor().onsuccess = (e) => {
         try {
           if (options._failInjection?.failAtStore === "draftSessions") {
@@ -720,11 +730,12 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
             const isLegacy = val.id === "current_draft" || !val.learnerId || val.learnerId === DEFAULT_LEGACY_LEARNER_ID || val.id !== `current_draft_${val.learnerId}`;
             if (isLegacy) {
               cursor.delete();
-              const draftKey = `current_draft_${targetLearnerId}`;
+              const ownerId = resolveRecordOwner(val, defaultTargetId);
+              const draftKey = `current_draft_${ownerId}`;
               dStore.put({
                 ...val,
                 id: draftKey,
-                learnerId: targetLearnerId
+                learnerId: ownerId
               });
             }
             cursor.continue();
@@ -754,7 +765,7 @@ async function executeMigrationTransaction(backupSnapshot, targetLearnerId, opti
  * //+_+// 기존 레거시 데이터 전체를 안전하고 원자적으로 마이그레이션
  */
 export async function migrateLegacyData(options = {}) {
-  // 1. targetLearnerId가 명시된 경우 즉시 유효성 검증
+  //+_+// 1. targetLearnerId가 명시된 경우 즉시 유효성 검증
   if (options.targetLearnerId) {
     const profile = await getLearnerProfile(options.targetLearnerId);
     if (!profile) {
@@ -773,7 +784,7 @@ export async function migrateLegacyData(options = {}) {
     }
   }
 
-  // 2. 레거시 데이터 사전 감지
+  //+_+// 2. 레거시 데이터 사전 감지
   const detection = await detectLegacyData();
   if (!detection.hasLegacyData) {
     const currentId = getCurrentLearnerId();
@@ -786,10 +797,10 @@ export async function migrateLegacyData(options = {}) {
     };
   }
 
-  // 2. 초기 active learner 상태 저장 (롤백 시 복원용)
+  //+_+// 3. 초기 active learner 상태 저장 (롤백 시 복원용)
   const initialActiveLearnerId = getCurrentLearnerId();
 
-  // 3. 마이그레이션 대상 학습자 프로필 확보
+  //+_+// 4. 마이그레이션 대상 학습자 프로필 확보
   let targetProfile = null;
   let isNewlyCreated = false;
   try {
@@ -806,10 +817,10 @@ export async function migrateLegacyData(options = {}) {
 
   const targetLearnerId = targetProfile.id;
 
-  // 4. 백업 스냅샷 캡처 (6대 Store 원본 데이터)
+  //+_+// 5. 백업 스냅샷 캡처 (6대 Store 원본 데이터)
   const backupSnapshot = await createMigrationBackup();
 
-  // 5. Preflight 체크 (Key 충돌 및 Ownership 일관성 검사)
+  //+_+// 6. Preflight 체크 (Key 충돌 및 Ownership 일관성 검사)
   const preflight = runPreflightCheck(backupSnapshot, targetLearnerId);
   if (!preflight.ok) {
     if (isNewlyCreated) {
@@ -827,11 +838,11 @@ export async function migrateLegacyData(options = {}) {
     };
   }
 
-  // 6. 실제 변환 트랜잭션 수행
+  //+_+// 7. 실제 변환 트랜잭션 수행
   try {
     await executeMigrationTransaction(backupSnapshot, targetLearnerId, options);
     
-    // 성공 시에만 활성 학습자 갱신
+    //+_+// 성공 시에만 활성 학습자 갱신
     setCurrentLearnerId(targetLearnerId);
 
     return {
@@ -842,7 +853,7 @@ export async function migrateLegacyData(options = {}) {
       counts: detection.counts
     };
   } catch (error) {
-    // 7. 실패 시 원본 백업 및 프로필, 활성 학습자 상태 자동 롤백
+    //+_+// 8. 실패 시 원본 백업 및 프로필, 활성 학습자 상태 자동 롤백
     let rollbackSuccess = false;
     let rollbackError = null;
 
