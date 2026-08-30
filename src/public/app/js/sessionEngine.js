@@ -192,10 +192,10 @@ export function createSession(config = {}, questions = []) {
     return { state };
   }
 
-  // 학생 풀이 완료 및 제출 (PRACTICE_ACTIVE 또는 SUBMITTING -> SUBMITTED_LOCKED)
+  //+_+// Phase F4: 학생 풀이 완료 및 제출 (SUBMITTING -> SUBMITTED_LOCKED)
   function submitPractice(elapsedMs = 0, individualTimes = null) {
-    if (state !== SessionState.PRACTICE_ACTIVE && state !== SessionState.SUBMITTING) {
-      throw new Error(`현재 상태(${state})에서는 풀이를 제출할 수 없습니다.`);
+    if (state !== SessionState.SUBMITTING) {
+      throw new Error(`현재 상태(${state})에서는 풀이를 제출할 수 없습니다. SUBMITTING 상태에서만 가능합니다.`);
     }
     totalSolveTimeMs = Math.max(0, Math.round(elapsedMs));
     if (individualTimes) {
@@ -212,35 +212,26 @@ export function createSession(config = {}, questions = []) {
 
   //+_+// Phase F4: 보호자 채점 대기 상태로 전이 (SUBMITTED_LOCKED -> PARENT_GRADING_PENDING)
   function setPendingGrading() {
-    if (state === SessionState.SUBMITTED_LOCKED || state === SessionState.SUBMITTED) {
-      state = SessionState.PARENT_GRADING_PENDING;
+    if (state !== SessionState.SUBMITTED_LOCKED) {
+      throw new Error(`현재 상태(${state})에서는 채점 대기 상태로 변경할 수 없습니다. SUBMITTED_LOCKED 상태에서만 가능합니다.`);
     }
+    state = SessionState.PARENT_GRADING_PENDING;
     return { state };
   }
 
-  // 채점자 평가 모드 시작
+  //+_+// Phase F4: 채점자 평가 모드 시작 (PARENT_GRADING_PENDING -> GRADING_ACTIVE)
   function startGrading() {
-    if (
-      state !== SessionState.SUBMITTED &&
-      state !== SessionState.SUBMITTED_LOCKED &&
-      state !== SessionState.PARENT_GRADING_PENDING &&
-      state !== SessionState.PRACTICE_ACTIVE
-    ) {
-      throw new Error(`채점을 시작할 수 없는 상태입니다. 현재 상태: ${state}`);
+    if (state !== SessionState.PARENT_GRADING_PENDING) {
+      throw new Error(`채점을 시작할 수 없는 상태입니다. 현재 상태: ${state} (PARENT_GRADING_PENDING 상태에서만 가능)`);
     }
     state = SessionState.GRADING_ACTIVE;
     return getGradingStatus();
   }
 
-  // 개별 문제 채점
+  //+_+// Phase F4: 개별 문제 채점 (GRADING_ACTIVE 상태에서만 허용)
   function gradeQuestion(questionId, isCorrect, comment = "") {
-    if (
-      state !== SessionState.GRADING_ACTIVE &&
-      state !== SessionState.SUBMITTED &&
-      state !== SessionState.SUBMITTED_LOCKED &&
-      state !== SessionState.PARENT_GRADING_PENDING
-    ) {
-      throw new Error(`채점할 수 없는 상태입니다. 현재 상태: ${state}`);
+    if (state !== SessionState.GRADING_ACTIVE) {
+      throw new Error(`채점할 수 없는 상태입니다. 현재 상태: ${state} (GRADING_ACTIVE 상태에서만 가능)`);
     }
 
     const question = questions.find((q) => q.id === questionId);
@@ -313,8 +304,11 @@ export function createSession(config = {}, questions = []) {
     };
   }
 
-  // 채점 완료 및 최종 통계 산출
+  //+_+// Phase F4: 채점 완료 및 최종 통계 산출 (GRADING_ACTIVE 상태에서만 가능)
   function finishGrading() {
+    if (state !== SessionState.GRADING_ACTIVE) {
+      throw new Error(`채점을 완료할 수 없는 상태입니다. 현재 상태: ${state} (GRADING_ACTIVE 상태에서만 가능)`);
+    }
     const status = getGradingStatus();
     if (!status.allGraded) {
       throw new Error(`아직 채점되지 않은 문제가 ${status.total - status.graded}개 있습니다.`);

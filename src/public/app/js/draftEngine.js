@@ -44,7 +44,12 @@ export function normalizeDraft(input) {
   const now = Date.now();
 
   const totalElapsedMs = Math.max(0, Number(input.totalElapsedMs ?? input.elapsedMs) || 0);
-  //+_+// Phase F1: learnerId 및 draft ID 보존
+  let sessionState = input.sessionState || "PRACTICE_ACTIVE";
+  //+_+// Phase F4: 비정상 종료된 SUBMITTING practice draft는 안전하게 PRACTICE_ACTIVE로 복원
+  if ((!input.sessionType || input.sessionType === "practice") && sessionState === "SUBMITTING") {
+    sessionState = "PRACTICE_ACTIVE";
+  }
+
   return {
     id: input.id || "current_draft",
     learnerId: input.learnerId || null,
@@ -53,7 +58,7 @@ export function normalizeDraft(input) {
     revision: Math.max(0, Number(input.revision) || 0),
     sessionId: input.sessionId || null,
     sessionType: input.sessionType || "practice",
-    sessionState: input.sessionState || "PRACTICE_ACTIVE",
+    sessionState,
     config,
     questions: cloneDraftSnapshot(input.questions),
     currentPageIndex,

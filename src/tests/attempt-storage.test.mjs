@@ -20,7 +20,9 @@ test("Milestone B: 개별 Attempt 저장 및 최근 통계 / 전체 통계 분�
   session.recordQuestionSolveTime("q1", 4000);
   session.recordQuestionSolveTime("q2", 6000);
   session.recordQuestionSolveTime("q3", 10000);
+  session.startSubmitting();
   session.submitPractice(20000);
+  session.setPendingGrading();
 
   session.startGrading();
   session.gradeQuestion("q1", true);

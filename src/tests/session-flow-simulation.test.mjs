@@ -53,8 +53,10 @@ test("E2E 시뮬레이션: 워크시트 10문제 (페이지당 4개) 풀이 제�
   // 5. 풀이 완료 및 제출 (총 45초)
   const totalElapsed = timer.stop();
   assert.equal(totalElapsed, 45000);
+  session.startSubmitting();
   session.submitPractice(totalElapsed);
-  assert.ok(session.state === SessionState.SUBMITTED || session.state === SessionState.SUBMITTED_LOCKED);
+  session.setPendingGrading();
+  assert.ok(session.state === SessionState.PARENT_GRADING_PENDING);
 
   // 6. 채점자 평가 모드 진입
   session.startGrading();
@@ -102,7 +104,9 @@ test("E2E 시뮬레이션: 나눗셈 20문제 일괄 채점(gradeAll) 기능 검
 
   const session = createSession(formConfig, questions);
   session.start();
+  session.startSubmitting();
   session.submitPractice(60000);
+  session.setPendingGrading();
   session.startGrading();
 
   // 모든 문제 일괄 정답 처리

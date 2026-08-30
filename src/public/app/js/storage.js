@@ -771,6 +771,12 @@ export function _setDraftCleanupFailureInjectorForTesting(fn) {
   draftCleanupFailureInjector = fn;
 }
 
+//+_+// Phase F4 Reviewer Rework 4차: 테스트용 transaction lifecycle observer
+let submissionTransactionObserver = null;
+export function _setSubmissionTransactionObserverForTesting(observer) {
+  submissionTransactionObserver = observer;
+}
+
 export async function clearDraftSession(options = {}) {
   //+_+// Phase F4: 테스트용 failure injection 훅
   if (typeof draftCleanupFailureInjector === "function") {
@@ -1496,12 +1502,18 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
       const getReq = store.get(id);
 
       getReq.onsuccess = () => {
+        if (typeof submissionTransactionObserver === "function") {
+          submissionTransactionObserver("request-success");
+        }
         if (getReq.result) {
           resultRecord = getReq.result;
           return;
         }
         const addReq = store.add(snapshotRecord);
         addReq.onsuccess = () => {
+          if (typeof submissionTransactionObserver === "function") {
+            submissionTransactionObserver("add-success");
+          }
           resultRecord = snapshotRecord;
         };
         addReq.onerror = (e) => {
@@ -1512,6 +1524,9 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
           } catch (_) {}
           const readReq = store.get(id);
           readReq.onsuccess = () => {
+            if (typeof submissionTransactionObserver === "function") {
+              submissionTransactionObserver("read-after-conflict-success");
+            }
             resultRecord = readReq.result || snapshotRecord;
           };
           readReq.onerror = (err) => reject(err.target?.error || new Error("스냅샷 저장 후 조회 실패"));
@@ -1520,6 +1535,9 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
       getReq.onerror = (e) => reject(e.target?.error || new Error("스냅샷 조회 실패"));
 
       tx.oncomplete = () => {
+        if (typeof submissionTransactionObserver === "function") {
+          submissionTransactionObserver("transaction-complete");
+        }
         if (!resultRecord) {
           reject(new Error("Submission transaction completed without result."));
           return;

@@ -131,7 +131,9 @@ test("Phase B: 완료 기록과 백업에서 학생 필기, 채점 필기, 진�
   const questions = [{ id: "q-layer", operation: "mul", operandA: 2, operandB: 3, answer: 6, level: "M1" }];
   const session = createSession({ operation: "mul", pageSize: 1 }, questions);
   session.start();
+  session.startSubmitting();
   session.submitPractice(1000);
+  session.setPendingGrading();
   session.startGrading();
   session.gradeQuestion("q-layer", true, "좋아요");
   const record = await saveSessionRecord(

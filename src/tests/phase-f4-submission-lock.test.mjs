@@ -1,5 +1,5 @@
 //+_+// Math Canvas Pro - Phase F4 Submission Snapshot & Answer Lock Comprehensive Tests
-//+_+// SSOT Section 16 및 Phase F4 명세 준수
+//+_+// SSOT Section 16 및 Phase F4 4차 명세 준수
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -10,7 +10,8 @@ import "fake-indexeddb/auto";
 
 import {
   createSession,
-  SessionState
+  SessionState,
+  mistakeToQuestion
 } from "../public/app/js/sessionEngine.js";
 
 import {
@@ -24,6 +25,7 @@ import {
   _resetActiveLearnerInMemoryForTesting,
   _setSubmissionFailureInjectorForTesting,
   _setDraftCleanupFailureInjectorForTesting,
+  _setSubmissionTransactionObserverForTesting,
   saveSubmissionSnapshot,
   getSubmission,
   getSubmissionBySessionId,
@@ -73,8 +75,20 @@ import {
 
 import {
   createDraftSaveCoordinator,
-  DraftSaveStatus
+  DraftSaveStatus,
+  normalizeDraft
 } from "../public/app/js/draftEngine.js";
+
+import {
+  canMutatePractice,
+  runPracticeMutation,
+  applyStudentStrokeChange,
+  performPracticeUndo,
+  performPracticeRedo,
+  performPracticeClear,
+  performPracticeToolSelect,
+  performPracticePageNav
+} from "../public/app/js/practiceInteractionGuard.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -261,8 +275,9 @@ test("Phase F4: 3. 제출 완료 후 학생 답안 수정 차단 (Answer Lock) �
   assert.equal(session.state, SessionState.PRACTICE_ACTIVE);
   assert.equal(session.isLocked(), false);
 
+  session.startSubmitting();
   session.submitPractice(15000);
-  assert.ok(session.state === SessionState.SUBMITTED_LOCKED || session.state === SessionState.SUBMITTED);
+  assert.equal(session.state, SessionState.SUBMITTED_LOCKED);
   assert.equal(session.isLocked(), true);
 
   // 제출 후 다시 submitPractice 호출 불가 검증
@@ -516,7 +531,7 @@ test("Phase F4: 13. 기존 제출 -> 기존 채점 -> 세션 완료(saveSessionR
     ["q_2", [{ id: "s2", points: [{ x: 2, y: 2 }] }]]
   ]);
 
-  // 1. 제출 Snapshot 생성
+  // 1. 제출 Snapshot 생성 (SUBMITTING -> SUBMITTED_LOCKED -> PARENT_GRADING_PENDING)
   const submission = await submitLearningSession({
     session,
     learnerId: learner.id,
@@ -524,7 +539,7 @@ test("Phase F4: 13. 기존 제출 -> 기존 채점 -> 세션 완료(saveSessionR
   });
   assert.equal(submission.status, "PARENT_GRADING_PENDING");
 
-  // 2. 보호자 채점 진행
+  // 2. 보호자 채점 진행 (PARENT_GRADING_PENDING -> GRADING_ACTIVE)
   session.startGrading();
   session.gradeQuestion("q_1", true, "잘했음");
   session.gradeQuestion("q_2", false, "자리맞춤 실수");
@@ -1028,91 +1043,137 @@ test("Phase F4: 25. [F4-12] PARENT_GRADING_PENDING 복원 및 getPendingSubmissi
 });
 
 // ============================================================================
-// Phase F4 Reviewer Rework 3차 신규 테스트 (26 ~ 37)
+// Phase F4 Reviewer Rework 4차 신규/보강 테스트 (26 ~ 45)
 // ============================================================================
 
-test("Phase F4: 26. [F4-R3-02 & F4-R3-06] SUBMITTING 상태 중 실제 Canvas onStrokeChange 데이터 수정 차단 검증", async () => {
-  const session = createSession({ sessionId: "sess_stroke_lock" }, createSampleQuestions());
+test("Phase F4: 26. [F4-R4-02 & F4-R4-03] production applyStudentStrokeChange의 PRACTICE_ACTIVE 성공 및 SUBMITTING 차단 검증", async () => {
+  const session = createSession({ sessionId: "sess_stroke_prod_guard" }, createSampleQuestions());
   session.start();
 
-  const questionStrokesMap = new Map();
-  questionStrokesMap.set("q_1", [{ id: "str_orig", points: [{ x: 10, y: 10 }] }]);
+  const strokesMap = new Map();
+  strokesMap.set("q_1", [{ id: "str_initial", points: [{ x: 1, y: 1 }] }]);
 
-  function onStrokeChange(strokes, qId) {
-    if (!session.isPracticeMutable()) return;
-    questionStrokesMap.set(qId, strokes);
-  }
+  let acceptedCount = 0;
 
-  // 1. PRACTICE_ACTIVE 상태에서는 정상 변경
-  onStrokeChange([{ id: "str_new", points: [{ x: 20, y: 20 }] }], "q_1");
-  assert.equal(questionStrokesMap.get("q_1")[0].id, "str_new");
+  // 1. PRACTICE_ACTIVE 상태에서 변경 성공
+  const res1 = applyStudentStrokeChange({
+    session,
+    strokesMap,
+    questionId: "q_1",
+    strokes: [{ id: "str_active_1", points: [{ x: 10, y: 10 }] }],
+    onAccepted: () => { acceptedCount += 1; }
+  });
+
+  assert.equal(res1, true);
+  assert.equal(acceptedCount, 1);
+  assert.equal(strokesMap.get("q_1")[0].id, "str_active_1");
 
   // 2. SUBMITTING 전이
   session.startSubmitting();
 
-  // 3. SUBMITTING 상태에서 stroke 변경 시도 -> 차단
-  onStrokeChange([{ id: "str_illegal", points: [{ x: 30, y: 30 }] }], "q_1");
-  assert.equal(questionStrokesMap.get("q_1")[0].id, "str_new", "SUBMITTING 상태에서는 획 데이터 변경 차단");
+  // 3. SUBMITTING 상태에서 동일 함수 호출 -> 차단
+  const res2 = applyStudentStrokeChange({
+    session,
+    strokesMap,
+    questionId: "q_1",
+    strokes: [{ id: "str_illegal_submitting", points: [{ x: 99, y: 99 }] }],
+    onAccepted: () => { acceptedCount += 1; }
+  });
+
+  assert.equal(res2, false);
+  assert.equal(acceptedCount, 1, "onAccepted 콜백 실행되지 않음");
+  assert.equal(strokesMap.get("q_1")[0].id, "str_active_1", "기존 획 유지 및 변경 차단");
 });
 
-test("Phase F4: 27. [F4-R3-03 & F4-R3-06] SUBMITTING 상태 중 Undo/Redo/Clear/Tool 인터랙션 차단 검증", async () => {
-  const session = createSession({ sessionId: "sess_tool_lock" }, createSampleQuestions());
-  session.start();
+test("Phase F4: 27. [F4-R4-04 & F4-R4-05] production Undo/Redo/Clear/Tool 핸들러 SUBMITTING 상태 차단 검증", async () => {
+  const harness = setupTestCanvasHarness();
+  try {
+    const session = createSession({ sessionId: "sess_prod_tool_guard" }, createSampleQuestions());
+    session.start();
 
-  let toolColor = "#1e293b";
-  let isEraser = false;
+    const canvas = createDrawingCanvas(harness.canvas, {
+      profile: InputProfile.DESKTOP_MOUSE_PEN
+    });
 
-  function handleColorSelect(c) {
-    if (!session.isPracticeMutable()) return;
-    toolColor = c;
+    const strokesMap = new Map([
+      ["q_1", [{ id: "st1", points: [{ x: 1, y: 1 }] }]]
+    ]);
+
+    let toolColor = "#1e293b";
+
+    // 1. PRACTICE_ACTIVE 상태에서 도구/Undo/Redo/Clear 정상 동작
+    const toolRes1 = performPracticeToolSelect(session, () => { toolColor = "#2563eb"; });
+    assert.equal(toolRes1, true);
+    assert.equal(toolColor, "#2563eb");
+
+    // 2. SUBMITTING 전이
+    session.startSubmitting();
+
+    // 3. 도구 변경 시도 -> 차단
+    const toolRes2 = performPracticeToolSelect(session, () => { toolColor = "#dc2626"; });
+    assert.equal(toolRes2, false);
+    assert.equal(toolColor, "#2563eb", "SUBMITTING 상태에서는 도구 색상 불변");
+
+    // 4. Undo 시도 -> 차단
+    const undoRes = performPracticeUndo(session, canvas);
+    assert.equal(undoRes, false);
+
+    // 5. Redo 시도 -> 차단
+    const redoRes = performPracticeRedo(session, canvas);
+    assert.equal(redoRes, false);
+
+    // 6. Clear 시도 -> 차단
+    const clearRes = performPracticeClear(session, [canvas], strokesMap, "q_1");
+    assert.equal(clearRes, false);
+    assert.ok(strokesMap.has("q_1"), "SUBMITTING 상태에서는 strokesMap 삭제 차단");
+
+    canvas.destroy();
+  } finally {
+    harness.restore();
   }
-
-  function handleEraserToggle() {
-    if (!session.isPracticeMutable()) return;
-    isEraser = !isEraser;
-  }
-
-  // PRACTICE_ACTIVE 상태에서 변경 가능
-  handleColorSelect("#2563eb");
-  assert.equal(toolColor, "#2563eb");
-
-  // SUBMITTING 진입
-  session.startSubmitting();
-
-  // 도구 변경 시도 차단
-  handleColorSelect("#dc2626");
-  assert.equal(toolColor, "#2563eb", "SUBMITTING 상태에서는 도구 색상 변경 불가");
-
-  handleEraserToggle();
-  assert.equal(isEraser, false, "SUBMITTING 상태에서는 지우개 전환 불가");
 });
 
-test("Phase F4: 28. [F4-R3-04 & F4-R3-06] SUBMITTING 상태 중 prevPage/nextPage/goToPage 이동 차단 검증", async () => {
-  const session = createSession({ sessionId: "sess_page_lock", pageSize: 1 }, createSampleQuestions());
+test("Phase F4: 28. [F4-R4-05] production performPracticePageNav 및 Session nextPage/prevPage/goToPage 이동 차단 검증", async () => {
+  const session = createSession({ sessionId: "sess_page_lock_v4", pageSize: 1 }, createSampleQuestions());
   session.start();
 
   assert.equal(session.getPageQuestions().pageIndex, 0);
 
+  // 1. PRACTICE_ACTIVE 상태에서 이동 허용
+  const navRes1 = performPracticePageNav(session, () => session.nextPage());
+  assert.ok(navRes1);
+  assert.equal(session.getPageQuestions().pageIndex, 1);
+
+  // 2. SUBMITTING 진입
   session.startSubmitting();
 
-  // SUBMITTING 중 session API 페이지 이동 시도시 Error 발생 검증
+  // 3. performPracticePageNav 차단 확인
+  let navCalled = false;
+  const navRes2 = performPracticePageNav(session, () => {
+    navCalled = true;
+    return session.prevPage();
+  });
+  assert.equal(navRes2, false);
+  assert.equal(navCalled, false);
+
+  // 4. Session 직접 호출 시에도 예외 발생 확인
   assert.throws(() => {
     session.nextPage();
-  }, /nextPage은 PRACTICE_ACTIVE 상태에서만/);
+  }, /PRACTICE_ACTIVE 상태에서만/);
 
   assert.throws(() => {
     session.prevPage();
-  }, /prevPage은 PRACTICE_ACTIVE 상태에서만/);
+  }, /PRACTICE_ACTIVE 상태에서만/);
 
   assert.throws(() => {
-    session.goToPage(1);
-  }, /goToPage은 PRACTICE_ACTIVE 상태에서만/);
+    session.goToPage(0);
+  }, /PRACTICE_ACTIVE 상태에서만/);
 
-  assert.equal(session.getPageQuestions().pageIndex, 0, "페이지 인덱스 불변");
+  assert.equal(session.getPageQuestions().pageIndex, 1, "페이지 위치 유지");
 });
 
-test("Phase F4: 29. [F4-R3-05] Session API locked mutation 직접 호출 시 예외 발생 검증 (solveTimes)", async () => {
-  const session = createSession({ sessionId: "sess_invariant" }, createSampleQuestions());
+test("Phase F4: 29. [F4-R4-05] Session API locked mutation 직접 호출 시 예외 발생 검증 (solveTimes)", async () => {
+  const session = createSession({ sessionId: "sess_invariant_v4" }, createSampleQuestions());
   session.start();
 
   session.startSubmitting();
@@ -1126,12 +1187,12 @@ test("Phase F4: 29. [F4-R3-05] Session API locked mutation 직접 호출 시 예
   }, /setQuestionSolveTimes은 PRACTICE_ACTIVE 상태에서만/);
 });
 
-test("Phase F4: 30. [F4-R3-07 & F4-R3-08] 실제 IndexedDB transaction abort 시 submitLearningSession 자동 rollback 검증", async () => {
+test("Phase F4: 30. [F4-R4-06] 실제 IndexedDB transaction abort 시 submitLearningSession 자동 rollback 검증", async () => {
   await clearAllData();
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
-  const session = createSession({ sessionId: "sess_tx_abort" }, createSampleQuestions());
+  const session = createSession({ sessionId: "sess_tx_abort_v4" }, createSampleQuestions());
   session.start();
 
   _setSubmissionFailureInjectorForTesting(({ tx }) => {
@@ -1150,12 +1211,12 @@ test("Phase F4: 30. [F4-R3-07 & F4-R3-08] 실제 IndexedDB transaction abort 시
   }
 });
 
-test("Phase F4: 31. [F4-R3-07] transaction abort 실패 시 submissions Store에 레코드 0건 검증", async () => {
+test("Phase F4: 31. [F4-R4-06] transaction abort 실패 시 submissions Store에 레코드 0건 검증", async () => {
   await clearAllData();
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
-  const session = createSession({ sessionId: "sess_abort_zero" }, createSampleQuestions());
+  const session = createSession({ sessionId: "sess_abort_zero_v4" }, createSampleQuestions());
   session.start();
 
   _setSubmissionFailureInjectorForTesting(({ tx }) => {
@@ -1174,13 +1235,13 @@ test("Phase F4: 31. [F4-R3-07] transaction abort 실패 시 submissions Store에
   }
 });
 
-test("Phase F4: 32. [F4-R3-07] transaction abort 실패 후 Draft/Strokes/Page 100% 무손실 유지 검증", async () => {
+test("Phase F4: 32. [F4-R4-12] transaction abort 실패 후 Draft/Strokes/Page 100% 무손실 유지 검증", async () => {
   await clearAllData();
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
   const questions = createSampleQuestions();
-  const session = createSession({ sessionId: "sess_abort_retain", pageSize: 1 }, questions);
+  const session = createSession({ sessionId: "sess_abort_retain_v4", pageSize: 1 }, questions);
   session.start();
   session.nextPage(); // pageIndex = 1
 
@@ -1189,7 +1250,7 @@ test("Phase F4: 32. [F4-R3-07] transaction abort 실패 후 Draft/Strokes/Page 1
   ]);
 
   await saveDraft({
-    sessionId: "sess_abort_retain",
+    sessionId: "sess_abort_retain_v4",
     questions,
     config: { pageSize: 1 },
     currentPageIndex: 1,
@@ -1213,7 +1274,7 @@ test("Phase F4: 32. [F4-R3-07] transaction abort 실패 후 Draft/Strokes/Page 1
     // Draft 데이터가 온전히 유지되었는지 확인
     const draft = await getDraft({ learnerId: learner.id });
     assert.ok(draft);
-    assert.equal(draft.sessionId, "sess_abort_retain");
+    assert.equal(draft.sessionId, "sess_abort_retain_v4");
     assert.equal(draft.currentPageIndex, 1);
     assert.ok(draft.studentStrokesMap?.q_1 || draft.strokesMap?.q_1);
     assert.equal(session.getPageQuestions().pageIndex, 1);
@@ -1222,12 +1283,12 @@ test("Phase F4: 32. [F4-R3-07] transaction abort 실패 후 Draft/Strokes/Page 1
   }
 });
 
-test("Phase F4: 33. [F4-R3-09] 실제 Draft cleanup failure 발생 시 draftCleaned=false 및 draftCleanupError 반환 검증", async () => {
+test("Phase F4: 33. 실제 Draft cleanup failure 발생 시 draftCleaned=false 및 draftCleanupError 반환 검증", async () => {
   await clearAllData();
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
-  const session = createSession({ sessionId: "sess_cleanup_fail" }, createSampleQuestions());
+  const session = createSession({ sessionId: "sess_cleanup_fail_v4" }, createSampleQuestions());
   session.start();
 
   _setDraftCleanupFailureInjectorForTesting(() => {
@@ -1249,12 +1310,12 @@ test("Phase F4: 33. [F4-R3-09] 실제 Draft cleanup failure 발생 시 draftClea
   }
 });
 
-test("Phase F4: 34. [F4-R3-09] 실제 Draft cleanup failure 발생 시에도 Submission Snapshot 정상 보존 검증", async () => {
+test("Phase F4: 34. 실제 Draft cleanup failure 발생 시에도 Submission Snapshot 정상 보존 검증", async () => {
   await clearAllData();
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
-  const session = createSession({ sessionId: "sess_cleanup_preserve" }, createSampleQuestions());
+  const session = createSession({ sessionId: "sess_cleanup_preserve_v4" }, createSampleQuestions());
   session.start();
 
   _setDraftCleanupFailureInjectorForTesting(() => {
@@ -1275,7 +1336,7 @@ test("Phase F4: 34. [F4-R3-09] 실제 Draft cleanup failure 발생 시에도 Sub
   }
 });
 
-test("Phase F4: 35. [F4-R3-10 & F4-R3-12] learningQueries.getSubmission exact ID 조회 시 활성 학습자 소유권 격리 검증", async () => {
+test("Phase F4: 35. learningQueries.getSubmission exact ID 조회 시 활성 학습자 소유권 격리 검증", async () => {
   await clearAllData();
   const learnerA = await createLearner({ name: "학습자A" });
   const learnerB = await createLearner({ name: "학습자B" });
@@ -1283,7 +1344,7 @@ test("Phase F4: 35. [F4-R3-10 & F4-R3-12] learningQueries.getSubmission exact ID
   await selectLearner(learnerA.id);
 
   const subA = await saveSubmissionSnapshot({
-    sessionId: "sess_cross_exact",
+    sessionId: "sess_cross_exact_v4",
     learnerId: learnerA.id,
     questions: createSampleQuestions()
   });
@@ -1307,7 +1368,7 @@ test("Phase F4: 35. [F4-R3-10 & F4-R3-12] learningQueries.getSubmission exact ID
   assert.equal(readAsARestored.id, subA.id);
 });
 
-test("Phase F4: 36. [F4-R3-11 & F4-R3-12] learningQueries.getSubmissionBySessionId 조회 시 활성 학습자 소유권 격리 검증", async () => {
+test("Phase F4: 36. learningQueries.getSubmissionBySessionId 조회 시 활성 학습자 소유권 격리 검증", async () => {
   await clearAllData();
   const learnerA = await createLearner({ name: "학습자A" });
   const learnerB = await createLearner({ name: "학습자B" });
@@ -1315,18 +1376,18 @@ test("Phase F4: 36. [F4-R3-11 & F4-R3-12] learningQueries.getSubmissionBySession
   await selectLearner(learnerA.id);
 
   await saveSubmissionSnapshot({
-    sessionId: "sess_cross_sessid",
+    sessionId: "sess_cross_sessid_v4",
     learnerId: learnerA.id,
     questions: createSampleQuestions()
   });
 
   // 1. 학습자 A 활성 상태 -> 정상 조회
-  const foundA = await queryGetSubmissionBySessionId("sess_cross_sessid");
+  const foundA = await queryGetSubmissionBySessionId("sess_cross_sessid_v4");
   assert.ok(foundA);
 
   // 2. 학습자 B 전환 -> null 반환
   await selectLearner(learnerB.id);
-  const foundB = await queryGetSubmissionBySessionId("sess_cross_sessid");
+  const foundB = await queryGetSubmissionBySessionId("sess_cross_sessid_v4");
   assert.equal(foundB, null, "세션 ID 기준 조회에서도 다른 학습자 데이터는 null");
 
   // 3. 대기 목록 역시 격리 확인
@@ -1334,35 +1395,216 @@ test("Phase F4: 36. [F4-R3-11 & F4-R3-12] learningQueries.getSubmissionBySession
   assert.equal(pendingB.length, 0);
 });
 
-test("Phase F4: 37. [F4-R3-13 & F4-R3-14] Submission transaction oncomplete 이전 resolve 금지 및 concurrent commit 멱등성 검증", async () => {
+test("Phase F4: 37. [F4-R4-07 & F4-R4-08] saveSubmissionSnapshot Promise는 tx.oncomplete 이후에만 resolve됨을 timing observer로 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const events = [];
+  _setSubmissionTransactionObserverForTesting((evt) => {
+    events.push(evt);
+  });
+
+  try {
+    const promise = saveSubmissionSnapshot({
+      sessionId: "sess_timing_test",
+      learnerId: learner.id,
+      questions: createSampleQuestions()
+    });
+
+    promise.then(() => {
+      events.push("promise-resolved");
+    });
+
+    const result = await promise;
+    assert.ok(result);
+
+    // 이벤트 순서 검증: request-success -> add-success -> transaction-complete -> promise-resolved
+    const completeIdx = events.indexOf("transaction-complete");
+    const resolveIdx = events.indexOf("promise-resolved");
+
+    assert.ok(completeIdx !== -1, "transaction-complete 이벤트 발생");
+    assert.ok(resolveIdx !== -1, "promise-resolved 이벤트 발생");
+    assert.ok(resolveIdx >= completeIdx, "Promise는 반드시 transaction-complete 이후에 resolve되어야 함");
+  } finally {
+    _setSubmissionTransactionObserverForTesting(null);
+  }
+});
+
+test("Phase F4: 38. [F4-R4-08] 동시 3개 submit 호출 시 최초 Snapshot 1건 유지 및 멱등성 검증", async () => {
   await clearAllData();
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
   const questions = createSampleQuestions();
-  const session = createSession({ sessionId: "sess_tx_commit" }, questions);
+  const session = createSession({ sessionId: "sess_concurrent_v4" }, questions);
   session.start();
 
   const options = {
     session,
     learnerId: learner.id,
     questions,
-    totalSolveTimeMs: 12000
+    totalSolveTimeMs: 14000
   };
 
-  // 3개 동시 호출
   const results = await Promise.all([
     submitLearningSession(options),
     submitLearningSession(options),
     submitLearningSession(options)
   ]);
 
-  // 모든 결과가 동일한 최초 Snapshot을 참조
   assert.equal(results[0].id, results[1].id);
   assert.equal(results[1].id, results[2].id);
   assert.equal(results[0].submittedAt, results[1].submittedAt);
 
-  // 저장소에 정확히 1건 존재
   const all = await getAllSubmissions({ learnerId: learner.id });
   assert.equal(all.length, 1);
+});
+
+test("Phase F4: 39. [F4-R4-10 & F4-R4-12] submission failure rollback 시 persisted Draft의 sessionState가 PRACTICE_ACTIVE로 유지/복구 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+  const session = createSession({ sessionId: "sess_draft_rollback_state" }, questions);
+  session.start();
+
+  // 1. PRACTICE_ACTIVE Draft 저장
+  await saveDraft({
+    sessionId: "sess_draft_rollback_state",
+    sessionState: "PRACTICE_ACTIVE",
+    questions,
+    currentPageIndex: 0
+  }, { learnerId: learner.id });
+
+  // 2. Storage write 실패 강제 주입
+  _setSubmissionFailureInjectorForTesting(({ tx }) => {
+    tx.abort();
+  });
+
+  try {
+    await assert.rejects(async () => {
+      await submitLearningSession({
+        session,
+        learnerId: learner.id,
+        questions
+      });
+    });
+
+    // 3. 실패 후 session 상태 확인
+    assert.equal(session.state, SessionState.PRACTICE_ACTIVE);
+
+    // 4. Draft 재저장 및 reload 후 sessionState 확인
+    await saveDraft({
+      sessionId: "sess_draft_rollback_state",
+      sessionState: session.state,
+      questions,
+      currentPageIndex: 0
+    }, { learnerId: learner.id });
+
+    const restoredDraft = await getDraft({ learnerId: learner.id });
+    assert.ok(restoredDraft);
+    assert.equal(restoredDraft.sessionState, SessionState.PRACTICE_ACTIVE, "Draft sessionState는 PRACTICE_ACTIVE로 유지/복원됨");
+  } finally {
+    _setSubmissionFailureInjectorForTesting(null);
+  }
+});
+
+test("Phase F4: 40. [F4-R4-13] normalizeDraft 계층에서 stale SUBMITTING draft를 PRACTICE_ACTIVE로 정규화 검증", () => {
+  const staleDraftInput = {
+    sessionId: "sess_stale_submitting",
+    sessionType: "practice",
+    sessionState: "SUBMITTING",
+    questions: createSampleQuestions(),
+    config: { pageSize: 2 }
+  };
+
+  const normalized = normalizeDraft(staleDraftInput);
+  assert.equal(normalized.sessionState, "PRACTICE_ACTIVE", "비정상 SUBMITTING Draft는 자동으로 PRACTICE_ACTIVE로 정규화되어 복원됨");
+});
+
+test("Phase F4: 41. [F4-R4-14 & F4-R4-18] PRACTICE_ACTIVE 상태에서 submitPractice() 직접 호출 시 예외 발생 검증", () => {
+  const session = createSession({ sessionId: "sess_strict_sub" }, createSampleQuestions());
+  session.start();
+
+  assert.equal(session.state, SessionState.PRACTICE_ACTIVE);
+
+  // startSubmitting()을 거치지 않고 submitPractice() 직접 호출 시 Error 발생
+  assert.throws(() => {
+    session.submitPractice(10000);
+  }, /SUBMITTING 상태에서만 가능합니다/);
+});
+
+test("Phase F4: 42. [F4-R4-15 & F4-R4-18] PRACTICE_ACTIVE 상태에서 startGrading() 직접 호출 시 예외 발생 검증", () => {
+  const session = createSession({ sessionId: "sess_strict_grade_start" }, createSampleQuestions());
+  session.start();
+
+  assert.throws(() => {
+    session.startGrading();
+  }, /PARENT_GRADING_PENDING 상태에서만 가능/);
+});
+
+test("Phase F4: 43. [F4-R4-16 & F4-R4-18] PARENT_GRADING_PENDING 상태에서 gradeQuestion() 직접 호출 시 예외 발생 검증", () => {
+  const session = createSession({ sessionId: "sess_strict_grade_q" }, createSampleQuestions());
+  session.start();
+  session.startSubmitting();
+  session.submitPractice(5000);
+  session.setPendingGrading();
+
+  assert.equal(session.state, SessionState.PARENT_GRADING_PENDING);
+
+  // startGrading() 호출 전(GRADING_ACTIVE가 아닌 상태)에서 gradeQuestion 호출 시 Error
+  assert.throws(() => {
+    session.gradeQuestion("q_1", true);
+  }, /GRADING_ACTIVE 상태에서만 가능/);
+});
+
+test("Phase F4: 44. [F4-R4-17 & F4-R4-18] PRACTICE_ACTIVE 상태에서 setPendingGrading() 직접 호출 시 예외 발생 검증", () => {
+  const session = createSession({ sessionId: "sess_strict_pending" }, createSampleQuestions());
+  session.start();
+
+  assert.throws(() => {
+    session.setPendingGrading();
+  }, /SUBMITTED_LOCKED 상태에서만 가능합니다/);
+});
+
+test("Phase F4: 45. [F4-R4-18] 정상 세션 상태 흐름 전체 수명주기 및 불변식 검증", () => {
+  const questions = createSampleQuestions();
+  const session = createSession({ sessionId: "sess_lifecycle_full" }, questions);
+
+  // 1. IDLE -> PRACTICE_ACTIVE
+  assert.equal(session.state, SessionState.IDLE);
+  session.start();
+  assert.equal(session.state, SessionState.PRACTICE_ACTIVE);
+  assert.equal(session.isPracticeMutable(), true);
+  assert.equal(session.isLocked(), false);
+
+  // 2. PRACTICE_ACTIVE -> SUBMITTING
+  session.startSubmitting();
+  assert.equal(session.state, SessionState.SUBMITTING);
+  assert.equal(session.isPracticeMutable(), false);
+  assert.equal(session.isLocked(), true);
+
+  // 3. SUBMITTING -> SUBMITTED_LOCKED
+  session.submitPractice(15000);
+  assert.equal(session.state, SessionState.SUBMITTED_LOCKED);
+  assert.equal(session.isPracticeMutable(), false);
+  assert.equal(session.isLocked(), true);
+
+  // 4. SUBMITTED_LOCKED -> PARENT_GRADING_PENDING
+  session.setPendingGrading();
+  assert.equal(session.state, SessionState.PARENT_GRADING_PENDING);
+
+  // 5. PARENT_GRADING_PENDING -> GRADING_ACTIVE
+  session.startGrading();
+  assert.equal(session.state, SessionState.GRADING_ACTIVE);
+
+  // 6. 채점 진행 및 완료
+  session.gradeQuestion("q_1", true, "완벽");
+  session.gradeQuestion("q_2", true, "잘함");
+  const summary = session.finishGrading();
+  assert.equal(session.state, SessionState.SESSION_COMPLETE);
+  assert.equal(summary.correctCount, 2);
+  assert.equal(summary.accuracyRate, 100);
 });

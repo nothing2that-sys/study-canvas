@@ -23,7 +23,9 @@ test("Milestone C: 50개 문제 및 필기 스트로크 생성 -> Export -> Clea
 
     const session = createSession({ operation: "mul", pageSize: 5 }, questions);
     session.start();
+    session.startSubmitting();
     session.submitPractice(12000);
+    session.setPendingGrading();
     session.startGrading();
 
     // 짝수 문제는 정답, 홀수 문제는 오답 처리

@@ -22,6 +22,15 @@ import { createDraftSaveCoordinator, DRAFT_SCHEMA_VERSION, DraftSaveStatus, navi
 import { createUpdateCoordinator, waitForServiceWorkerControllerChange } from "./updateEngine.js";
 import { createVisualViewportController, getPreferredScrollBehavior } from "./viewportEngine.js";
 import { setupModalManager } from "./modalEngine.js";
+import {
+  canMutatePractice,
+  applyStudentStrokeChange,
+  performPracticeUndo,
+  performPracticeRedo,
+  performPracticeClear,
+  performPracticeToolSelect,
+  performPracticePageNav
+} from "./practiceInteractionGuard.js";
 
 // 앱 전역 인터랙션 가드 초기화
 const interactionGuard = setupInteractionGuard(typeof document !== "undefined" ? document : null);
@@ -266,7 +275,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260830T102922429Z-aece6c5",
+    appBuildId: "20260830T112655307Z-00ed65a",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -1375,12 +1384,16 @@ function renderCurrentWorksheetPage() {
         profile: currentInputProfile,
         pencilOnly: currentInputProfile === InputProfile.IPAD_PEN_ONLY,
         onStrokeChange: (strokes) => {
-          if (!canMutatePractice()) {
-            return;
-          }
-          questionStrokesMap.set(q.id, strokes);
-          lastActiveCanvasId = q.id;
-          triggerDraftSave();
+          applyStudentStrokeChange({
+            session: currentSession,
+            strokesMap: questionStrokesMap,
+            questionId: q.id,
+            strokes,
+            onAccepted: () => {
+              lastActiveCanvasId = q.id;
+              triggerDraftSave();
+            }
+          });
         }
       });
 
@@ -1477,15 +1490,6 @@ function updateToolDockUI() {
   updatePencilModeUI();
 }
 
-//+_+// Phase F4 Reviewer Rework 3차: 학생 풀이 수정 가능 여부 공통 가드
-function canMutatePractice() {
-  return Boolean(
-    currentSession &&
-    typeof currentSession.isPracticeMutable === "function" &&
-    currentSession.isPracticeMutable()
-  );
-}
-
 //+_+// Phase F4: 제출 중 인터랙션 및 버튼 일괄 잠금/해제
 function setPracticeInteractionLocked(locked) {
   if (submitPracticeBtn) submitPracticeBtn.disabled = locked;
@@ -1503,99 +1507,105 @@ function setPracticeInteractionLocked(locked) {
 }
 
 function handlePenMode() {
-  if (!canMutatePractice()) return;
-  if (!currentIsEraser) return;
-  currentIsEraser = false;
-  updateToolDockUI();
-  activeCanvasInstances.forEach((inst) => inst.setEraser(false));
-  triggerDraftSave();
+  performPracticeToolSelect(currentSession, () => {
+    if (!currentIsEraser) return;
+    currentIsEraser = false;
+    updateToolDockUI();
+    activeCanvasInstances.forEach((inst) => inst.setEraser(false));
+    triggerDraftSave();
+  });
 }
 
 function handlePencilOnlyToggle() {
-  if (!canMutatePractice()) return;
-  currentInputProfile = togglePenOnlyProfile(currentInputProfile, {
-    userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
-    maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
-    hasTouchStart: typeof window !== "undefined" && "ontouchstart" in window
+  performPracticeToolSelect(currentSession, () => {
+    currentInputProfile = togglePenOnlyProfile(currentInputProfile, {
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+      maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
+      hasTouchStart: typeof window !== "undefined" && "ontouchstart" in window
+    });
+
+    try {
+      localStorage.setItem("math_canvas_input_profile", currentInputProfile);
+      localStorage.setItem("math_canvas_pencil_only", String(currentInputProfile === InputProfile.IPAD_PEN_ONLY));
+    } catch (_) {}
+
+    updatePencilModeUI();
+    activeCanvasInstances.forEach((inst) => inst.setInputProfile(currentInputProfile));
+    triggerDraftSave();
   });
-
-  try {
-    localStorage.setItem("math_canvas_input_profile", currentInputProfile);
-    localStorage.setItem("math_canvas_pencil_only", String(currentInputProfile === InputProfile.IPAD_PEN_ONLY));
-  } catch (_) {}
-
-  updatePencilModeUI();
-  activeCanvasInstances.forEach((inst) => inst.setInputProfile(currentInputProfile));
-  triggerDraftSave();
 }
 
 function handleColorSelect(btn) {
-  if (!canMutatePractice()) return;
-  currentPenColor = btn.dataset.color;
-  currentIsEraser = false;
-  eraserToggleBtn.classList.remove("active");
-  updateToolDockUI();
+  performPracticeToolSelect(currentSession, () => {
+    currentPenColor = btn.dataset.color;
+    currentIsEraser = false;
+    eraserToggleBtn.classList.remove("active");
+    updateToolDockUI();
 
-  colorChips.forEach((b) => b.classList.toggle("active", b === btn));
-  activeCanvasInstances.forEach((inst) => inst.setColor(currentPenColor));
-  triggerDraftSave();
+    colorChips.forEach((b) => b.classList.toggle("active", b === btn));
+    activeCanvasInstances.forEach((inst) => inst.setColor(currentPenColor));
+    triggerDraftSave();
+  });
 }
 
 function handleWidthSelect(btn) {
-  if (!canMutatePractice()) return;
-  currentPenWidth = Number(btn.dataset.width) || 2.5;
-  widthChips.forEach((b) => b.classList.toggle("active", b === btn));
-  activeCanvasInstances.forEach((inst) => inst.setWidth(currentPenWidth));
-  triggerDraftSave();
+  performPracticeToolSelect(currentSession, () => {
+    currentPenWidth = Number(btn.dataset.width) || 2.5;
+    widthChips.forEach((b) => b.classList.toggle("active", b === btn));
+    activeCanvasInstances.forEach((inst) => inst.setWidth(currentPenWidth));
+    triggerDraftSave();
+  });
 }
 
 function handleEraserToggle() {
-  if (!canMutatePractice()) return;
-  currentIsEraser = !currentIsEraser;
-  eraserToggleBtn.classList.toggle("active", currentIsEraser);
-  updateToolDockUI();
-  activeCanvasInstances.forEach((inst) => inst.setEraser(currentIsEraser));
-  triggerDraftSave();
+  performPracticeToolSelect(currentSession, () => {
+    currentIsEraser = !currentIsEraser;
+    eraserToggleBtn.classList.toggle("active", currentIsEraser);
+    updateToolDockUI();
+    activeCanvasInstances.forEach((inst) => inst.setEraser(currentIsEraser));
+    triggerDraftSave();
+  });
 }
 
 function handleUndo() {
-  if (!canMutatePractice()) return;
+  if (!canMutatePractice(currentSession)) return;
   if (lastActiveCanvasId && activeCanvasInstances.has(lastActiveCanvasId)) {
     const inst = activeCanvasInstances.get(lastActiveCanvasId);
-    if (inst.undo()) return;
+    if (performPracticeUndo(currentSession, inst)) return;
   }
   for (const inst of activeCanvasInstances.values()) {
-    if (inst.undo()) break;
+    if (performPracticeUndo(currentSession, inst)) break;
   }
 }
 
 function handleRedo() {
-  if (!canMutatePractice()) return;
+  if (!canMutatePractice(currentSession)) return;
   if (lastActiveCanvasId && activeCanvasInstances.has(lastActiveCanvasId)) {
     const inst = activeCanvasInstances.get(lastActiveCanvasId);
-    if (inst.redo()) return;
+    if (performPracticeRedo(currentSession, inst)) return;
   }
   for (const inst of activeCanvasInstances.values()) {
-    if (inst.redo()) break;
+    if (performPracticeRedo(currentSession, inst)) break;
   }
 }
 
 function handleClearAllCanvas() {
-  if (!canMutatePractice()) return;
+  if (!canMutatePractice(currentSession)) return;
   activeCanvasInstances.forEach((inst, qId) => {
-    inst.clear();
-    questionStrokesMap.delete(qId);
+    performPracticeClear(currentSession, inst, questionStrokesMap, qId);
   });
 }
 
 // 이전 / 다음 페이지 이동
 async function handlePrevPage() {
-  if (!canMutatePractice()) return;
+  if (!canMutatePractice(currentSession)) return;
   try {
-    await navigateWithDraftFlush({
-      flush: flushDraftSave,
-      navigate: () => currentSession.prevPage(),
-      render: renderCurrentWorksheetPage
+    await performPracticePageNav(currentSession, () => {
+      return navigateWithDraftFlush({
+        flush: flushDraftSave,
+        navigate: () => currentSession.prevPage(),
+        render: renderCurrentWorksheetPage
+      });
     });
   } catch (err) {
     console.error("이전 페이지 이동 실패:", err);
@@ -1603,21 +1613,40 @@ async function handlePrevPage() {
 }
 
 async function handleNextPage() {
-  if (!canMutatePractice()) return;
+  if (!canMutatePractice(currentSession)) return;
   try {
-    await navigateWithDraftFlush({
-      flush: flushDraftSave,
-      navigate: () => currentSession.nextPage(),
-      render: renderCurrentWorksheetPage
+    await performPracticePageNav(currentSession, () => {
+      return navigateWithDraftFlush({
+        flush: flushDraftSave,
+        navigate: () => currentSession.nextPage(),
+        render: renderCurrentWorksheetPage
+      });
     });
   } catch (err) {
     console.error("다음 페이지 이동 실패:", err);
   }
 }
 
+//+_+// Phase F4: 제출 실패 시 PRACTICE_ACTIVE 및 Draft 상태 원복 공통 헬퍼
+async function rollbackSubmissionToPractice(err) {
+  console.error("제출 Snapshot 저장 실패 및 롤백:", err);
+  if (typeof currentSession?.rollbackSubmitting === "function") {
+    currentSession.rollbackSubmitting();
+  }
+  setPracticeInteractionLocked(false);
+  questionTimer.start(); // 세션 및 시간 복구
+
+  try {
+    triggerDraftSave();
+    await flushDraftSave();
+  } catch (draftRestoreError) {
+    console.error("제출 실패 후 PRACTICE_ACTIVE Draft 복구 저장 실패:", draftRestoreError);
+  }
+}
+
 // 학생 풀이 완료 및 제출 -> 불변 Snapshot 저장 후 채점 모드 전환
 async function handleSubmitPractice() {
-  if (!canMutatePractice()) {
+  if (!canMutatePractice(currentSession)) {
     return;
   }
 
@@ -1631,11 +1660,7 @@ async function handleSubmitPractice() {
   try {
     await flushDraftSave();
   } catch (draftErr) {
-    console.error("제출 전 임시저장 flush 실패:", draftErr);
-    if (typeof currentSession.rollbackSubmitting === "function") {
-      currentSession.rollbackSubmitting();
-    }
-    setPracticeInteractionLocked(false);
+    await rollbackSubmissionToPractice(draftErr);
     alert("풀이 데이터 임시 저장에 실패하여 제출을 중단합니다. 다시 시도해 주세요.");
     return;
   }
@@ -1657,12 +1682,7 @@ async function handleSubmitPractice() {
       appBuildId: typeof BUILD_ID !== "undefined" ? BUILD_ID : "unknown"
     });
   } catch (err) {
-    console.error("제출 Snapshot 저장 실패:", err);
-    if (typeof currentSession.rollbackSubmitting === "function") {
-      currentSession.rollbackSubmitting();
-    }
-    setPracticeInteractionLocked(false);
-    questionTimer.start(); // 세션 및 시간 복구
+    await rollbackSubmissionToPractice(err);
     alert("풀이 제출 저장에 실패했습니다. 다시 시도해 주세요.");
     return;
   }

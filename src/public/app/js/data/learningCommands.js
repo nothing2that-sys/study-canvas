@@ -78,7 +78,7 @@ export async function submitLearningSession(options = {}) {
 
   // 3. 저장 성공 확인 후 세션 상태를 SUBMITTED_LOCKED -> PARENT_GRADING_PENDING으로 확정
   if (session) {
-    if (session.state === "SUBMITTING" || session.state === "PRACTICE_ACTIVE") {
+    if (session.state === "SUBMITTING") {
       if (typeof session.submitPractice === "function") {
         session.submitPractice(snapshot.totalSolveTimeMs);
       }
