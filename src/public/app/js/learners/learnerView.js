@@ -29,6 +29,29 @@ import { navigate, ROUTES } from "../platform/appRouter.js";
 let dom = {};
 let isSessionActiveFn = null;
 
+const DEFAULT_AVATARS = ["🌱", "🚀", "⭐", "🦊", "🐳", "🐰", "🦖", "🦁"];
+
+function queryFirst(doc, ...selectors) {
+  for (const selector of selectors) {
+    const element = doc.querySelector(selector);
+    if (element) return element;
+  }
+  return null;
+}
+
+//+_+// 현재 index.html의 learnerAvatarList가 비어 있어도 학습자 모달에서 기본 아바타를 선택할 수 있게 보장
+function ensureAvatarOptions() {
+  if (!dom.avatarOptionsGrid) return;
+  const existing = dom.avatarOptionsGrid.querySelectorAll(".avatar-choice-btn");
+  if (existing && existing.length > 0) return;
+
+  dom.avatarOptionsGrid.innerHTML = DEFAULT_AVATARS.map((avatar) => `
+    <button type="button" class="avatar-choice-btn${avatar === selectedAvatarKey ? " selected" : ""}" data-avatar="${avatar}" aria-label="${avatar} 아바타 선택">
+      ${avatar}
+    </button>
+  `).join("");
+}
+
 //+_+// 학습자 뷰 초기화 및 이벤트 리스너 바인딩
 export function initLearnerView(options = {}) {
   const doc = options.documentRef || (typeof document !== "undefined" ? document : null);
@@ -39,39 +62,42 @@ export function initLearnerView(options = {}) {
   }
 
   dom = {
-    //+_+// 학습자 선택 화면 요소
+    //+_+// 학습자 선택 화면 요소 - 현재 index.html ID를 우선하고 이전 ID는 호환 fallback으로 유지
     learnerSelectView: doc.querySelector("#learnerSelectView"),
-    activeLearnersList: doc.querySelector("#activeLearnersList"),
+    activeLearnersList: queryFirst(doc, "#learnerListContainer", "#activeLearnersList"),
     addLearnerBtn: doc.querySelector("#addLearnerBtn"),
-    archivedLearnersToggleBtn: doc.querySelector("#archivedLearnersToggleBtn"),
-    archivedLearnersContainer: doc.querySelector("#archivedLearnersContainer"),
+    archivedLearnersToggleBtn: queryFirst(doc, "#showArchivedBtn", "#archivedLearnersToggleBtn"),
+    archivedLearnersContainer: queryFirst(doc, "#archivedLearnersSection", "#archivedLearnersContainer"),
     archivedLearnersList: doc.querySelector("#archivedLearnersList"),
 
     //+_+// 통합 학습자 홈 요소
     learnerHomeView: doc.querySelector("#learnerHomeView"),
     homeLearnerAvatar: doc.querySelector("#homeLearnerAvatar"),
-    homeLearnerGreeting: doc.querySelector("#homeLearnerGreeting"),
-    subjectCardsGrid: doc.querySelector("#subjectCardsGrid"),
+    homeLearnerGreeting: queryFirst(doc, "#learnerGreetingName", "#homeLearnerGreeting"),
+    subjectCardsGrid: queryFirst(doc, "#homeSubjectGrid", "#subjectCardsGrid"),
     recentLearningStats: doc.querySelector("#recentLearningStats"),
 
     //+_+// 과목 홈 요소
     subjectHomeView: doc.querySelector("#subjectHomeView"),
-    subjectHomeTitle: doc.querySelector("#subjectHomeTitle"),
+    subjectHomeTitle: queryFirst(doc, "#mathSubjectTitle", "#subjectHomeTitle"),
     subjectHomeDescription: doc.querySelector("#subjectHomeDescription"),
-    moduleCardsGrid: doc.querySelector("#moduleCardsGrid"),
+    moduleCardsGrid: queryFirst(doc, "#mathModuleGrid", "#moduleCardsGrid"),
     backToHomeBtn: doc.querySelector("#backToHomeBtn"),
 
     //+_+// 학습자 모달 요소
     learnerModal: doc.querySelector("#learnerModal"),
+    learnerForm: doc.querySelector("#learnerForm"),
     learnerModalTitle: doc.querySelector("#learnerModalTitle"),
     learnerNameInput: doc.querySelector("#learnerNameInput"),
-    avatarOptionsGrid: doc.querySelector("#avatarOptionsGrid"),
+    avatarOptionsGrid: queryFirst(doc, "#learnerAvatarList", "#avatarOptionsGrid"),
     saveLearnerBtn: doc.querySelector("#saveLearnerBtn"),
     archiveLearnerBtn: doc.querySelector("#archiveLearnerBtn"),
-    cancelLearnerModalBtn: doc.querySelector("#cancelLearnerModalBtn"),
+    cancelLearnerModalBtn: queryFirst(doc, "#learnerCancelBtn", "#cancelLearnerModalBtn"),
+    closeLearnerModalBtn: doc.querySelector("#learnerModalCloseBtn"),
     learnerModalError: doc.querySelector("#learnerModalError")
   };
 
+  ensureAvatarOptions();
   bindEvents();
 }
 
@@ -102,7 +128,20 @@ function bindEvents() {
     dom.cancelLearnerModalBtn.onclick = () => closeLearnerModal();
   }
 
-  if (dom.saveLearnerBtn) {
+  if (dom.closeLearnerModalBtn) {
+    dom.closeLearnerModalBtn.onclick = () => closeLearnerModal();
+  }
+
+  //+_+// 실제 HTML은 type=submit 버튼을 사용하므로 form submit을 차단하고 SPA 내부 Command/Router 흐름으로 저장한다.
+  if (dom.learnerForm) {
+    dom.learnerForm.onsubmit = async (event) => {
+      if (event && typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      await handleSaveLearner();
+    };
+  } else if (dom.saveLearnerBtn) {
+    //+_+// 이전 마크업 호환 fallback
     dom.saveLearnerBtn.onclick = async () => {
       await handleSaveLearner();
     };
@@ -239,7 +278,11 @@ export async function renderLearnerHomeView() {
   if (!learner) return;
 
   if (dom.homeLearnerAvatar) dom.homeLearnerAvatar.textContent = learner.avatar || "🌱";
-  if (dom.homeLearnerGreeting) dom.homeLearnerGreeting.textContent = `${learner.name}님, 환영합니다!`;
+  if (dom.homeLearnerGreeting) {
+    dom.homeLearnerGreeting.textContent = dom.homeLearnerGreeting.id === "learnerGreetingName"
+      ? learner.name
+      : `${learner.name}님, 환영합니다!`;
+  }
 
   //+_+// 과목 목록 렌더링
   if (dom.subjectCardsGrid) {
@@ -360,6 +403,8 @@ export async function openLearnerModal(learnerId = null) {
     if (dom.archiveLearnerBtn) dom.archiveLearnerBtn.hidden = true;
   }
 
+  ensureAvatarOptions();
+
   //+_+// 아바타 그리드 선택 상태 갱신
   if (dom.avatarOptionsGrid) {
     dom.avatarOptionsGrid.querySelectorAll(".avatar-choice-btn").forEach((b) => {
@@ -413,6 +458,8 @@ async function handleSaveLearner() {
     if (dom.learnerModalError) {
       dom.learnerModalError.textContent = error.message || "저장에 실패했습니다.";
       dom.learnerModalError.hidden = false;
+    } else {
+      console.error("[LearnerView] 학습자 저장 실패:", error);
     }
   }
 }
