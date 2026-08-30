@@ -705,8 +705,15 @@ export async function saveDraftSession(draft, options = {}) {
   const targetLearnerId = draft.learnerId || options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
   const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
 
+  const normalizedInput = {
+    ...draft,
+    studentStrokesMap: mapToObject(draft.studentStrokesMap || draft.strokesMap),
+    gradingStrokesMap: mapToObject(draft.gradingStrokesMap),
+    gradingResults: mapToObject(draft.gradingResults)
+  };
+
   const draftRecord = {
-    ...normalizeDraft(draft),
+    ...normalizeDraft(normalizedInput),
     id: draftKey,
     learnerId: targetLearnerId,
     updatedAt: Date.now()
@@ -753,7 +760,22 @@ export async function getDraftSession(options = {}) {
   });
 }
 
+//+_+// Phase F4 Reviewer Rework 3차: 테스트용 failure injectors
+let submissionFailureInjector = null;
+export function _setSubmissionFailureInjectorForTesting(fn) {
+  submissionFailureInjector = fn;
+}
+
+let draftCleanupFailureInjector = null;
+export function _setDraftCleanupFailureInjectorForTesting(fn) {
+  draftCleanupFailureInjector = fn;
+}
+
 export async function clearDraftSession(options = {}) {
+  //+_+// Phase F4: 테스트용 failure injection 훅
+  if (typeof draftCleanupFailureInjector === "function") {
+    draftCleanupFailureInjector(options);
+  }
   const db = await getDB();
   const targetLearnerId = options.learnerId !== undefined ? options.learnerId : getCurrentLearnerId();
   const draftKey = !targetLearnerId || targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
@@ -1459,38 +1481,58 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
     return snapshotRecord;
   }
 
-  //+_+// IndexedDB 원자적 트랜잭션 내에서 중복 검사 및 add 수행 (Race Condition 방어)
+  //+_+// IndexedDB 원자적 트랜잭션 내에서 중복 검사 및 add 수행 (Race Condition 방어 및 oncomplete 이후 resolve)
   return new Promise((resolve, reject) => {
     try {
       const tx = db.transaction("submissions", "readwrite");
       const store = tx.objectStore("submissions");
+      let resultRecord = null;
+
+      //+_+// Phase F4 Reviewer Rework 3차: 테스트용 failure injection
+      if (typeof submissionFailureInjector === "function") {
+        submissionFailureInjector({ tx, store, snapshotRecord });
+      }
+
       const getReq = store.get(id);
 
       getReq.onsuccess = () => {
         if (getReq.result) {
-          resolve(getReq.result);
+          resultRecord = getReq.result;
           return;
         }
         const addReq = store.add(snapshotRecord);
         addReq.onsuccess = () => {
-          resolve(snapshotRecord);
+          resultRecord = snapshotRecord;
         };
         addReq.onerror = (e) => {
-          // 동시 요청 충돌(ConstraintError) 발생 시 기존 레코드 조회 반환
+          // 동시 요청 충돌(ConstraintError) 발생 시 기존 레코드 조회
           try {
             e.preventDefault?.();
             e.stopPropagation?.();
           } catch (_) {}
           const readReq = store.get(id);
           readReq.onsuccess = () => {
-            resolve(readReq.result || snapshotRecord);
+            resultRecord = readReq.result || snapshotRecord;
           };
-          readReq.onerror = () => reject(e.target?.error || new Error("스냅샷 저장 실패"));
+          readReq.onerror = (err) => reject(err.target?.error || new Error("스냅샷 저장 후 조회 실패"));
         };
       };
       getReq.onerror = (e) => reject(e.target?.error || new Error("스냅샷 조회 실패"));
+
+      tx.oncomplete = () => {
+        if (!resultRecord) {
+          reject(new Error("Submission transaction completed without result."));
+          return;
+        }
+        resolve(resultRecord);
+      };
+
       tx.onerror = (e) => {
-        // transaction level error
+        reject(e.target?.error || tx.error || new Error("Submission transaction failed."));
+      };
+
+      tx.onabort = (e) => {
+        reject(tx.error || e.target?.error || new Error("Submission transaction aborted."));
       };
     } catch (err) {
       reject(err);
@@ -1498,7 +1540,7 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
   });
 }
 
-//+_+// Phase F4: 특정 submission 조회 (learnerId ownership 검증 적용)
+//+_+// Phase F4: 특정 submission 조회 (learnerId ownership 기본 강제)
 export async function getSubmission(id, options = {}) {
   if (!id) return null;
   const db = await getDB();
@@ -1521,8 +1563,10 @@ export async function getSubmission(id, options = {}) {
 
   if (!record) return null;
 
-  //+_+// learnerId 소유권 검사: 명시적 learnerId 또는 현재 active learner가 다른 경우 null 반환
-  const targetLearnerId = options.allLearners ? null : (options.learnerId || (options.enforceLearnerOwnership ? getCurrentLearnerId() : null));
+  //+_+// learnerId 소유권 기본 강제: allLearners가 true가 아닌 경우 targetLearnerId와 일치해야 함
+  const targetLearnerId = options.allLearners
+    ? null
+    : (options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID);
   if (targetLearnerId && (record.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
     return null;
   }
@@ -1532,13 +1576,17 @@ export async function getSubmission(id, options = {}) {
 
 export async function getSubmissionBySessionId(sessionId, options = {}) {
   if (!sessionId) return null;
+  const resolvedOptions = {
+    ...options,
+    learnerId: options.allLearners ? null : (options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID)
+  };
   const targetId = String(sessionId).startsWith("sub_") ? sessionId : `sub_${sessionId}`;
-  const direct = await getSubmission(targetId, options);
+  const direct = await getSubmission(targetId, resolvedOptions);
   if (direct) {
     return direct;
   }
 
-  const all = await getAllSubmissions(options);
+  const all = await getAllSubmissions(resolvedOptions);
   return all.find((s) => s.sessionId === sessionId) || null;
 }
 

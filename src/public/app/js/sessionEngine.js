@@ -98,17 +98,32 @@ export function createSession(config = {}, questions = []) {
     return getPageQuestions(currentPageIndex);
   }
 
+  //+_+// Phase F4 Reviewer Rework 3차: PRACTICE_ACTIVE 상태 불변식 검사
+  function assertPracticeMutable(actionName) {
+    if (state !== SessionState.PRACTICE_ACTIVE) {
+      throw new Error(
+        `${actionName}은 PRACTICE_ACTIVE 상태에서만 수행할 수 있습니다. 현재 상태: ${state}`
+      );
+    }
+  }
+
   function recordQuestionSolveTime(questionId, durationMs) {
+    assertPracticeMutable("recordQuestionSolveTime");
     const prev = questionSolveTimes.get(questionId) || 0;
     questionSolveTimes.set(questionId, prev + Math.max(0, Math.round(durationMs)));
   }
 
-  function setQuestionSolveTimes(timesMap) {
+  function _applyQuestionSolveTimes(timesMap) {
     if (timesMap instanceof Map) {
       timesMap.forEach((val, key) => questionSolveTimes.set(key, Math.max(0, Math.round(val))));
     } else if (typeof timesMap === "object" && timesMap !== null) {
       Object.entries(timesMap).forEach(([key, val]) => questionSolveTimes.set(key, Math.max(0, Math.round(val))));
     }
+  }
+
+  function setQuestionSolveTimes(timesMap) {
+    assertPracticeMutable("setQuestionSolveTimes");
+    _applyQuestionSolveTimes(timesMap);
   }
 
   function getQuestionSolveTimes() {
@@ -139,6 +154,7 @@ export function createSession(config = {}, questions = []) {
   }
 
   function nextPage() {
+    assertPracticeMutable("nextPage");
     if (currentPageIndex + 1 < totalPages) {
       currentPageIndex += 1;
     }
@@ -146,6 +162,7 @@ export function createSession(config = {}, questions = []) {
   }
 
   function prevPage() {
+    assertPracticeMutable("prevPage");
     if (currentPageIndex > 0) {
       currentPageIndex -= 1;
     }
@@ -153,6 +170,7 @@ export function createSession(config = {}, questions = []) {
   }
 
   function goToPage(pageIndex) {
+    assertPracticeMutable("goToPage");
     currentPageIndex = Math.max(0, Math.min(totalPages - 1, pageIndex));
     return getPageQuestions(currentPageIndex);
   }
@@ -181,7 +199,7 @@ export function createSession(config = {}, questions = []) {
     }
     totalSolveTimeMs = Math.max(0, Math.round(elapsedMs));
     if (individualTimes) {
-      setQuestionSolveTimes(individualTimes);
+      _applyQuestionSolveTimes(individualTimes);
     }
     submittedAt = Date.now();
     state = SessionState.SUBMITTED_LOCKED;

@@ -45,6 +45,16 @@ export async function submitLearningSession(options = {}) {
 
   if (session && typeof session.createSubmissionSnapshot === "function") {
     snapshot = session.createSubmissionSnapshot(options);
+  } else if (session && session.id && session.questions) {
+    snapshot = {
+      ...options,
+      sessionId: session.id,
+      questions: session.questions,
+      config: session.config || { pageSize: session.pageSize, operation: session.operation, cols: session.cols, rows: session.rows },
+      totalPages: session.totalPages,
+      pageSize: session.pageSize,
+      totalSolveTimeMs: options.totalSolveTimeMs || 0
+    };
   } else if (options.sessionId && options.questions) {
     snapshot = options;
   } else {

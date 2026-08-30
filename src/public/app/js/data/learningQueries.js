@@ -82,9 +82,9 @@ export async function getLearnerHomeSummary(learnerId) {
   };
 }
 
-//+_+// Phase F4: 특정 제출 Snapshot 조회 (ID 기준)
-export async function getSubmission(id) {
-  return await storageGetSubmission(id);
+//+_+// Phase F4: 특정 제출 Snapshot 조회 (ID 기준, active learnerId 기본 격리)
+export async function getSubmission(id, options = {}) {
+  return await storageGetSubmission(id, options);
 }
 
 //+_+// Phase F4: 특정 세션 ID 기준 제출 Snapshot 조회
