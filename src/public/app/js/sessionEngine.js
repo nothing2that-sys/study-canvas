@@ -9,7 +9,7 @@ export const SessionState = Object.freeze({
   PRACTICE_ACTIVE: "PRACTICE_ACTIVE",
   SUBMITTING: "SUBMITTING",
   SUBMITTED: "SUBMITTED",
-  SUBMITTED_LOCKED: "SUBMITTED",
+  SUBMITTED_LOCKED: "SUBMITTED_LOCKED",
   PARENT_GRADING_PENDING: "PARENT_GRADING_PENDING",
   GRADING_ACTIVE: "GRADING_ACTIVE",
   SESSION_COMPLETE: "SESSION_COMPLETE"
@@ -157,9 +157,26 @@ export function createSession(config = {}, questions = []) {
     return getPageQuestions(currentPageIndex);
   }
 
-  // 학생 풀이 완료 및 제출
-  function submitPractice(elapsedMs = 0, individualTimes = null) {
+  //+_+// Phase F4: 제출 시작 및 학생 입력 잠금 (PRACTICE_ACTIVE -> SUBMITTING)
+  function startSubmitting() {
     if (state !== SessionState.PRACTICE_ACTIVE) {
+      throw new Error(`현재 상태(${state})에서는 제출을 시작할 수 없습니다.`);
+    }
+    state = SessionState.SUBMITTING;
+    return { state };
+  }
+
+  //+_+// Phase F4: 저장 실패 시 PRACTICE_ACTIVE로 안전 복구
+  function rollbackSubmitting() {
+    if (state === SessionState.SUBMITTING) {
+      state = SessionState.PRACTICE_ACTIVE;
+    }
+    return { state };
+  }
+
+  // 학생 풀이 완료 및 제출 (PRACTICE_ACTIVE 또는 SUBMITTING -> SUBMITTED_LOCKED)
+  function submitPractice(elapsedMs = 0, individualTimes = null) {
+    if (state !== SessionState.PRACTICE_ACTIVE && state !== SessionState.SUBMITTING) {
       throw new Error(`현재 상태(${state})에서는 풀이를 제출할 수 없습니다.`);
     }
     totalSolveTimeMs = Math.max(0, Math.round(elapsedMs));
@@ -173,6 +190,14 @@ export function createSession(config = {}, questions = []) {
       totalSolveTimeMs,
       totalQuestions: questions.length
     };
+  }
+
+  //+_+// Phase F4: 보호자 채점 대기 상태로 전이 (SUBMITTED_LOCKED -> PARENT_GRADING_PENDING)
+  function setPendingGrading() {
+    if (state === SessionState.SUBMITTED_LOCKED || state === SessionState.SUBMITTED) {
+      state = SessionState.PARENT_GRADING_PENDING;
+    }
+    return { state };
   }
 
   // 채점자 평가 모드 시작
@@ -417,7 +442,15 @@ export function createSession(config = {}, questions = []) {
     get totalPages() { return totalPages; },
     get questions() { return questions; },
     get totalQuestions() { return questions.length; },
-    isLocked: () => state === SessionState.SUBMITTED || state === SessionState.SUBMITTED_LOCKED || state === SessionState.PARENT_GRADING_PENDING || state === SessionState.GRADING_ACTIVE || state === SessionState.SESSION_COMPLETE,
+    isPracticeMutable: () => state === SessionState.PRACTICE_ACTIVE,
+    isLocked: () => (
+      state === SessionState.SUBMITTING ||
+      state === SessionState.SUBMITTED ||
+      state === SessionState.SUBMITTED_LOCKED ||
+      state === SessionState.PARENT_GRADING_PENDING ||
+      state === SessionState.GRADING_ACTIVE ||
+      state === SessionState.SESSION_COMPLETE
+    ),
     start,
     getPageQuestions,
     nextPage,
@@ -426,7 +459,10 @@ export function createSession(config = {}, questions = []) {
     recordQuestionSolveTime,
     setQuestionSolveTimes,
     getQuestionSolveTimes,
+    startSubmitting,
+    rollbackSubmitting,
     submitPractice,
+    setPendingGrading,
     startGrading,
     gradeQuestion,
     gradeAll,

@@ -31,30 +31,71 @@ export async function clearLearnerData(options = {}) {
   return await clearAllData(options);
 }
 
-//+_+// Phase F4: 학습 세션 풀이 제출 및 불변 Snapshot 원자적 저장 (성공 시에만 Draft 정리)
+//+_+// Phase F4: 학습 세션 풀이 제출 및 불변 Snapshot 원자적 저장 (성공 시에만 Draft 정리 및 상태 전이)
 export async function submitLearningSession(options = {}) {
   if (!options) throw new Error("제출할 세션 옵션 또는 스냅샷 데이터가 필요합니다.");
 
+  const session = options.session;
   let snapshot;
-  if (options.session && typeof options.session.createSubmissionSnapshot === "function") {
-    snapshot = options.session.createSubmissionSnapshot(options);
+
+  // 1. 제출 시작 및 학생 입력 잠금 (SUBMITTING 전이)
+  if (session && typeof session.startSubmitting === "function" && session.state === "PRACTICE_ACTIVE") {
+    session.startSubmitting();
+  }
+
+  if (session && typeof session.createSubmissionSnapshot === "function") {
+    snapshot = session.createSubmissionSnapshot(options);
   } else if (options.sessionId && options.questions) {
     snapshot = options;
   } else {
+    if (session && typeof session.rollbackSubmitting === "function") {
+      session.rollbackSubmitting();
+    }
     throw new Error("유효한 세션 인스턴스 또는 스냅샷 데이터가 필요합니다.");
   }
 
-  // 1. 불변 Snapshot 영구 스토리지에 원자적 저장 (멱등성 보장)
-  const savedSubmission = await saveSubmissionSnapshot(snapshot, options);
+  // 2. 불변 Snapshot 영구 스토리지에 원자적 저장 (멱등성 보장)
+  let savedSubmission;
+  try {
+    savedSubmission = await saveSubmissionSnapshot(snapshot, options);
+  } catch (saveError) {
+    // 저장 실패 시 세션 상태를 PRACTICE_ACTIVE로 롤백하고 에러 전파
+    if (session && typeof session.rollbackSubmitting === "function") {
+      session.rollbackSubmitting();
+    }
+    throw saveError;
+  }
 
-  // 2. 스냅샷 저장 성공이 확인된 경우에만 활성 Draft 삭제
+  // 3. 저장 성공 확인 후 세션 상태를 SUBMITTED_LOCKED -> PARENT_GRADING_PENDING으로 확정
+  if (session) {
+    if (session.state === "SUBMITTING" || session.state === "PRACTICE_ACTIVE") {
+      if (typeof session.submitPractice === "function") {
+        session.submitPractice(snapshot.totalSolveTimeMs);
+      }
+      if (typeof session.setPendingGrading === "function") {
+        session.setPendingGrading();
+      }
+    }
+  }
+
+  // 4. 스냅샷 저장 성공이 확인된 경우에만 활성 Draft 삭제 (실패 시에도 스냅샷 보존 및 경고 반환)
+  let draftCleaned = true;
+  let draftCleanupError = null;
   if (savedSubmission && savedSubmission.learnerId) {
     try {
       await clearDraftSession({ learnerId: savedSubmission.learnerId });
-    } catch (_) {}
+    } catch (cleanupErr) {
+      draftCleaned = false;
+      draftCleanupError = cleanupErr?.message || String(cleanupErr);
+      console.warn("Draft cleanup failed after submission snapshot was saved:", cleanupErr);
+    }
   }
 
-  return savedSubmission;
+  return {
+    ...savedSubmission,
+    draftCleaned,
+    draftCleanupError
+  };
 }
 
 //+_+// Phase F4: 보호자 채점 상태 및 빨간 펜 레이어 갱신 Command

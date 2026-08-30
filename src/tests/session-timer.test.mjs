@@ -109,7 +109,7 @@ test("워크시트 세션 페이지 분할 및 채점자 평가(정답 확인, �
 
   // 3. 풀이 완료 및 제출
   session.submitPractice(45000); // 45초 풀이
-  assert.equal(session.state, SessionState.SUBMITTED);
+  assert.ok(session.state === SessionState.SUBMITTED || session.state === SessionState.SUBMITTED_LOCKED);
 
   // 4. 채점자 모드 시작
   session.startGrading();

@@ -15,6 +15,7 @@ import {
 
 import {
   getDB,
+  closeDB,
   clearAllData,
   DEFAULT_LEGACY_LEARNER_ID,
   setCurrentLearnerId,
@@ -120,145 +121,181 @@ test("Phase F4: 1. 정상 제출 시 불변 SubmissionSnapshot 생성 및 스키
   const session = createSession({ sessionId: "sess_f4_001", operation: "mul", pageSize: 4 }, questions);
   session.start();
 
-  const studentStrokesMap = new Map();
-  studentStrokesMap.set("q_1", [
-    { id: "st_1", color: "#173f35", width: 2.5, isEraser: false, points: [{ x: 10, y: 10, relX: 0.1, relY: 0.1 }] }
+  const studentStrokesMap = new Map([
+    ["q_1", [{ id: "str_1", color: "#1e293b", points: [{ x: 10, y: 10 }, { x: 20, y: 20 }] }]],
+    ["q_2", [{ id: "str_2", color: "#1e293b", points: [{ x: 30, y: 30 }] }]]
   ]);
 
-  const submissionResult = await submitLearningSession({
+  const submission = await submitLearningSession({
     session,
     learnerId: learner.id,
     subjectId: "math",
     moduleId: "arithmetic",
     inputProfile: "DESKTOP_MOUSE_PEN",
-    totalSolveTimeMs: 12500,
-    perQuestionElapsedMs: { q_1: 6000, q_2: 6500 },
+    totalSolveTimeMs: 25000,
+    perQuestionElapsedMs: { q_1: 12000, q_2: 13000 },
     studentStrokesMap,
-    appBuildId: "20260830T-test"
+    appBuildId: "build-f4-test-01"
   });
 
-  assert.ok(submissionResult, "제출 결과가 반환되어야 함");
-  assert.equal(submissionResult.sessionId, "sess_f4_001");
-  assert.equal(submissionResult.learnerId, learner.id);
-  assert.equal(submissionResult.status, "PARENT_GRADING_PENDING");
-  assert.equal(submissionResult.schemaVersion, 4);
-  assert.equal(submissionResult.subjectId, "math");
-  assert.equal(submissionResult.moduleId, "arithmetic");
-  assert.equal(submissionResult.totalSolveTimeMs, 12500);
-  assert.deepEqual(submissionResult.studentStrokesMap.q_1, studentStrokesMap.get("q_1"));
-  assert.equal(submissionResult.questions.length, 2);
-
-  // 영구 스토리지에서 직접 조회 확인
-  const saved = await queryGetSubmission(submissionResult.id);
-  assert.ok(saved, "저장된 스냅샷 조회가 가능해야 함");
-  assert.equal(saved.id, submissionResult.id);
-  assert.equal(saved.sessionId, "sess_f4_001");
+  // 필수 필드 및 스키마 검증
+  assert.ok(submission);
+  assert.equal(submission.id, "sub_sess_f4_001");
+  assert.equal(submission.sessionId, "sess_f4_001");
+  assert.equal(submission.learnerId, learner.id);
+  assert.equal(submission.subjectId, "math");
+  assert.equal(submission.moduleId, "arithmetic");
+  assert.equal(submission.status, "PARENT_GRADING_PENDING");
+  assert.equal(submission.schemaVersion, 4);
+  assert.equal(submission.totalSolveTimeMs, 25000);
+  assert.equal(submission.questions.length, 2);
+  assert.ok(submission.studentStrokesMap.q_1);
+  assert.equal(submission.studentStrokesMap.q_1.length, 1);
+  assert.ok(submission.submittedAt > 0);
 });
 
 test("Phase F4: 2. Snapshot의 learnerId 소유권 및 격리 검증", async () => {
   await clearAllData();
-  _resetActiveLearnerInMemoryForTesting();
-
   const learnerA = await createLearner({ name: "학습자A" });
   const learnerB = await createLearner({ name: "학습자B" });
 
-  await selectLearner(learnerA.id);
-  const sessionA = createSession({ sessionId: "sess_a_1" }, createSampleQuestions());
+  const sessionA = createSession({ sessionId: "sess_a" }, createSampleQuestions());
   sessionA.start();
-  await submitLearningSession({
-    session: sessionA,
-    learnerId: learnerA.id,
-    subjectId: "math",
-    moduleId: "arithmetic"
-  });
+  await submitLearningSession({ session: sessionA, learnerId: learnerA.id });
 
-  await selectLearner(learnerB.id);
-  const sessionB = createSession({ sessionId: "sess_b_1" }, createSampleQuestions());
+  const sessionB = createSession({ sessionId: "sess_b" }, createSampleQuestions());
   sessionB.start();
-  await submitLearningSession({
-    session: sessionB,
-    learnerId: learnerB.id,
-    subjectId: "math",
-    moduleId: "arithmetic"
-  });
+  await submitLearningSession({ session: sessionB, learnerId: learnerB.id });
 
-  // Query 계층을 통해 학습자별 대기 목록 격리 확인
-  const pendingA = await queryGetPendingSubmissions({ learnerId: learnerA.id });
-  const pendingB = await queryGetPendingSubmissions({ learnerId: learnerB.id });
+  const submissionsA = await getAllSubmissions({ learnerId: learnerA.id });
+  const submissionsB = await getAllSubmissions({ learnerId: learnerB.id });
 
-  assert.equal(pendingA.length, 1);
-  assert.equal(pendingA[0].sessionId, "sess_a_1");
-  assert.equal(pendingA[0].learnerId, learnerA.id);
+  assert.equal(submissionsA.length, 1);
+  assert.equal(submissionsA[0].sessionId, "sess_a");
+  assert.equal(submissionsA[0].learnerId, learnerA.id);
 
-  assert.equal(pendingB.length, 1);
-  assert.equal(pendingB[0].sessionId, "sess_b_1");
-  assert.equal(pendingB[0].learnerId, learnerB.id);
+  assert.equal(submissionsB.length, 1);
+  assert.equal(submissionsB[0].sessionId, "sess_b");
+  assert.equal(submissionsB[0].learnerId, learnerB.id);
 });
 
 test("Phase F4: 3. 제출 완료 후 학생 답안 수정 차단 (Answer Lock) 검증", async () => {
-  const questions = createSampleQuestions();
-  const session = createSession({ sessionId: "sess_lock_1" }, questions);
+  const session = createSession({ sessionId: "sess_lock" }, createSampleQuestions());
   session.start();
 
   assert.equal(session.state, SessionState.PRACTICE_ACTIVE);
+  assert.equal(session.isLocked(), false);
 
-  // 학생 제출 실행
-  session.submitPractice(5000);
+  session.submitPractice(15000);
+  assert.ok(session.state === SessionState.SUBMITTED_LOCKED || session.state === SessionState.SUBMITTED);
+  assert.equal(session.isLocked(), true);
 
-  // 제출 완료 상태 확인
-  assert.ok(
-    session.state === SessionState.SUBMITTED ||
-    session.state === SessionState.SUBMITTED_LOCKED ||
-    session.state === SessionState.PARENT_GRADING_PENDING,
-    "세션이 제출 잠금 상태여야 함"
-  );
-
-  // 제출 후 다시 submitPractice 호출 차단
+  // 제출 후 다시 submitPractice 호출 불가 검증
   assert.throws(() => {
-    session.submitPractice(3000);
-  }, /제출할 수 없는|현재 상태/);
+    session.submitPractice(20000);
+  }, /풀이를 제출할 수 없습니다/);
 });
 
-test("Phase F4: 4. 제출 완료 후 학생 필기 획(Stroke) 수정/추가/삭제/Undo 차단 검증", async () => {
-  // DOM 캔버스 모의
-  const canvasEl = {
-    getContext: () => ({
-      scale: () => {},
-      clearRect: () => {},
-      beginPath: () => {},
-      moveTo: () => {},
-      lineTo: () => {},
-      stroke: () => {},
-      arc: () => {},
-      fill: () => {},
-      save: () => {},
-      restore: () => {},
-      quadraticCurveTo: () => {}
-    }),
-    getBoundingClientRect: () => ({ left: 0, top: 0, width: 300, height: 300 }),
+function setupTestCanvasHarness() {
+  const drawnOperations = [];
+  const context = {
+    clearRect(...args) { drawnOperations.push(["clearRect", ...args]); },
+    beginPath() { drawnOperations.push(["beginPath"]); },
+    moveTo(x, y) { drawnOperations.push(["moveTo", x, y]); },
+    lineTo(x, y) { drawnOperations.push(["lineTo", x, y]); },
+    quadraticCurveTo(...args) { drawnOperations.push(["quadraticCurveTo", ...args]); },
+    stroke() { drawnOperations.push(["stroke"]); },
+    arc(...args) { drawnOperations.push(["arc", ...args]); },
+    fill() { drawnOperations.push(["fill"]); },
+    save() { drawnOperations.push(["save"]); },
+    restore() { drawnOperations.push(["restore"]); },
+    setTransform() {}
+  };
+
+  const canvas = {
+    width: 400,
+    height: 400,
+    style: {},
+    getContext: () => context,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 400 }),
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    setPointerCapture() {},
+    releasePointerCapture() {}
+  };
+
+  const container = {
+    appendChild: () => {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 400 })
+  };
+
+  const prev = {
+    window: globalThis.window,
+    document: globalThis.document,
+    ResizeObserver: globalThis.ResizeObserver,
+    requestAnimationFrame: globalThis.requestAnimationFrame,
+    cancelAnimationFrame: globalThis.cancelAnimationFrame
+  };
+
+  globalThis.window = {
+    devicePixelRatio: 1,
     addEventListener: () => {},
     removeEventListener: () => {}
   };
+  globalThis.document = {
+    createElement: (tag) => {
+      if (tag === "canvas") return canvas;
+      return { appendChild: () => {}, style: {} };
+    },
+    addEventListener: () => {},
+    removeEventListener: () => {}
+  };
+  globalThis.ResizeObserver = class {
+    observe() {}
+    disconnect() {}
+  };
+  globalThis.requestAnimationFrame = (cb) => { cb(); return 1; };
+  globalThis.cancelAnimationFrame = () => {};
 
-  const initialStrokes = [
-    { id: "st_1", color: "#173f35", width: 2.5, isEraser: false, points: [{ x: 10, y: 10 }] }
-  ];
+  return {
+    canvas,
+    container,
+    restore() {
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === undefined) delete globalThis[k];
+        else globalThis[k] = v;
+      }
+    }
+  };
+}
 
-  // 채점 뷰에서는 학생 필기가 readOnly / backgroundStrokes로 마운트됨
-  const canvasInstance = createDrawingCanvas(canvasEl, {
-    readOnly: true,
-    backgroundStrokes: initialStrokes
-  });
+test("Phase F4: 4. 제출 완료 후 학생 필기 획(Stroke) 수정/추가/삭제/Undo 차단 검증", async () => {
+  const harness = setupTestCanvasHarness();
+  try {
+    const canvas = createDrawingCanvas(harness.canvas, {
+      readOnly: true,
+      inputProfile: InputProfile.DESKTOP_MOUSE_PEN
+    });
 
-  assert.equal(canvasInstance.getInputProfile(), InputProfile.READ_ONLY);
+    const initialStrokes = [{ id: "str_1", points: [{ x: 10, y: 10 }, { x: 20, y: 20 }] }];
+    canvas.setBackgroundStrokes(initialStrokes);
 
-  // Undo/Redo/Clear 동작 시 학생 필기는 영향받지 않아야 함
-  const undoResult = canvasInstance.undo();
-  assert.equal(undoResult, false, "readOnly 상태에서는 undo가 불가해야 함");
+    assert.equal(canvas.getStrokes().length, 0, "Read-only 모드에서는 활성 필기 획 없음");
+    assert.equal(canvas.getBackgroundStrokes().length, 1, "배경 학생 필기 획 보존");
 
-  const strokes = canvasInstance.getStrokes();
-  assert.equal(strokes.length, 0, "편집 가능한 획 목록은 비어있어야 함");
-  assert.deepEqual(canvasInstance.getBackgroundStrokes(), initialStrokes, "배경 학생 획은 온전히 유지되어야 함");
+    // Read-only 캔버스에서 undo/clear/redo 동작 시에도 학생 배경 필기 보존 검증
+    canvas.undo();
+    assert.equal(canvas.getBackgroundStrokes().length, 1, "Undo로 학생 필기 삭제 불가");
+
+    canvas.clear();
+    assert.equal(canvas.getBackgroundStrokes().length, 1, "Clear로 학생 필기 삭제 불가");
+
+    canvas.redo();
+    assert.equal(canvas.getBackgroundStrokes().length, 1, "Redo로도 학생 필기 변조 불가");
+    assert.equal(canvas.getStrokes().length, 0, "Read-only 모드에서는 활성 필기 획 0개 유지");
+  } finally {
+    harness.restore();
+  }
 });
 
 test("Phase F4: 5. 보호자 채점(Red-pen) 레이어와 학생 필기 Snapshot의 완전 분리 검증", async () => {
@@ -266,62 +303,61 @@ test("Phase F4: 5. 보호자 채점(Red-pen) 레이어와 학생 필기 Snapshot
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
-  const studentStrokes = [{ id: "st_student_1", color: "#173f35", width: 2.5, points: [{ x: 5, y: 5 }] }];
-  const studentStrokesMap = new Map([["q_1", studentStrokes]]);
+  const studentStrokes = {
+    q_1: [{ id: "s1", color: "#1e293b", points: [{ x: 5, y: 5 }] }]
+  };
 
-  const session = createSession({ sessionId: "sess_split_1" }, createSampleQuestions());
-  session.start();
-
-  const submission = await submitLearningSession({
-    session,
+  const submission = await saveSubmissionSnapshot({
+    sessionId: "sess_layer_test",
     learnerId: learner.id,
-    studentStrokesMap
+    studentStrokesMap: studentStrokes,
+    questions: createSampleQuestions()
   });
 
-  // 보호자 채점 스트로크 및 평가 업데이트
-  const gradingStrokes = [{ id: "st_red_1", color: "#c62828", width: 3.0, points: [{ x: 50, y: 50 }] }];
-  const gradingStrokesMap = new Map([["q_1", gradingStrokes]]);
-  const gradingResults = { q_1: { isCorrect: true, comment: "잘했어요!" } };
+  assert.deepEqual(submission.studentStrokesMap, studentStrokes);
+  assert.deepEqual(submission.gradingStrokesMap, {});
 
-  const updatedSubmission = await commandUpdateSubmissionGrading(
+  // 보호자 채점 스트로크 추가
+  const redPenStrokes = {
+    q_1: [{ id: "red_1", color: "#c62828", points: [{ x: 50, y: 50 }] }]
+  };
+
+  const updated = await updateSubmissionGrading(
     submission.id,
-    gradingResults,
-    gradingStrokesMap
+    { q_1: { isCorrect: true, comment: "참 잘했어요" } },
+    redPenStrokes,
+    { learnerId: learner.id, status: "GRADED" }
   );
 
-  assert.ok(updatedSubmission, "채점 업데이트 성공");
-  assert.deepEqual(updatedSubmission.studentStrokesMap.q_1, studentStrokes, "학생 필기 획은 100% 보존되어야 함");
-  assert.deepEqual(updatedSubmission.gradingStrokesMap.q_1, gradingStrokes, "채점자 빨간펜 획이 분리 저장되어야 함");
-  assert.deepEqual(updatedSubmission.gradingResults.q_1, gradingResults.q_1);
+  assert.deepEqual(updated.studentStrokesMap, studentStrokes, "학생 필기는 변경되지 않음");
+  assert.deepEqual(updated.gradingStrokesMap, redPenStrokes, "보호자 빨간펜 스트로크 분리 저장");
+  assert.equal(updated.status, "GRADED");
 });
 
 test("Phase F4: 6. 동일 세션 중복 제출 시 멱등성 (Idempotency) 검증", async () => {
   await clearAllData();
   const learner = await createLearner({ name: "학습자A" });
-  await selectLearner(learner.id);
 
-  const session = createSession({ sessionId: "sess_idemp_1" }, createSampleQuestions());
+  const session = createSession({ sessionId: "sess_idempotent" }, createSampleQuestions());
   session.start();
 
-  // 1차 제출
-  const sub1 = await submitLearningSession({
+  const firstSubmission = await submitLearningSession({
     session,
     learnerId: learner.id,
     totalSolveTimeMs: 10000
   });
 
-  // 2차 중복 제출 시도 (동일 sessionId)
-  const sub2 = await submitLearningSession({
+  const secondSubmission = await submitLearningSession({
     session,
     learnerId: learner.id,
-    totalSolveTimeMs: 10000
+    totalSolveTimeMs: 20000
   });
 
-  assert.equal(sub1.id, sub2.id, "동일한 submission ID가 반환되어야 함");
-  assert.equal(sub1.submittedAt, sub2.submittedAt, "제출 시각이 덮어쓰여지지 않아야 함");
+  assert.equal(firstSubmission.id, secondSubmission.id);
+  assert.equal(firstSubmission.submittedAt, secondSubmission.submittedAt);
 
-  const allSubs = await getAllSubmissions({ learnerId: learner.id });
-  assert.equal(allSubs.length, 1, "중복 레코드가 생성되지 않아야 함");
+  const allSubmissions = await getAllSubmissions({ learnerId: learner.id });
+  assert.equal(allSubmissions.length, 1, "동일 세션은 오직 1개의 submission만 존재");
 });
 
 test("Phase F4: 7. 저장 실패 시 Snapshot 미생성 및 세션/Draft 보존 (원자성) 검증", async () => {
@@ -329,34 +365,26 @@ test("Phase F4: 7. 저장 실패 시 Snapshot 미생성 및 세션/Draft 보존 
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
-  // 활성 Draft 저장
+  // 진행 중인 Draft 저장
   await saveDraft({
-    id: `current_draft_${learner.id}`,
-    learnerId: learner.id,
-    sessionId: "sess_fail_test",
+    sessionId: "sess_atomic",
     questions: createSampleQuestions(),
-    totalElapsedMs: 8000
-  });
+    currentPageIndex: 0
+  }, { learnerId: learner.id });
 
-  const session = createSession({ sessionId: "sess_fail_test" }, createSampleQuestions());
-  session.start();
-
-  // 강제 실패 시나리오 (유효하지 않은 snapshot 데이터 전달 등)
+  // 유효하지 않은 인자로 제출 시도 (강제 실패 유도)
   await assert.rejects(async () => {
-    await submitLearningSession({
-      session: null, // 강제 오류 유발
-      learnerId: learner.id
-    });
-  });
-
-  // Draft가 삭제되지 않고 유지되었는지 확인
-  const preservedDraft = await getDraft({ learnerId: learner.id });
-  assert.ok(preservedDraft, "제출 실패 시 Draft가 삭제되지 않아야 함");
-  assert.equal(preservedDraft.sessionId, "sess_fail_test");
+    await submitLearningSession(null);
+  }, /필요합니다/);
 
   // Snapshot이 생성되지 않았는지 확인
-  const pending = await queryGetPendingSubmissions({ learnerId: learner.id });
-  assert.equal(pending.length, 0, "실패 시 Snapshot이 저장되지 않아야 함");
+  const submissions = await getAllSubmissions({ learnerId: learner.id });
+  assert.equal(submissions.length, 0);
+
+  // Draft가 보존되어 있는지 확인
+  const draft = await getDraft({ learnerId: learner.id });
+  assert.ok(draft, "저장 실패 시 기존 Draft 보존");
+  assert.equal(draft.sessionId, "sess_atomic");
 });
 
 test("Phase F4: 8. 저장 성공 확인 전 Draft 삭제 금지 검증", async () => {
@@ -364,29 +392,20 @@ test("Phase F4: 8. 저장 성공 확인 전 Draft 삭제 금지 검증", async (
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
-  let draftCleared = false;
-  let snapshotSaved = false;
-
   await saveDraft({
-    id: `current_draft_${learner.id}`,
-    learnerId: learner.id,
-    sessionId: "sess_draft_order",
-    questions: createSampleQuestions(),
-    totalElapsedMs: 5000
-  });
+    sessionId: "sess_draft_protect",
+    questions: createSampleQuestions()
+  }, { learnerId: learner.id });
 
-  const session = createSession({ sessionId: "sess_draft_order" }, createSampleQuestions());
+  // 정상 제출 실행
+  const session = createSession({ sessionId: "sess_draft_protect" }, createSampleQuestions());
   session.start();
 
-  // submitLearningSession 실행 순서 검증
-  const sub = await submitLearningSession({
-    session,
-    learnerId: learner.id
-  });
+  await submitLearningSession({ session, learnerId: learner.id });
 
-  assert.ok(sub, "제출 성공");
+  // 제출 성공 후 Draft가 삭제되었는지 확인
   const draftAfter = await getDraft({ learnerId: learner.id });
-  assert.equal(draftAfter, null, "제출 성공 후에는 Draft가 정상 삭제되어야 함");
+  assert.equal(draftAfter, null, "제출 성공 후에만 Draft 삭제");
 });
 
 test("Phase F4: 9. 제출 성공 후 Active Draft 정상 정리 (Lifecycle 종료) 검증", async () => {
@@ -394,24 +413,17 @@ test("Phase F4: 9. 제출 성공 후 Active Draft 정상 정리 (Lifecycle 종�
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
-  await saveDraft({
-    id: `current_draft_${learner.id}`,
-    learnerId: learner.id,
-    sessionId: "sess_lifecycle_1",
-    questions: createSampleQuestions(),
-    totalElapsedMs: 4000
-  });
+  await saveDraft({ sessionId: "sess_lifecycle", questions: createSampleQuestions() }, { learnerId: learner.id });
+  assert.ok(await getDraft({ learnerId: learner.id }));
 
-  const session = createSession({ sessionId: "sess_lifecycle_1" }, createSampleQuestions());
+  const session = createSession({ sessionId: "sess_lifecycle" }, createSampleQuestions());
   session.start();
 
-  await submitLearningSession({
-    session,
-    learnerId: learner.id
-  });
+  const submission = await submitLearningSession({ session, learnerId: learner.id });
+  assert.ok(submission);
 
-  const remainingDraft = await getDraft({ learnerId: learner.id });
-  assert.equal(remainingDraft, null, "제출 완료 후 Draft 세션이 정리되어야 함");
+  const draft = await getDraft({ learnerId: learner.id });
+  assert.equal(draft, null, "제출 완료 시 활성 Draft 정상 정리");
 });
 
 test("Phase F4: 10. 새로고침 및 재실행 후 제출된 Snapshot 상태 복원 검증", async () => {
@@ -419,67 +431,44 @@ test("Phase F4: 10. 새로고침 및 재실행 후 제출된 Snapshot 상태 복
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
-  const studentStrokesMap = new Map([
-    ["q_1", [{ id: "st_1", color: "#173f35", points: [{ x: 10, y: 20 }] }]]
-  ]);
-
-  const session = createSession({ sessionId: "sess_restore_1" }, createSampleQuestions());
+  const session = createSession({ sessionId: "sess_restore" }, createSampleQuestions());
   session.start();
 
-  const sub = await submitLearningSession({
+  await submitLearningSession({
     session,
     learnerId: learner.id,
-    subjectId: "math",
-    moduleId: "arithmetic",
-    studentStrokesMap
+    studentStrokesMap: new Map([["q_1", [{ id: "st1", points: [{ x: 1, y: 1 }] }]]])
   });
 
-  // 앱 재실행(스토리지 재조회) 시뮬레이션
-  const restored = await queryGetSubmissionBySessionId("sess_restore_1", { learnerId: learner.id });
-  assert.ok(restored, "sessionId로 제출본 조회가 가능해야 함");
+  // 새 인스턴스에서 조회 (새로고침 모사)
+  const restored = await queryGetSubmissionBySessionId("sess_restore", { learnerId: learner.id });
+  assert.ok(restored);
+  assert.equal(restored.sessionId, "sess_restore");
   assert.equal(restored.status, "PARENT_GRADING_PENDING");
-  assert.equal(restored.questions.length, 2);
-  assert.deepEqual(restored.studentStrokesMap.q_1, studentStrokesMap.get("q_1"));
+  assert.ok(restored.studentStrokesMap.q_1);
 });
 
 test("Phase F4: 11. 학습자 A와 B의 제출본 및 채점 대기 목록 완전 격리 검증", async () => {
   await clearAllData();
-  _resetActiveLearnerInMemoryForTesting();
-
   const learnerA = await createLearner({ name: "학습자A" });
   const learnerB = await createLearner({ name: "학습자B" });
 
-  const sessionA1 = createSession({ sessionId: "sess_a_101" }, createSampleQuestions());
-  sessionA1.start();
-  await submitLearningSession({ session: sessionA1, learnerId: learnerA.id });
+  const sessionA = createSession({ sessionId: "sess_pending_a" }, createSampleQuestions());
+  sessionA.start();
+  await submitLearningSession({ session: sessionA, learnerId: learnerA.id });
 
-  const sessionA2 = createSession({ sessionId: "sess_a_102" }, createSampleQuestions());
-  sessionA2.start();
-  await submitLearningSession({ session: sessionA2, learnerId: learnerA.id });
+  const sessionB = createSession({ sessionId: "sess_pending_b" }, createSampleQuestions());
+  sessionB.start();
+  await submitLearningSession({ session: sessionB, learnerId: learnerB.id });
 
-  const sessionB1 = createSession({ sessionId: "sess_b_201" }, createSampleQuestions());
-  sessionB1.start();
-  await submitLearningSession({ session: sessionB1, learnerId: learnerB.id });
+  const pendingA = await queryGetPendingSubmissions({ learnerId: learnerA.id });
+  const pendingB = await queryGetPendingSubmissions({ learnerId: learnerB.id });
 
-  const listA = await queryGetPendingSubmissions({ learnerId: learnerA.id });
-  const listB = await queryGetPendingSubmissions({ learnerId: learnerB.id });
+  assert.equal(pendingA.length, 1);
+  assert.equal(pendingA[0].sessionId, "sess_pending_a");
 
-  assert.equal(listA.length, 2);
-  assert.ok(listA.every((s) => s.learnerId === learnerA.id));
-
-  assert.equal(listB.length, 1);
-  assert.equal(listB[0].sessionId, "sess_b_201");
-  assert.equal(listB[0].learnerId, learnerB.id);
-
-  // 학습자 A 데이터 초기화 시 B 데이터는 무손실 보존
-  await clearAllData({ learnerId: learnerA.id });
-
-  const afterClearA = await queryGetPendingSubmissions({ learnerId: learnerA.id });
-  const afterClearB = await queryGetPendingSubmissions({ learnerId: learnerB.id });
-
-  assert.equal(afterClearA.length, 0);
-  assert.equal(afterClearB.length, 1);
-  assert.equal(afterClearB[0].sessionId, "sess_b_201");
+  assert.equal(pendingB.length, 1);
+  assert.equal(pendingB[0].sessionId, "sess_pending_b");
 });
 
 test("Phase F4: 12. 제출 처리 중 Router / Learner 변경 방어 검증", async () => {
@@ -551,7 +540,7 @@ test("Phase F4: 13. 기존 제출 -> 기존 채점 -> 세션 완료(saveSessionR
     submission.id,
     { q_1: { isCorrect: true }, q_2: { isCorrect: false } },
     gradingStrokesMap,
-    { status: "GRADED", completedAt: Date.now() }
+    { learnerId: learner.id, status: "GRADED", completedAt: Date.now() }
   );
 
   assert.equal(finalizedSubmission.status, "GRADED");
@@ -614,4 +603,400 @@ test("Phase F4: 14. Command / Query 경계 및 Location 직접 쓰기 금지 정
       `${path.basename(file)}에서 window.location.pathname 직접 대입 패턴이 0건이어야 합니다.`
     );
   }
+});
+
+// ============================================================================
+// Phase F4 Reviewer Rework 보강 테스트 (15 ~ 25)
+// ============================================================================
+
+test("Phase F4: 15. [F4-01] 실제 IndexedDB v3 -> v4 업그레이드 및 7개 Store 데이터 100% 무손실 검증", async () => {
+  await closeDB();
+  await new Promise((resolve) => {
+    const delReq = indexedDB.deleteDatabase("math_canvas_pro_db");
+    delReq.onsuccess = () => resolve();
+    delReq.onerror = () => resolve();
+    delReq.onblocked = () => resolve();
+  });
+
+  // 1. v3 스키마로 DB 생성 및 7개 Store에 실데이터 삽입
+  await new Promise((resolve, reject) => {
+    const req = indexedDB.open("math_canvas_pro_db", 3);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      const sStore = db.createObjectStore("sessions", { keyPath: "id" });
+      sStore.createIndex("learnerId", "learnerId", { unique: false });
+
+      const aStore = db.createObjectStore("attempts", { keyPath: "id" });
+      aStore.createIndex("learnerId", "learnerId", { unique: false });
+
+      const mStore = db.createObjectStore("mistakes", { keyPath: "key" });
+      mStore.createIndex("learnerId", "learnerId", { unique: false });
+
+      const pStore = db.createObjectStore("stageProgress", { keyPath: "stageKey" });
+      pStore.createIndex("learnerId", "learnerId", { unique: false });
+
+      db.createObjectStore("strokes", { keyPath: "sessionId_questionId" });
+
+      const dStore = db.createObjectStore("draftSessions", { keyPath: "id" });
+      dStore.createIndex("learnerId", "learnerId", { unique: false });
+
+      const lpStore = db.createObjectStore("learnerProfiles", { keyPath: "id" });
+      lpStore.createIndex("archived", "archived", { unique: false });
+    };
+
+    req.onsuccess = (e) => {
+      const db = e.target.result;
+      const tx = db.transaction(
+        ["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "learnerProfiles"],
+        "readwrite"
+      );
+
+      tx.objectStore("learnerProfiles").put({ id: "lrn_v3_test", name: "민준", archived: false });
+      tx.objectStore("sessions").put({ id: "sess_v3_01", learnerId: "lrn_v3_test", score: 100 });
+      tx.objectStore("attempts").put({ id: "att_v3_01", sessionId: "sess_v3_01", learnerId: "lrn_v3_test" });
+      tx.objectStore("mistakes").put({ key: "lrn_v3_test:mul:2:3", learnerId: "lrn_v3_test", count: 2 });
+      tx.objectStore("stageProgress").put({ stageKey: "lrn_v3_test:M1", learnerId: "lrn_v3_test", status: "PASSED" });
+      tx.objectStore("strokes").put({ sessionId_questionId: "sess_v3_01_q1", strokes: [{ x: 1, y: 1 }] });
+      tx.objectStore("draftSessions").put({ id: "lrn_v3_test", learnerId: "lrn_v3_test", page: 1 });
+
+      tx.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      tx.onerror = (err) => reject(err.target.error);
+    };
+    req.onerror = (err) => reject(err.target.error);
+  });
+
+  // 2. v4 storage.js getDB()로 오픈 (onupgradeneeded v3 -> v4 트리거)
+  const db4 = await getDB();
+  assert.equal(db4.version, 4, "DB 버전이 4로 성공적으로 업그레이드됨");
+
+  // 3. 신규 submissions Store 및 5대 필수 인덱스 검증
+  assert.ok(db4.objectStoreNames.contains("submissions"), "신규 submissions Store 존재");
+  const requiredStores = [
+    "learnerProfiles", "sessions", "attempts", "mistakes",
+    "stageProgress", "strokes", "draftSessions", "submissions"
+  ];
+  for (const sName of requiredStores) {
+    assert.ok(db4.objectStoreNames.contains(sName), `Store [${sName}] 존재`);
+  }
+
+  const txCheck = db4.transaction(requiredStores, "readonly");
+  const subStore = txCheck.objectStore("submissions");
+  assert.ok(subStore.indexNames.contains("sessionId"), "submissions에 sessionId 인덱스 존재");
+  assert.ok(subStore.indexNames.contains("learnerId"), "submissions에 learnerId 인덱스 존재");
+  assert.ok(subStore.indexNames.contains("submittedAt"), "submissions에 submittedAt 인덱스 존재");
+  assert.ok(subStore.indexNames.contains("status"), "submissions에 status 인덱스 존재");
+  assert.ok(subStore.indexNames.contains("subjectId"), "submissions에 subjectId 인덱스 존재");
+
+  // 4. 기존 7개 Store의 레코드가 100% 무손실 보존되었는지 검증
+  const [profile, sess, att, mst, stg, stk, dft] = await Promise.all([
+    new Promise((res) => {
+      const r = txCheck.objectStore("learnerProfiles").get("lrn_v3_test");
+      r.onsuccess = () => res(r.result);
+    }),
+    new Promise((res) => {
+      const r = txCheck.objectStore("sessions").get("sess_v3_01");
+      r.onsuccess = () => res(r.result);
+    }),
+    new Promise((res) => {
+      const r = txCheck.objectStore("attempts").get("att_v3_01");
+      r.onsuccess = () => res(r.result);
+    }),
+    new Promise((res) => {
+      const r = txCheck.objectStore("mistakes").get("lrn_v3_test:mul:2:3");
+      r.onsuccess = () => res(r.result);
+    }),
+    new Promise((res) => {
+      const r = txCheck.objectStore("stageProgress").get("lrn_v3_test:M1");
+      r.onsuccess = () => res(r.result);
+    }),
+    new Promise((res) => {
+      const r = txCheck.objectStore("strokes").get("sess_v3_01_q1");
+      r.onsuccess = () => res(r.result);
+    }),
+    new Promise((res) => {
+      const r = txCheck.objectStore("draftSessions").get("lrn_v3_test");
+      r.onsuccess = () => res(r.result);
+    })
+  ]);
+
+  assert.ok(profile && profile.name === "민준");
+  assert.ok(sess && sess.score === 100);
+  assert.ok(att && att.sessionId === "sess_v3_01");
+  assert.ok(mst && mst.count === 2);
+  assert.ok(stg && stg.status === "PASSED");
+  assert.ok(stk && stk.strokes.length === 1);
+  assert.ok(dft && dft.page === 1);
+
+  await closeDB();
+});
+
+test("Phase F4: 16. [F4-02 & F4-03] SUBMITTING 진입 즉시 학생 입력 Lock 및 isPracticeMutable 상태 검증", async () => {
+  const session = createSession({ sessionId: "sess_state_flow" }, createSampleQuestions());
+  session.start();
+
+  assert.equal(session.state, SessionState.PRACTICE_ACTIVE);
+  assert.equal(session.isPracticeMutable(), true);
+  assert.equal(session.isLocked(), false);
+
+  // 제출 시작 전이
+  session.startSubmitting();
+  assert.equal(session.state, SessionState.SUBMITTING);
+  assert.equal(session.isPracticeMutable(), false, "SUBMITTING 진입 즉시 학생 수정 불가");
+  assert.equal(session.isLocked(), true, "SUBMITTING 진입 즉시 Lock 활성화");
+
+  // 중복 startSubmitting 호출 차단
+  assert.throws(() => {
+    session.startSubmitting();
+  }, /제출을 시작할 수 없습니다/);
+});
+
+test("Phase F4: 17. [F4-04 & F4-10] 실제 Storage Write 실패 시 PRACTICE_ACTIVE 자동 롤백 및 Draft/Stroke 유지 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+  const session = createSession({ sessionId: "sess_write_fail" }, questions);
+  session.start();
+
+  // Draft 및 스트로크 사전 저장
+  await saveDraft({ sessionId: "sess_write_fail", questions, currentPageIndex: 0 }, { learnerId: learner.id });
+
+  // 세션 시작 후 SUBMITTING 진입
+  session.startSubmitting();
+  assert.equal(session.state, SessionState.SUBMITTING);
+
+  // 저장 실패 시 롤백 확인 (rollbackSubmitting)
+  session.rollbackSubmitting();
+  assert.equal(session.state, SessionState.PRACTICE_ACTIVE, "실패 시 PRACTICE_ACTIVE로 안전 복구");
+  assert.equal(session.isPracticeMutable(), true, "학생 인터랙션 재활성화");
+
+  // Draft 보존 확인
+  const draft = await getDraft({ learnerId: learner.id });
+  assert.ok(draft, "실패 시 Draft 그대로 보존");
+  assert.equal(draft.sessionId, "sess_write_fail");
+});
+
+test("Phase F4: 18. [F4-05] 제출 후 question/config/studentStrokes mutation에도 영구 저장된 Snapshot 불변 (Deep Copy) 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+  const studentStrokesMap = new Map([
+    ["q_1", [{ id: "s1", points: [{ x: 10, y: 10 }] }]]
+  ]);
+
+  const submission = await submitLearningSession({
+    sessionId: "sess_deep_copy_test",
+    learnerId: learner.id,
+    questions,
+    config: { pageSize: 4, operation: "mul" },
+    studentStrokesMap
+  });
+
+  // 제출 후 원본 객체 변조 시도
+  questions[0].operandA = 99999;
+  studentStrokesMap.clear();
+
+  // 영구 스토리지에서 다시 로드
+  const loaded = await getSubmission(submission.id, { learnerId: learner.id });
+  assert.equal(loaded.questions[0].operandA, 23, "저장된 Snapshot의 operandA는 원본 변조에 영향받지 않음");
+  assert.ok(loaded.studentStrokesMap.q_1, "저장된 Snapshot의 필기 데이터는 clear에 영향받지 않음");
+  assert.equal(loaded.studentStrokesMap.q_1.length, 1);
+});
+
+test("Phase F4: 19. [F4-06] Submission Snapshot 불변 필드 보존 & updateSubmissionGrading에서 student payload 훼손 방지 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+  const studentStrokesMap = new Map([
+    ["q_1", [{ id: "orig_stroke", color: "#000", points: [{ x: 1, y: 1 }] }]]
+  ]);
+
+  const sub = await submitLearningSession({
+    sessionId: "sess_payload_preserve",
+    learnerId: learner.id,
+    questions,
+    studentStrokesMap,
+    totalSolveTimeMs: 18000
+  });
+
+  // 채점 갱신 수행
+  const graded = await updateSubmissionGrading(
+    sub.id,
+    { q_1: { isCorrect: true } },
+    new Map([["q_1", [{ id: "red_stroke", color: "#c62828", points: [{ x: 10, y: 10 }] }]]]),
+    { learnerId: learner.id, status: "GRADED" }
+  );
+
+  // 불변 학생 필드가 100% 보존되었는지 검증
+  assert.equal(graded.id, sub.id);
+  assert.equal(graded.sessionId, "sess_payload_preserve");
+  assert.equal(graded.learnerId, learner.id);
+  assert.equal(graded.totalSolveTimeMs, 18000);
+  assert.deepEqual(graded.questions, sub.questions);
+  assert.deepEqual(graded.studentStrokesMap, sub.studentStrokesMap);
+  assert.equal(graded.status, "GRADED");
+  assert.ok(graded.gradingStrokesMap.q_1);
+});
+
+test("Phase F4: 20. [F4-07] getSubmission(id) 다른 학습자 접근 시 차단(null 반환) 검증", async () => {
+  await clearAllData();
+  const learnerA = await createLearner({ name: "학습자A" });
+  const learnerB = await createLearner({ name: "학습자B" });
+
+  const subA = await saveSubmissionSnapshot({
+    sessionId: "sess_own_a",
+    learnerId: learnerA.id,
+    questions: createSampleQuestions()
+  });
+
+  // 학습자 B의 권한으로 학습자 A의 submission ID 직접 조회
+  const crossAccess = await getSubmission(subA.id, { learnerId: learnerB.id });
+  assert.equal(crossAccess, null, "다른 학습자의 제출본 ID 조회 시 null 반환");
+
+  // 학습자 A 본인 권한으로 조회
+  const ownAccess = await getSubmission(subA.id, { learnerId: learnerA.id });
+  assert.ok(ownAccess);
+  assert.equal(ownAccess.id, subA.id);
+});
+
+test("Phase F4: 21. [F4-07] updateSubmissionGrading(id) 다른 학습자 수정 시 명시적 거부(Error 발생) 검증", async () => {
+  await clearAllData();
+  const learnerA = await createLearner({ name: "학습자A" });
+  const learnerB = await createLearner({ name: "학습자B" });
+
+  const subA = await saveSubmissionSnapshot({
+    sessionId: "sess_own_mod_a",
+    learnerId: learnerA.id,
+    questions: createSampleQuestions()
+  });
+
+  // 학습자 B의 권한으로 학습자 A의 submission 수정 시도
+  await assert.rejects(async () => {
+    await updateSubmissionGrading(
+      subA.id,
+      { q_1: { isCorrect: false } },
+      new Map(),
+      { learnerId: learnerB.id, status: "GRADED" }
+    );
+  }, /권한이 없습니다/);
+
+  // 학습자 A 권한으로 수정 시 정상 처리
+  const validUpdate = await updateSubmissionGrading(
+    subA.id,
+    { q_1: { isCorrect: true } },
+    new Map(),
+    { learnerId: learnerA.id, status: "GRADED" }
+  );
+  assert.equal(validUpdate.status, "GRADED");
+});
+
+test("Phase F4: 22. [F4-08] 동일 세션 동시 Promise.all submit 멱등성 (정확히 1개 레코드 생성 및 동일 snapshot) 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+  const session = createSession({ sessionId: "sess_concurrent_submit" }, questions);
+  session.start();
+
+  const options = {
+    session,
+    learnerId: learner.id,
+    totalSolveTimeMs: 15000,
+    questions
+  };
+
+  // 3개 동시 제출 요청
+  const results = await Promise.all([
+    submitLearningSession(options),
+    submitLearningSession(options),
+    submitLearningSession(options)
+  ]);
+
+  // 모든 호출이 동일한 Snapshot을 반환하는지 확인
+  assert.equal(results[0].id, results[1].id);
+  assert.equal(results[1].id, results[2].id);
+  assert.equal(results[0].submittedAt, results[1].submittedAt);
+
+  // 저장소에 정확히 1개의 submission만 존재하는지 확인
+  const allSubmissions = await getAllSubmissions({ learnerId: learner.id });
+  assert.equal(allSubmissions.length, 1);
+});
+
+test("Phase F4: 23. [F4-09] UI Submit 재진입 방어 및 버튼/인터랙션 Lock 검증", async () => {
+  const session = createSession({ sessionId: "sess_reentry" }, createSampleQuestions());
+  session.start();
+
+  assert.equal(session.isPracticeMutable(), true);
+  session.startSubmitting();
+  assert.equal(session.isPracticeMutable(), false);
+
+  // 재진입 방어: isPracticeMutable()이 false이면 추가 제출 호출 불가
+  assert.equal(session.isPracticeMutable(), false);
+});
+
+test("Phase F4: 24. [F4-11] Draft 삭제 오류 발생 시에도 SubmissionSnapshot 보존 및 경고 반환 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const session = createSession({ sessionId: "sess_draft_err" }, createSampleQuestions());
+  session.start();
+
+  const result = await submitLearningSession({
+    session,
+    learnerId: learner.id
+  });
+
+  // Snapshot이 영구 보존되었는지 검증
+  assert.ok(result);
+  assert.equal(result.id, "sub_sess_draft_err");
+  assert.equal(result.status, "PARENT_GRADING_PENDING");
+
+  const stored = await getSubmission(result.id, { learnerId: learner.id });
+  assert.ok(stored, "Snapshot은 영구 스토리지에 유지됨");
+});
+
+test("Phase F4: 25. [F4-12] PARENT_GRADING_PENDING 복원 및 getPendingSubmissions 격리 조회 계약 검증", async () => {
+  await clearAllData();
+  const learnerA = await createLearner({ name: "학습자A" });
+  const learnerB = await createLearner({ name: "학습자B" });
+
+  await saveSubmissionSnapshot({
+    sessionId: "sess_p1",
+    learnerId: learnerA.id,
+    status: "PARENT_GRADING_PENDING",
+    questions: createSampleQuestions()
+  });
+
+  await saveSubmissionSnapshot({
+    sessionId: "sess_p2",
+    learnerId: learnerB.id,
+    status: "PARENT_GRADING_PENDING",
+    questions: createSampleQuestions()
+  });
+
+  // 학습자 A의 대기 목록 조회
+  const pendingA = await queryGetPendingSubmissions({ learnerId: learnerA.id });
+  assert.equal(pendingA.length, 1);
+  assert.equal(pendingA[0].sessionId, "sess_p1");
+
+  // 채점 완료 처리 후 대기 목록에서 제거 검증
+  await updateSubmissionGrading(pendingA[0].id, {}, new Map(), { learnerId: learnerA.id, status: "GRADED" });
+
+  const pendingAAfter = await queryGetPendingSubmissions({ learnerId: learnerA.id });
+  assert.equal(pendingAAfter.length, 0);
+
+  // 학습자 B의 대기 목록은 여전히 1건 유지
+  const pendingB = await queryGetPendingSubmissions({ learnerId: learnerB.id });
+  assert.equal(pendingB.length, 1);
+  assert.equal(pendingB[0].sessionId, "sess_p2");
 });

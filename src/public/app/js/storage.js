@@ -10,7 +10,7 @@ import { normalizeDraft } from "./draftEngine.js";
  */
 
 const DB_NAME = "math_canvas_pro_db";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 //+_+// 기존 레거시 데이터 및 미지정 데이터용 기본 학습자 식별자
 export const DEFAULT_LEGACY_LEARNER_ID = "legacy_default_learner";
@@ -1404,6 +1404,12 @@ function mapToObject(mapOrObj) {
   return mapOrObj && typeof mapOrObj === "object" ? { ...mapOrObj } : {};
 }
 
+function deepClone(obj) {
+  if (obj === null || typeof obj !== "object") return obj;
+  return JSON.parse(JSON.stringify(obj));
+}
+
+//+_+// Phase F4: 불변 SubmissionSnapshot 저장 (원자적 트랜잭션 및 멱등성 보장)
 export async function saveSubmissionSnapshot(snapshotData, options = {}) {
   if (!snapshotData) throw new Error("저장할 submission snapshot 데이터가 필요합니다.");
   const db = await getDB();
@@ -1413,17 +1419,12 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
   const id = snapshotData.id || (String(sessionId).startsWith("sub_") ? sessionId : `sub_${sessionId}`);
   const learnerId = snapshotData.learnerId || options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
 
-  //+_+// 멱등성 보장: 이미 동일 id 또는 sessionId로 저장된 submission이 존재하면 기존 레코드 반환
-  const existing = await getSubmission(id);
-  if (existing) {
-    return existing;
-  }
-
   const now = Date.now();
-  const studentStrokesMapObj = mapToObject(snapshotData.studentStrokesMap || snapshotData.strokesMap);
-  const gradingStrokesMapObj = mapToObject(snapshotData.gradingStrokesMap);
-  const gradingResultsObj = mapToObject(snapshotData.gradingResults);
+  const studentStrokesMapObj = deepClone(mapToObject(snapshotData.studentStrokesMap || snapshotData.strokesMap));
+  const gradingStrokesMapObj = deepClone(mapToObject(snapshotData.gradingStrokesMap));
+  const gradingResultsObj = deepClone(mapToObject(snapshotData.gradingResults));
 
+  //+_+// 불변 학생 영역과 가변 채점 영역을 분리하여 스냅샷 레코드 생성 (Deep Copy 보장)
   const snapshotRecord = {
     id,
     sessionId,
@@ -1431,13 +1432,13 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
     subjectId: snapshotData.subjectId || "math",
     moduleId: snapshotData.moduleId || "arithmetic",
     status: snapshotData.status || "PARENT_GRADING_PENDING",
-    config: snapshotData.config ? { ...snapshotData.config } : {},
-    questions: Array.isArray(snapshotData.questions) ? JSON.parse(JSON.stringify(snapshotData.questions)) : [],
+    config: deepClone(snapshotData.config || {}),
+    questions: Array.isArray(snapshotData.questions) ? deepClone(snapshotData.questions) : [],
     studentStrokesMap: studentStrokesMapObj,
     gradingStrokesMap: gradingStrokesMapObj,
     gradingResults: gradingResultsObj,
     totalSolveTimeMs: Math.max(0, Number(snapshotData.totalSolveTimeMs) || 0),
-    perQuestionElapsedMs: snapshotData.perQuestionElapsedMs ? { ...snapshotData.perQuestionElapsedMs } : {},
+    perQuestionElapsedMs: deepClone(snapshotData.perQuestionElapsedMs || {}),
     totalPages: Math.max(1, Number(snapshotData.totalPages) || 1),
     pageSize: Math.max(1, Number(snapshotData.pageSize) || 4),
     cols: Math.max(1, Number(snapshotData.cols) || 2),
@@ -1451,47 +1452,90 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
   };
 
   if (db.isMemory) {
+    if (db.submissions.has(id)) {
+      return db.submissions.get(id);
+    }
     db.submissions.set(id, snapshotRecord);
     return snapshotRecord;
   }
 
+  //+_+// IndexedDB 원자적 트랜잭션 내에서 중복 검사 및 add 수행 (Race Condition 방어)
   return new Promise((resolve, reject) => {
-    const tx = db.transaction("submissions", "readwrite");
-    tx.objectStore("submissions").put(snapshotRecord);
-    tx.oncomplete = () => resolve(snapshotRecord);
-    tx.onerror = (e) => reject(e.target.error);
+    try {
+      const tx = db.transaction("submissions", "readwrite");
+      const store = tx.objectStore("submissions");
+      const getReq = store.get(id);
+
+      getReq.onsuccess = () => {
+        if (getReq.result) {
+          resolve(getReq.result);
+          return;
+        }
+        const addReq = store.add(snapshotRecord);
+        addReq.onsuccess = () => {
+          resolve(snapshotRecord);
+        };
+        addReq.onerror = (e) => {
+          // 동시 요청 충돌(ConstraintError) 발생 시 기존 레코드 조회 반환
+          try {
+            e.preventDefault?.();
+            e.stopPropagation?.();
+          } catch (_) {}
+          const readReq = store.get(id);
+          readReq.onsuccess = () => {
+            resolve(readReq.result || snapshotRecord);
+          };
+          readReq.onerror = () => reject(e.target?.error || new Error("스냅샷 저장 실패"));
+        };
+      };
+      getReq.onerror = (e) => reject(e.target?.error || new Error("스냅샷 조회 실패"));
+      tx.onerror = (e) => {
+        // transaction level error
+      };
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 
-export async function getSubmission(id) {
+//+_+// Phase F4: 특정 submission 조회 (learnerId ownership 검증 적용)
+export async function getSubmission(id, options = {}) {
   if (!id) return null;
   const db = await getDB();
+  let record = null;
 
   if (db.isMemory) {
-    return db.submissions.get(id) || null;
+    record = db.submissions.get(id) || null;
+  } else {
+    record = await new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction("submissions", "readonly");
+        const req = tx.objectStore("submissions").get(id);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = (e) => reject(e.target?.error || new Error("조회 실패"));
+      } catch (_) {
+        resolve(null);
+      }
+    });
   }
 
-  return new Promise((resolve, reject) => {
-    try {
-      const tx = db.transaction("submissions", "readonly");
-      const req = tx.objectStore("submissions").get(id);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = (e) => reject(e.target.error);
-    } catch (_) {
-      resolve(null);
-    }
-  });
+  if (!record) return null;
+
+  //+_+// learnerId 소유권 검사: 명시적 learnerId 또는 현재 active learner가 다른 경우 null 반환
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || (options.enforceLearnerOwnership ? getCurrentLearnerId() : null));
+  if (targetLearnerId && (record.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    return null;
+  }
+
+  return record;
 }
 
 export async function getSubmissionBySessionId(sessionId, options = {}) {
   if (!sessionId) return null;
-  const db = await getDB();
   const targetId = String(sessionId).startsWith("sub_") ? sessionId : `sub_${sessionId}`;
-  const direct = await getSubmission(targetId);
+  const direct = await getSubmission(targetId, options);
   if (direct) {
-    if (!options.learnerId || (direct.learnerId || DEFAULT_LEGACY_LEARNER_ID) === options.learnerId) {
-      return direct;
-    }
+    return direct;
   }
 
   const all = await getAllSubmissions(options);
@@ -1511,7 +1555,7 @@ export async function getAllSubmissions(filter = {}) {
         const tx = db.transaction("submissions", "readonly");
         const req = tx.objectStore("submissions").getAll();
         req.onsuccess = () => resolve(req.result || []);
-        req.onerror = (e) => reject(e.target.error);
+        req.onerror = (e) => reject(e.target?.error || new Error("전체 조회 실패"));
       } catch (_) {
         resolve([]);
       }
@@ -1535,31 +1579,39 @@ export async function getPendingSubmissions(filter = {}) {
   return getAllSubmissions({ ...filter, status: "PARENT_GRADING_PENDING" });
 }
 
+//+_+// Phase F4: 보호자 채점 정보 갱신 (소유권 검증 및 불변 학생 영역 유지)
 export async function updateSubmissionGrading(id, gradingResults = {}, gradingStrokesMap = new Map(), options = {}) {
   if (!id) throw new Error("업데이트할 submission ID가 필요합니다.");
-  const existing = await getSubmission(id);
-  if (!existing) {
+  const rawExisting = await getSubmission(id, { allLearners: true });
+  if (!rawExisting) {
     throw new Error(`해당 ID(${id})의 submission snapshot을 찾을 수 없습니다.`);
+  }
+
+  //+_+// 소유권 검사: 타겟 learnerId와 제출본 learnerId 불일치 시 명시적 거부
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId());
+  if (targetLearnerId && (rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    throw new Error("해당 제출본에 대한 접근 또는 수정 권한이 없습니다.");
   }
 
   const db = await getDB();
   const now = Date.now();
   const updatedGradingResults = {
-    ...(existing.gradingResults || {}),
+    ...(rawExisting.gradingResults || {}),
     ...mapToObject(gradingResults)
   };
   const updatedGradingStrokes = {
-    ...(existing.gradingStrokesMap || {}),
+    ...(rawExisting.gradingStrokesMap || {}),
     ...mapToObject(gradingStrokesMap)
   };
 
+  //+_+// 불변 학생 영역(questions, studentStrokesMap, config 등) 100% 보존 & 가변 채점 영역만 갱신
   const updatedRecord = {
-    ...existing,
+    ...rawExisting,
     gradingResults: updatedGradingResults,
     gradingStrokesMap: updatedGradingStrokes,
-    status: options.status || existing.status,
-    gradedAt: options.gradedAt || existing.gradedAt || now,
-    completedAt: options.completedAt !== undefined ? options.completedAt : existing.completedAt
+    status: options.status || rawExisting.status,
+    gradedAt: options.gradedAt || rawExisting.gradedAt || now,
+    completedAt: options.completedAt !== undefined ? options.completedAt : rawExisting.completedAt
   };
 
   if (db.isMemory) {
@@ -1571,7 +1623,8 @@ export async function updateSubmissionGrading(id, gradingResults = {}, gradingSt
     const tx = db.transaction("submissions", "readwrite");
     tx.objectStore("submissions").put(updatedRecord);
     tx.oncomplete = () => resolve(updatedRecord);
-    tx.onerror = (e) => reject(e.target.error);
+    tx.onerror = (e) => reject(e.target?.error || new Error("채점 정보 갱신 실패"));
   });
 }
+
 

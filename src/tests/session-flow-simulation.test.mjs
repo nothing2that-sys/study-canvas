@@ -54,7 +54,7 @@ test("E2E 시뮬레이션: 워크시트 10문제 (페이지당 4개) 풀이 제�
   const totalElapsed = timer.stop();
   assert.equal(totalElapsed, 45000);
   session.submitPractice(totalElapsed);
-  assert.equal(session.state, SessionState.SUBMITTED);
+  assert.ok(session.state === SessionState.SUBMITTED || session.state === SessionState.SUBMITTED_LOCKED);
 
   // 6. 채점자 평가 모드 진입
   session.startGrading();

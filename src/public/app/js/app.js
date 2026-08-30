@@ -266,7 +266,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260830T093305882Z-9257864",
+    appBuildId: "20260830T100222350Z-615cb00",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -1577,17 +1577,26 @@ async function handleNextPage() {
 
 // 학생 풀이 완료 및 제출 -> 불변 Snapshot 저장 후 채점 모드 전환
 async function handleSubmitPractice() {
-  if (!currentSession) return;
-  try {
-    await flushDraftSave();
-  } catch (_) {
+  if (!currentSession || (typeof currentSession.isPracticeMutable === "function" && !currentSession.isPracticeMutable())) {
     return;
   }
+
+  //+_+// 1. 제출 시작 즉시 상태 전이 (PRACTICE_ACTIVE -> SUBMITTING) 및 UI 재진입 차단
+  if (typeof currentSession.startSubmitting === "function") {
+    currentSession.startSubmitting();
+  }
+  const submitBtn = document.querySelector("#submitPracticeBtn") || document.querySelector("#submit-practice-btn");
+  if (submitBtn) submitBtn.disabled = true;
+
+  try {
+    await flushDraftSave();
+  } catch (_) {}
+
   const elapsedMs = questionTimer.stop();
   const activeLId = getActiveLearnerId();
 
   try {
-    //+_+// 1. 불변 제출 Snapshot 영구 스토리지에 원자적 저장 및 Active Draft 정리
+    //+_+// 2. 불변 제출 Snapshot 영구 스토리지에 원자적 저장 및 Active Draft 정리
     await submitLearningSession({
       session: currentSession,
       learnerId: activeLId,
@@ -1601,12 +1610,16 @@ async function handleSubmitPractice() {
     });
   } catch (err) {
     console.error("제출 Snapshot 저장 실패:", err);
+    if (typeof currentSession.rollbackSubmitting === "function") {
+      currentSession.rollbackSubmitting();
+    }
+    if (submitBtn) submitBtn.disabled = false;
+    questionTimer.start(); // 세션 및 시간 복구
     alert("풀이 제출 저장에 실패했습니다. 다시 시도해 주세요.");
-    questionTimer.start(); // 세션 유지
     return;
   }
 
-  currentSession.submitPractice(elapsedMs);
+  //+_+// 3. 보호자 채점 모드 전환
   currentSession.startGrading();
 
   switchView(gradingView);
