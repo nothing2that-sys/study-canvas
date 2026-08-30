@@ -315,8 +315,9 @@ export async function updateLearnerProfile(id, updates = {}) {
   const updatedProfile = {
     ...existing,
     name: updates.name !== undefined ? String(updates.name).trim() : existing.name,
-    icon: updates.icon || updates.avatarKey || existing.icon,
-    avatarKey: updates.icon || updates.avatarKey || existing.avatarKey,
+    avatar: updates.avatar || updates.icon || updates.avatarKey || existing.avatar || existing.icon || "🌱",
+    icon: updates.avatar || updates.icon || updates.avatarKey || existing.icon || existing.avatar || "🌱",
+    avatarKey: updates.avatar || updates.icon || updates.avatarKey || existing.avatarKey || existing.avatar || "🌱",
     archived: updates.archived !== undefined ? Boolean(updates.archived) : existing.archived,
     archivedAt: updates.archivedAt !== undefined ? updates.archivedAt : existing.archivedAt,
     lastActiveAt: updates.lastActiveAt !== undefined ? updates.lastActiveAt : existing.lastActiveAt,
@@ -461,7 +462,7 @@ export function resolveSessionOperation(session) {
  */
 export async function saveSessionRecord(summary, strokesMap = new Map(), gradingStrokesMap = new Map(), options = {}) {
   const db = await getDB();
-  const sessionId = summary.sessionId || `session_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const sessionId = summary.sessionId || summary.id || `session_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const now = Date.now();
 
   const learnerId = summary.learnerId || options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;

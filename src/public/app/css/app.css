@@ -3311,3 +3311,582 @@ body.large-problems .problem-canvas-stage {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ==========================================================================
+   Phase F3: 플랫폼 셸, 학습자 홈, 과목 Registry 및 다과목 카드 스타일
+   ========================================================================== */
+
+/* 1. 상단 바 활성 학습자 뱃지 */
+.active-learner-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(23, 63, 53, 0.08);
+  border: 1px solid rgba(23, 63, 53, 0.18);
+  border-radius: 9999px;
+  padding: 4px 12px;
+  margin-left: 12px;
+}
+
+body.theme-chalkboard .active-learner-pill {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+body.theme-midnight .active-learner-pill {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.active-learner-avatar {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.active-learner-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-switch-learner {
+  background: var(--paper);
+  border: 1px solid rgba(23, 63, 53, 0.2);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  padding: 3px 8px;
+  min-height: 28px;
+  cursor: pointer;
+  transition: .15s ease;
+}
+
+.btn-switch-learner:hover {
+  background: var(--cream);
+  border-color: var(--accent);
+}
+
+/* 상단 셸 몰입 모드 */
+.topbar.topbar-compact {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  opacity: 0.92;
+}
+
+/* 2. 플랫폼 뷰 공통 히어로 */
+.platform-hero {
+  text-align: center;
+  padding: 32px 16px 24px;
+  margin-bottom: 24px;
+}
+
+.platform-hero h1 {
+  font-size: clamp(1.8rem, 4vw, 2.4rem);
+  font-weight: 900;
+  color: var(--ink);
+  margin: 8px 0 10px;
+}
+
+.platform-hero h1 em {
+  font-style: normal;
+  color: var(--accent);
+}
+
+.platform-hero-tag {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--accent);
+  background: rgba(23, 63, 53, 0.08);
+  border: 1px solid rgba(23, 63, 53, 0.15);
+  padding: 4px 12px;
+  border-radius: 9999px;
+}
+
+.platform-hero-sub {
+  font-size: 1.05rem;
+  color: var(--muted);
+  max-width: 540px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* 3. 학습자 선택 화면 */
+.learner-list-wrap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  max-width: 720px;
+  margin: 0 auto 28px;
+  padding: 0 12px;
+}
+
+.learner-card {
+  display: flex;
+  align-items: center;
+  background: var(--paper);
+  border: 2px solid rgba(23, 63, 53, 0.14);
+  border-radius: 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+  overflow: hidden;
+  position: relative;
+}
+
+.learner-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(23, 63, 53, 0.12);
+  border-color: var(--accent);
+}
+
+.learner-card.featured-learner-card {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, var(--paper) 0%, rgba(23, 63, 53, 0.04) 100%);
+}
+
+.learner-card-main-btn {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  min-height: 72px;
+}
+
+.learner-avatar-wrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: rgba(23, 63, 53, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.8rem;
+  flex-shrink: 0;
+}
+
+.learner-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.learner-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.learner-name {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.learner-badge {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #ffffff;
+  background: var(--accent);
+  padding: 2px 8px;
+  border-radius: 9999px;
+}
+
+.learner-subtext {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+
+.learner-arrow {
+  font-size: 1.2rem;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.learner-edit-btn {
+  background: transparent;
+  border: none;
+  padding: 12px 16px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: var(--muted);
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-left: 1px solid rgba(23, 63, 53, 0.1);
+  transition: background .15s ease;
+}
+
+.learner-edit-btn:hover {
+  background: rgba(23, 63, 53, 0.06);
+  color: var(--ink);
+}
+
+.learner-select-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.btn-add-learner-cta {
+  min-height: 52px;
+  font-size: 1.1rem;
+  padding: 0 32px;
+  border-radius: 16px;
+}
+
+.btn-toggle-archived-text {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 8px 16px;
+  min-height: 44px;
+}
+
+.archived-learners-section {
+  max-width: 600px;
+  margin: 0 auto 32px;
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(23, 63, 53, 0.04);
+  border: 1px dashed rgba(23, 63, 53, 0.2);
+}
+
+.archived-learners-section h3 {
+  font-size: 1rem;
+  font-weight: 800;
+  margin-bottom: 12px;
+  color: var(--muted);
+}
+
+.archived-learner-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--paper);
+  margin-bottom: 8px;
+}
+
+.archived-avatar { font-size: 1.2rem; }
+.archived-name { flex: 1; font-weight: 700; color: var(--muted); }
+.btn-restore-learner {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 36px;
+}
+
+/* 4. 다과목 카드 그리드 (통합 홈) */
+.subject-section {
+  max-width: 960px;
+  margin: 0 auto 40px;
+  padding: 0 16px;
+}
+
+.subject-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.subject-card {
+  background: var(--paper);
+  border: 2px solid rgba(23, 63, 53, 0.14);
+  border-radius: 24px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 240px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04);
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+}
+
+.subject-card.subject-active {
+  border-color: var(--accent);
+}
+
+.subject-card.subject-active:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 30px rgba(23, 63, 53, 0.15);
+}
+
+.subject-card.subject-coming-soon {
+  opacity: 0.72;
+  background: rgba(0, 0, 0, 0.02);
+  border-style: dashed;
+}
+
+.subject-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.subject-icon {
+  font-size: 2.5rem;
+}
+
+.subject-badge {
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 9999px;
+}
+
+.subject-badge.badge-active {
+  background: rgba(34, 197, 94, 0.15);
+  color: #15803d;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.subject-badge.badge-coming-soon {
+  background: rgba(100, 116, 139, 0.12);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+
+.subject-title {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.subject-desc {
+  font-size: 0.95rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.subject-card-footer {
+  margin-top: 24px;
+}
+
+.btn-start-subject, .btn-start-module {
+  width: 100%;
+  min-height: 48px;
+  font-size: 1rem;
+  border-radius: 14px;
+  justify-content: center;
+}
+
+.coming-soon-label {
+  display: block;
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #94a3b8;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(100, 116, 139, 0.06);
+}
+
+/* 5. 수학 모듈 그리드 (/math) */
+.module-section {
+  max-width: 960px;
+  margin: 0 auto 40px;
+  padding: 0 16px;
+}
+
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.module-card {
+  background: var(--paper);
+  border: 2px solid rgba(23, 63, 53, 0.14);
+  border-radius: 20px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 220px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.module-card.module-active {
+  border-color: var(--accent);
+}
+
+.module-card.module-coming-soon {
+  opacity: 0.7;
+  border-style: dashed;
+}
+
+.module-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.module-icon { font-size: 2rem; }
+.module-title { font-size: 1.35rem; font-weight: 800; color: var(--ink); margin-bottom: 4px; }
+.module-desc { font-size: 0.9rem; color: var(--muted); line-height: 1.4; }
+.module-card-footer { margin-top: 20px; }
+
+/* 6. 학습자 추가/수정 모달 */
+.learner-dialog-card {
+  max-width: 440px;
+  width: 92vw;
+  border-radius: 24px;
+}
+
+.dialog-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.icon-close-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  color: var(--muted);
+  cursor: pointer;
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.learner-form .form-group {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.learner-form label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
+
+.learner-form .text-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 16px;
+  font-size: 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(23, 63, 53, 0.2);
+  background: var(--cream);
+  color: var(--ink);
+  box-sizing: border-box;
+}
+
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.avatar-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  background: rgba(23, 63, 53, 0.05);
+  cursor: pointer;
+  position: relative;
+  transition: .15s ease;
+}
+
+.avatar-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.avatar-option .avatar-emoji {
+  font-size: 1.5rem;
+}
+
+.avatar-option.selected, .avatar-option:has(input:checked) {
+  border-color: var(--accent);
+  background: rgba(23, 63, 53, 0.12);
+  transform: scale(1.08);
+}
+
+.dialog-actions-right {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-danger-outline {
+  background: transparent;
+  border: 1px solid #ef4444;
+  color: #ef4444;
+  padding: 0 14px;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.btn-danger-outline:hover {
+  background: #fef2f2;
+}
+
+/* 7. 마이그레이션 실패 안전 에러 뷰 */
+.migration-error-view {
+  max-width: 600px;
+  margin: 40px auto;
+  padding: 32px 24px;
+  border-radius: 24px;
+  background: #fef2f2;
+  border: 2px solid #f87171;
+  text-align: center;
+}
+
+.error-hero h1 {
+  color: #991b1b;
+  font-size: 1.5rem;
+}
+
+.error-hero .platform-hero-sub {
+  color: #b91c1c;
+  margin: 12px auto 24px;
+}
+
+.error-hero .platform-actions {
+  display: flex;
+  justify-content: center;
+}
+

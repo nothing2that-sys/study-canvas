@@ -18,7 +18,7 @@
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-180.png">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
-    <link rel="stylesheet" href="./css/app.css?v=20260830T023518454Z-0eb0346">
+    <link rel="stylesheet" href="./css/app.css?v=20260830T025155537Z-387471b">
   </head>
   <body>
     <div class="app-shell">
@@ -28,6 +28,11 @@
           <span class="brand-mark" aria-hidden="true">M</span>
           <span><strong>Math Canvas</strong><small>손으로 익히는 연산</small></span>
         </a>
+        <div class="active-learner-pill" id="activeLearnerBadge" hidden>
+          <span class="active-learner-avatar" id="activeLearnerAvatar">🌱</span>
+          <strong class="active-learner-name" id="activeLearnerName">학습자</strong>
+          <button type="button" class="btn-switch-learner" id="switchLearnerBtn" title="학습자 변경">변경</button>
+        </div>
         <div class="top-actions">
           <button class="icon-button theme-btn" id="themeToggleBtn" type="button" aria-label="테마 변경" title="테마 변경 (종이/칠판/미드나잇)">
             <span id="themeIcon">📜</span>
@@ -53,8 +58,100 @@
       </aside>
 
       <main class="main-container">
-        <!-- 1. 세션 설정 뷰 (Setup View) -->
-        <div id="setupView" class="view active-view">
+        <!-- 플랫폼 공통 뷰 루트 -->
+        <div id="platformRoot" class="platform-root">
+          <!-- 마이그레이션 실패 시 안전 에러 화면 -->
+          <div id="migrationErrorView" class="view platform-view migration-error-view" hidden>
+            <div class="platform-hero error-hero">
+              <span class="platform-hero-icon">⚠️</span>
+              <h1>기존 학습 기록을 준비하지 못했습니다</h1>
+              <p id="migrationErrorMessage" class="platform-hero-sub">데이터 전환 중 문제가 발생했습니다. 다시 시도해 주세요.</p>
+              <div class="platform-actions">
+                <button type="button" id="migrationRetryBtn" class="primary-action">
+                  <span>다시 시도</span><b>↻</b>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1. 학습자 선택 뷰 -->
+          <div id="learnerSelectView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="learnerSelectTitle">
+              <span class="platform-hero-tag">학습자 선택</span>
+              <h1 id="learnerSelectTitle">누가 공부할까요?</h1>
+              <p class="platform-hero-sub">오늘 학습할 학습자를 선택하거나 새로 등록하세요.</p>
+            </section>
+
+            <div class="learner-list-wrap" id="learnerListContainer">
+              <!-- 학습자 카드들이 렌더링됩니다 -->
+            </div>
+
+            <div class="learner-select-actions">
+              <button type="button" class="primary-action btn-add-learner-cta" id="addLearnerBtn">
+                <span>+ 학습자 추가</span>
+              </button>
+              <button type="button" class="btn-toggle-archived-text" id="showArchivedBtn">
+                보관된 학습자 보기
+              </button>
+            </div>
+
+            <div id="archivedLearnersSection" class="archived-learners-section" hidden>
+              <h3>📦 보관된 학습자</h3>
+              <div id="archivedLearnersList" class="archived-learners-list">
+                <!-- 보관된 학습자 목록 -->
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. 통합 학습자 홈 뷰 -->
+          <div id="learnerHomeView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="homeGreetingTitle">
+              <p class="eyebrow">오늘의 맞춤 학습</p>
+              <h1 id="homeGreetingTitle">안녕, <em id="learnerGreetingName">학습자</em>!</h1>
+              <p class="platform-hero-sub">오늘도 조금씩 차근차근 시작해 볼까요?</p>
+            </section>
+
+            <section class="subject-section" aria-labelledby="subjectListTitle">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">학습 과목</p>
+                  <h2 id="subjectListTitle">공부할 과목을 선택하세요</h2>
+                </div>
+              </div>
+
+              <div class="subject-grid" id="homeSubjectGrid">
+                <!-- 과목 카드들이 렌더링됩니다 -->
+              </div>
+            </section>
+          </div>
+
+          <!-- 3. 수학 과목 홈 뷰 (/math) -->
+          <div id="subjectHomeView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="mathSubjectTitle">
+              <span class="platform-hero-tag">📐 수학</span>
+              <h1 id="mathSubjectTitle">수학 학습</h1>
+              <p class="platform-hero-sub">개념을 직접 쓰고 손으로 풀며 정확하게 익힙니다.</p>
+            </section>
+
+            <section class="module-section" aria-labelledby="mathModuleTitle">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">학습 과정</p>
+                  <h2 id="mathModuleTitle">연산 과정 선택</h2>
+                </div>
+              </div>
+
+              <div class="module-grid" id="mathModuleGrid">
+                <!-- 수학 모듈 카드들이 렌더링됩니다 -->
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <!-- 기존 수학 앱 루트 -->
+        <div id="mathAppRoot" class="math-app-root">
+          <!-- 1. 세션 설정 뷰 (Setup View) -->
+          <div id="setupView" class="view active-view">
           <!-- 🌟 오늘의 맞춤 추천 학습 우선 카드 (최상단 CTA) -->
           <section class="adaptive-recommend-card" id="adaptiveRecommendCard" aria-labelledby="adaptiveCardTitle">
             <div class="adaptive-card-badge">🎯 오늘의 맞춤 추천</div>
@@ -589,6 +686,7 @@
             </button>
           </div>
         </div>
+        </div>
       </main>
 
       <footer>
@@ -669,6 +767,35 @@
       </div>
     </dialog>
 
-    <script type="module" src="./js/app.js?v=20260830T023518454Z-0eb0346"></script>
+    <!-- 🌟 학습자 추가/수정 모달 -->
+    <dialog id="learnerModal" class="confirm-dialog learner-modal">
+      <div class="dialog-card learner-dialog-card">
+        <div class="dialog-header-row">
+          <h3 id="learnerModalTitle">새 학습자 추가</h3>
+          <button type="button" class="icon-close-btn" id="learnerModalCloseBtn" aria-label="닫기">✕</button>
+        </div>
+        <form id="learnerForm" class="learner-form">
+          <div class="form-group">
+            <label for="learnerNameInput">학습자 이름</label>
+            <input type="text" id="learnerNameInput" class="text-input" required maxlength="20" placeholder="이름을 입력하세요 (예: 민준)" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label>대표 아바타 선택</label>
+            <div class="avatar-grid" id="learnerAvatarList">
+              <!-- 아바타 라디오 목록이 렌더링됩니다 -->
+            </div>
+          </div>
+          <div class="dialog-actions">
+            <button type="button" id="archiveLearnerBtn" class="btn-danger-outline" hidden>학습자 보관</button>
+            <div class="dialog-actions-right">
+              <button type="button" class="btn-cancel" id="learnerCancelBtn">취소</button>
+              <button type="submit" class="btn-confirm">저장하기</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <script type="module" src="./js/app.js?v=20260830T025155537Z-387471b"></script>
   </body>
 </html>

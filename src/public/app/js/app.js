@@ -3,7 +3,14 @@ import { createSession, SessionState, mistakeToQuestion, escapeHtml } from "./se
 import { createQuestionTimer, formatTime, startSessionTimer } from "./timer.js";
 import { getMultiplicationSteps, getDivisionSteps } from "./explainer.js";
 import { createDrawingCanvas, InputProfile, resolveInputProfile, togglePenOnlyProfile } from "./canvasEngine.js";
-import { saveSessionRecord, getRecentSessions, getMistakeQuestions, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, clearAllData, saveDraftSession, getDraftSession, clearDraftSession, getRecentAttempts } from "./storage.js";
+import { saveSession, saveDraft, clearDraft, clearLearnerData } from "./data/learningCommands.js";
+import { getRecentSessions, getMistakes, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, getDraft, getRecentAttempts } from "./data/learningQueries.js";
+import { getActiveLearner, getActiveLearnerId, getLearners } from "./learners/learnerQueries.js";
+import { selectLearner, createLearner } from "./learners/learnerCommands.js";
+import { bootstrapApp } from "./platform/appBootstrap.js";
+import { navigate, replace, ROUTES, initRouter, addRouteListener, getCurrentRoute, resolveGuardedPath } from "./platform/appRouter.js";
+import { initAppShell, updateShellHeader, renderRouteView } from "./platform/appShell.js";
+import { initLearnerView, renderLearnerSelectView, renderLearnerHomeView, renderSubjectHomeView } from "./learners/learnerView.js";
 import { playCorrectSound, playWrongSound, playFanfareSound, playClickSound, toggleSound, isSoundMuted } from "./sound.js";
 import { launchConfetti } from "./confetti.js";
 import { applyTheme, cycleTheme, getCurrentTheme, getThemeInfo } from "./theme.js";
@@ -259,7 +266,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260830T023518454Z-0eb0346",
+    appBuildId: "20260830T025155537Z-387471b",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -305,7 +312,7 @@ function updateDraftSaveStatus(status) {
 
 export const draftCoordinator = createDraftSaveCoordinator({
   captureSnapshot: captureDraftSnapshot,
-  save: saveDraftSession,
+  save: saveDraft,
   onStatusChange: updateDraftSaveStatus
 });
 
@@ -330,22 +337,34 @@ if (typeof window !== "undefined") {
 }
 
 // 뷰 전환
-function switchView(targetView) {
+function switchView(targetView, updateRoute = true) {
   [setupView, practiceView, gradingView, resultView].forEach((view) => {
+    if (!view) return;
     const isActive = view === targetView;
     view.hidden = !isActive;
     view.classList.toggle("active-view", isActive);
   });
 
   const isPracticing = targetView === practiceView;
-  abortSessionBtn.hidden = !isPracticing;
+  if (abortSessionBtn) abortSessionBtn.hidden = !isPracticing;
 
-  if (targetView === setupView) interactionGuard.setAppMode(AppMode.SETUP);
-  else if (targetView === practiceView) interactionGuard.setAppMode(AppMode.PRACTICE);
-  else if (targetView === gradingView) interactionGuard.setAppMode(AppMode.GRADING);
-  else if (targetView === resultView) interactionGuard.setAppMode(AppMode.RESULT);
+  if (targetView === setupView) {
+    interactionGuard.setAppMode(AppMode.SETUP);
+    if (updateRoute && getCurrentRoute() !== ROUTES.MATH_ARITHMETIC) navigate(ROUTES.MATH_ARITHMETIC);
+  } else if (targetView === practiceView) {
+    interactionGuard.setAppMode(AppMode.PRACTICE);
+    if (updateRoute && getCurrentRoute() !== ROUTES.MATH_PRACTICE) navigate(ROUTES.MATH_PRACTICE);
+  } else if (targetView === gradingView) {
+    interactionGuard.setAppMode(AppMode.GRADING);
+    if (updateRoute && getCurrentRoute() !== ROUTES.MATH_GRADING) navigate(ROUTES.MATH_GRADING);
+  } else if (targetView === resultView) {
+    interactionGuard.setAppMode(AppMode.RESULT);
+    if (updateRoute && getCurrentRoute() !== ROUTES.MATH_RESULT) navigate(ROUTES.MATH_RESULT);
+  }
 
-  window.scrollTo({ top: 0, behavior: getPreferredScrollBehavior() });
+  if (typeof window !== "undefined") {
+    window.scrollTo({ top: 0, behavior: getPreferredScrollBehavior() });
+  }
 }
 
 function selectedValue(name) {
@@ -1891,8 +1910,8 @@ async function handleFinishGrading() {
   try {
     const summary = currentSession.finishGrading();
     // 영구 스토리지에 세션 및 스트로크 저장
-    const savedRecord = await saveSessionRecord(summary, questionStrokesMap, gradingStrokesMap);
-    await clearDraftSession();
+    const savedRecord = await saveSession(summary, questionStrokesMap, gradingStrokesMap);
+    await clearDraft();
     showSessionResult(savedRecord);
   } catch (error) {
     alert(error.message);
@@ -2254,8 +2273,7 @@ if (restartSessionBtn) {
 
 if (goHomeBtn) {
   goHomeBtn.addEventListener("click", () => {
-    switchView(setupView);
-    loadDashboardStats();
+    navigate(ROUTES.HOME);
   });
 }
 
@@ -2441,7 +2459,7 @@ async function renderAdaptiveRecommendCard() {
       try {
         [attempts, mistakes] = await Promise.all([
           getRecentAttempts(50),
-          getMistakeQuestions()
+          getMistakes()
         ]);
       } catch (error) {
         console.warn("추천 학습 기록 조회 실패, 기본 추천으로 시작합니다.", error);
@@ -2494,7 +2512,7 @@ async function renderAdaptiveRecommendCard() {
 
   try {
     const attempts = await getRecentAttempts(50);
-    const mistakes = await getMistakeQuestions();
+    const mistakes = await getMistakes();
     const weaknessAnalysis = analyzeWeaknesses(attempts, mistakes);
     const topWeakness = weaknessAnalysis.weaknesses[0];
 
@@ -2529,7 +2547,7 @@ async function checkDraftResumeOnStartup() {
   const discardBtn = document.querySelector("#draftDiscardBtn");
 
   try {
-    const draft = await getDraftSession();
+    const draft = await getDraft();
     if (!draft || !draft.questions || draft.questions.length === 0) return;
 
     if (draftModal && typeof draftModal.showModal === "function") {
@@ -2605,7 +2623,7 @@ async function checkDraftResumeOnStartup() {
       if (discardBtn) {
         discardBtn.onclick = async () => {
           draftModal.close();
-          await clearDraftSession();
+          await clearDraft();
         };
       }
     }
@@ -2670,16 +2688,66 @@ function setupServiceWorkerUpdates() {
   }).catch(() => {});
 }
 
-// 초기 실행
+// ----------------------------------------------------
+// Phase F3: 초기 부트스트랩 및 라우팅 연결
+// ----------------------------------------------------
 restoreFormSettings();
 applyTheme(getCurrentTheme());
 updateThemeUI();
 updateSummary();
 updateModeInput();
 updateNetworkState();
-loadDashboardStats();
 updateSoundUI();
 updateToolDockUI();
-renderAdaptiveRecommendCard();
-checkDraftResumeOnStartup();
-setupServiceWorkerUpdates();
+
+if (typeof document !== "undefined") {
+  initLearnerView();
+
+  addRouteListener(async ({ path }) => {
+    if (path === ROUTES.LEARNERS) {
+      await renderLearnerSelectView();
+    } else if (path === ROUTES.HOME) {
+      await renderLearnerHomeView();
+    } else if (path === ROUTES.MATH_HOME) {
+      await renderSubjectHomeView();
+    } else if (path === ROUTES.MATH_ARITHMETIC) {
+      switchView(setupView, false);
+      loadDashboardStats();
+      renderAdaptiveRecommendCard();
+      renderCurriculumRoadmap();
+      renderStudyCalendar(currentCalYear, currentCalMonth);
+    }
+    renderRouteView(path);
+    await updateShellHeader();
+  });
+
+  bootstrapApp({
+    isSessionActive: () => Boolean(currentSession && (currentSession.state === SessionState.PRACTICE_ACTIVE || currentSession.state === SessionState.GRADING_ACTIVE)),
+    hasActiveSession: (mode) => {
+      if (!currentSession) return false;
+      if (mode === "practice") return currentSession.state === SessionState.PRACTICE_ACTIVE;
+      if (mode === "grading") return currentSession.state === SessionState.GRADING_ACTIVE;
+      if (mode === "result") return currentSession.state === SessionState.SESSION_COMPLETE;
+      return true;
+    }
+  }).then(async (result) => {
+    if (result.success) {
+      const route = result.route;
+      if (route === ROUTES.MATH_ARITHMETIC) {
+        loadDashboardStats();
+        renderAdaptiveRecommendCard();
+        renderCurriculumRoadmap();
+        renderStudyCalendar(currentCalYear, currentCalMonth);
+        await checkDraftResumeOnStartup();
+      } else if (route === ROUTES.LEARNERS) {
+        await renderLearnerSelectView();
+      } else if (route === ROUTES.HOME) {
+        await renderLearnerHomeView();
+      } else if (route === ROUTES.MATH_HOME) {
+        await renderSubjectHomeView();
+      }
+    }
+  });
+
+  setupServiceWorkerUpdates();
+}
