@@ -1,9 +1,8 @@
-/**
- * Math Canvas Pro - 학습자 상태 변경 Command 계층
- * SSOT Section 3 & 6 및 Phase F3 명세 준수
- * - UI -> Command -> storage.js 호출 경계 제공
- * - 학습자 생성, 수정, 보관, 복원, 선택
- */
+//+_+// Math Canvas Pro - 학습자 Command 모듈 (Learner Commands)
+//+_+// SSOT Section 6 & 10 및 Phase F3 재검토 명세 준수
+//+_+// - CUD 작업 전담 (생성, 수정, 보관, 복원, 선택)
+//+_+// - UI가 storage.js를 직접 호출하지 않고 본 Command 모듈을 통해 실행
+//+_+// - 활성 세션 진행 중 임의 전환 차단 계약 준수
 
 import {
   createLearnerProfile,
@@ -11,89 +10,60 @@ import {
   archiveLearnerProfile,
   unarchiveLearnerProfile,
   setCurrentLearnerId,
-  clearCurrentLearner,
-  getLearnerProfile,
-  getActiveLearners
+  getCurrentLearnerId
 } from "../storage.js";
 
-/**
- * 신규 학습자 프로필 생성 및 active learner 지정 옵션
- */
-export async function createLearner(profileData = {}, options = { makeActive: true }) {
-  const name = String(profileData.name || "").trim();
-  if (!name) {
-    throw new Error("학습자 이름을 입력해 주세요.");
-  }
-
+//+_+// 신규 학습자 프로필 생성
+export async function createLearner({ name, avatar, icon, avatarKey }) {
+  const selectedAvatar = avatar || icon || avatarKey || "🌱";
   const profile = await createLearnerProfile({
     name,
-    avatar: profileData.avatar || "🌱",
-    color: profileData.color || "#173f35",
-    theme: profileData.theme || "paper",
-    soundEnabled: profileData.soundEnabled ?? true
+    avatar: selectedAvatar,
+    icon: selectedAvatar,
+    avatarKey: selectedAvatar
   });
 
-  if (options.makeActive && profile && profile.id) {
+  //+_+// 생성 후 자동 선택
+  if (profile && profile.id) {
     setCurrentLearnerId(profile.id);
   }
-
   return profile;
 }
 
-/**
- * 학습자 프로필 수정 (이름, 아바타, 색상 등)
- */
-export async function updateLearner(learnerId, updates = {}) {
-  if (!learnerId) {
-    throw new Error("수정할 학습자 ID가 필요합니다.");
+//+_+// 학습자 프로필 수정 (이름, 아바타 등)
+export async function updateLearner(id, updates = {}) {
+  const payload = { ...updates };
+  if (payload.avatar && !payload.icon) {
+    payload.icon = payload.avatar;
+    payload.avatarKey = payload.avatar;
   }
-  return await updateLearnerProfile(learnerId, updates);
+  return await updateLearnerProfile(id, payload);
 }
 
-/**
- * 학습자 보관 (소프트 아카이브: 기존 기록은 보존)
- */
-export async function archiveLearner(learnerId) {
-  if (!learnerId) {
-    throw new Error("보관할 학습자 ID가 필요합니다.");
-  }
-  const result = await archiveLearnerProfile(learnerId);
-
-  // 현재 active learner를 보관한 경우 다음 활성 학습자로 자동 전환하거나 클리어
-  const activeLearners = await getActiveLearners();
-  if (activeLearners.length > 0) {
-    setCurrentLearnerId(activeLearners[0].id);
-  } else {
-    clearCurrentLearner();
-  }
-
-  return result;
+//+_+// 학습자 프로필 보관 (데이터는 무손실 보존)
+export async function archiveLearner(id) {
+  return await archiveLearnerProfile(id);
 }
 
-/**
- * 보관된 학습자 복원 (Unarchive)
- */
-export async function restoreLearner(learnerId) {
-  if (!learnerId) {
-    throw new Error("복원할 학습자 ID가 필요합니다.");
-  }
-  return await unarchiveLearnerProfile(learnerId);
+//+_+// 보관된 학습자 프로필 복원
+export async function restoreLearner(id) {
+  return await unarchiveLearnerProfile(id);
 }
 
-/**
- * 활성 학습자 선택 (Active Learner 전환)
- */
-export async function selectLearner(learnerId) {
-  if (!learnerId) {
-    clearCurrentLearner();
-    return null;
+//+_+// 활성 학습자 선택/전환
+export async function selectLearner(id, options = {}) {
+  if (!id) {
+    throw new Error("선택할 학습자 ID가 유효하지 않습니다.");
   }
 
-  const profile = await getLearnerProfile(learnerId);
-  if (!profile || profile.archived) {
-    throw new Error("유효하지 않거나 보관된 학습자입니다.");
+  //+_+// 활성 세션 검사 (세션 진행 중 임의 전환 차단)
+  if (options.isSessionActive && options.isSessionActive()) {
+    throw new Error("현재 활성 세션이 진행 중입니다. 학습자를 변경하려면 먼저 세션을 종료해야 합니다.");
   }
 
-  setCurrentLearnerId(profile.id);
-  return profile;
+  const currentId = getCurrentLearnerId();
+  if (currentId !== id) {
+    setCurrentLearnerId(id);
+  }
+  return id;
 }

@@ -1,22 +1,21 @@
-/**
- * Math Canvas Pro - 앱 부트스트랩 오케스트레이터 (App Bootstrap)
- * SSOT Section 4 & 5 및 Phase F3 명세 준수
- * 
- * 부트스트랩 순서:
- * 1. IndexedDB 준비
- * 2. F2 legacy migration 필요 여부 확인
- * 3. 필요한 경우 migration 실행
- * 4. migration 성공 확인 (실패 시 안전 화면 표출 및 홈 진입 차단)
- * 5. restoreActiveLearner()
- * 6. learner 상태 확인 (0명 / 1명 / 2명 이상 정책)
- * 7. 초기 route 결정
- * 8. App Shell render
- */
+//+_+// Math Canvas Pro - 앱 부트스트랩 오케스트레이터 (App Bootstrap)
+//+_+// SSOT Section 4 & 5 및 Phase F3 재검토 명세 준수
+//+_+//
+//+_+// 부트스트랩 순서:
+//+_+// 1. IndexedDB 준비 (getDB)
+//+_+// 2. F2 legacy migration 필요 여부 확인 (detectLegacyData)
+//+_+// 3. 필요한 경우 migration 실행 (migrateLegacyData)
+//+_+// 4. migration 성공 확인 (실패 시 안전 에러 화면 표출 및 홈 진입 차단)
+//+_+// 5. restoreActiveLearner()
+//+_+// 6. learner 상태 및 Persisted Draft 확인 (0명 / 1명 / 2명 이상 정책)
+//+_+// 7. initRouter를 통한 단일 SSOT 최종 route 확정
+//+_+// 8. App Shell render 및 뷰 활성화
 
 import { getDB } from "../storage.js";
 import { detectLegacyData, migrateLegacyData } from "../migrationEngine.js";
 import { restoreActiveLearner, getLearners, getActiveLearner } from "../learners/learnerQueries.js";
-import { initRouter, ROUTES, navigate, replace, resolveGuardedPath, getCurrentRoute, normalizePath } from "./appRouter.js";
+import { getDraft } from "../data/learningQueries.js";
+import { initRouter, ROUTES, getCurrentRoute, normalizePath } from "./appRouter.js";
 import { initAppShell, updateShellHeader, renderRouteView, showMigrationError } from "./appShell.js";
 
 export const BootstrapState = Object.freeze({
@@ -30,124 +29,160 @@ export const BootstrapState = Object.freeze({
 let currentBootstrapState = BootstrapState.IDLE;
 let lastBootstrapResult = null;
 
-/**
- * 앱 시작 메인 부트스트랩 실행
- */
+//+_+// 앱 시작 메인 부트스트랩 실행
 export async function bootstrapApp(options = {}) {
   currentBootstrapState = BootstrapState.RUNNING;
 
+  const win = options.windowRef || (typeof window !== "undefined" ? window : null);
+  const doc = options.documentRef || (typeof document !== "undefined" ? document : null);
+
   try {
-    // 1. IndexedDB 준비
-    const db = await getDB();
+    //+_+// 1. IndexedDB 준비 (Composition Root 차원에서 getDB 호출)
+    await getDB();
 
-    // 2. F2 legacy migration 필요 여부 확인
-    const detection = await detectLegacyData();
+    //+_+// 2. F2 legacy migration 필요 여부 확인 (의존성 주입 지원)
+    const detectFn = options.detectLegacyData || detectLegacyData;
+    const detection = await detectFn();
 
-    // 3. 필요한 경우 migration 실행
-    if (detection.hasLegacyData) {
-      console.log(`[Bootstrap] Legacy data detected (${detection.counts.total} items). Starting migration...`);
-      const migrationResult = await migrateLegacyData();
+    //+_+// 3. 필요한 경우 migration 실행
+    if (detection && detection.hasLegacyData) {
+      console.log(`[Bootstrap] Legacy data detected (${detection.counts?.total || 0} items). Starting migration...`);
+      const migrateFn = options.migrateLegacyData || migrateLegacyData;
+      const migrationResult = await migrateFn();
 
-      // 4. migration 성공 확인
-      if (!migrationResult.success) {
+      //+_+// 4. migration 성공 확인
+      if (!migrationResult || !migrationResult.success) {
         console.error("[Bootstrap] Migration failed:", migrationResult);
         currentBootstrapState = BootstrapState.MIGRATION_ERROR;
-        const errorMsg = migrationResult.error || migrationResult.reason || "기존 학습 기록 마이그레이션에 실패했습니다.";
-        
-        showMigrationError(errorMsg, () => {
-          bootstrapApp(options);
-        });
+        const errorMsg = migrationResult?.error || migrationResult?.reason || "기존 학습 기록 마이그레이션에 실패했습니다.";
+
+        if (doc) {
+          initAppShell({ documentRef: doc, windowRef: win });
+          showMigrationError(errorMsg, () => {
+            bootstrapApp(options);
+          });
+        }
 
         lastBootstrapResult = {
           success: false,
           state: BootstrapState.MIGRATION_ERROR,
           error: errorMsg,
-          migrationResult
+          migrationResult,
+          retry: () => bootstrapApp(options)
         };
         return lastBootstrapResult;
       }
       console.log("[Bootstrap] Legacy migration completed successfully.");
     }
 
-    // 5. restoreActiveLearner()
+    //+_+// 5. restoreActiveLearner()
     const restoredLearnerId = await restoreActiveLearner();
 
-    // 6. learner 상태 확인
+    //+_+// 6. learner 상태 및 요청 URL 분석하여 초기 목적지 결정
     const activeLearners = await getLearners();
-    let initialRoute = ROUTES.HOME;
+    const requestedUrl = options.initialPath !== undefined
+      ? options.initialPath
+      : (win && win.location ? win.location.pathname : "/");
+    const normalizedUrl = normalizePath(requestedUrl);
+
+    let desiredRoute = ROUTES.HOME;
 
     if (activeLearners.length === 0) {
-      // 활성 학습자 0명 -> 학습자 생성/관리 화면
-      initialRoute = ROUTES.LEARNERS;
+      //+_+// 활성 학습자 0명 -> 학습자 생성/관리 화면
+      desiredRoute = ROUTES.LEARNERS;
     } else if (activeLearners.length === 1) {
-      // 활성 학습자 1명 -> 복원된 학습자로 홈 빠른 진입
-      initialRoute = ROUTES.HOME;
+      //+_+// 활성 학습자 1명 -> 루트 요청 시 홈으로 빠른 진입, 하위 경로 요청 시 해당 경로 존중
+      desiredRoute = normalizedUrl === ROUTES.ROOT ? ROUTES.HOME : normalizedUrl;
     } else {
-      // 활성 학습자 2명 이상 -> 최초 진입(/) 시 선택 화면 유도, 직접 URL이 있다면 해당 경로 존중
-      const requestedUrl = options.initialPath || (typeof window !== "undefined" ? window.location.pathname : "/");
-      const normalized = normalizePath(requestedUrl);
-      if (normalized === ROUTES.ROOT) {
-        initialRoute = ROUTES.LEARNERS;
-      } else {
-        initialRoute = normalized;
+      //+_+// 활성 학습자 2명 이상 -> 루트 진입 시 반드시 /learners 선택 화면으로 유도
+      desiredRoute = normalizedUrl === ROUTES.ROOT ? ROUTES.LEARNERS : normalizedUrl;
+    }
+
+    //+_+// 6.1 Persisted Draft 조회 (active learner 기준 deep link 검증에 활용)
+    let persistedDraft = null;
+    if (restoredLearnerId) {
+      try {
+        persistedDraft = await getDraft({ learnerId: restoredLearnerId });
+      } catch (draftErr) {
+        console.warn("[Bootstrap] Persisted draft query failed:", draftErr);
       }
     }
 
-    // 7. 초기 route 결정 (Route Guard 적용)
-    const targetUrl = options.initialPath || (typeof window !== "undefined" ? window.location.pathname : initialRoute);
-    const resolvedRoute = resolveGuardedPath(targetUrl === ROUTES.ROOT ? initialRoute : targetUrl);
+    //+_+// 세션 활성 및 복원 가능 여부 콜백 구성
+    const hasActiveSession = (mode) => {
+      //+_+// 인메모리 세션 우선 확인
+      if (options.hasActiveSession && options.hasActiveSession(mode)) {
+        return true;
+      }
+      //+_+// 영구 저장된 Draft 소유권 및 상태 검증
+      if (persistedDraft && persistedDraft.learnerId === restoredLearnerId && persistedDraft.questions?.length > 0) {
+        if (mode === "practice") {
+          return persistedDraft.sessionState !== "GRADING_ACTIVE" && persistedDraft.sessionType !== "grading";
+        }
+        if (mode === "grading") {
+          return persistedDraft.sessionState === "GRADING_ACTIVE" || persistedDraft.sessionType === "grading";
+        }
+      }
+      return false;
+    };
 
-    // 8. App Shell 초기화 및 렌더
-    initAppShell({
-      documentRef: options.documentRef,
-      isSessionActive: options.isSessionActive
+    //+_+// 7. Router 초기화 및 최종 단일 SSOT route 확정
+    const finalRoute = initRouter({
+      initialPath: desiredRoute,
+      windowRef: win,
+      hasActiveSession
     });
 
-    // 라우터 초기화
-    initRouter({
-      initialPath: resolvedRoute,
-      hasActiveSession: options.hasActiveSession
-    });
+    //+_+// 8. App Shell 초기화 및 뷰 렌더
+    if (doc) {
+      initAppShell({
+        documentRef: doc,
+        windowRef: win,
+        isSessionActive: options.isSessionActive
+      });
 
-    await updateShellHeader();
-    renderRouteView(resolvedRoute);
+      await updateShellHeader({ learner: await getActiveLearner() });
+      renderRouteView(finalRoute);
+    }
 
     currentBootstrapState = BootstrapState.SUCCESS;
     lastBootstrapResult = {
       success: true,
       state: BootstrapState.SUCCESS,
-      route: resolvedRoute,
+      route: finalRoute,
       restoredLearnerId,
-      learnerCount: activeLearners.length
+      learnerCount: activeLearners.length,
+      persistedDraft
     };
 
     return lastBootstrapResult;
   } catch (error) {
     console.error("[Bootstrap] Fatal initialization error:", error);
     currentBootstrapState = BootstrapState.ERROR;
-    showMigrationError(error.message || "앱 초기화 중 오류가 발생했습니다.", () => {
-      bootstrapApp(options);
-    });
+
+    if (doc) {
+      initAppShell({ documentRef: doc, windowRef: win });
+      showMigrationError(error.message || "앱 초기화 중 오류가 발생했습니다.", () => {
+        bootstrapApp(options);
+      });
+    }
 
     lastBootstrapResult = {
       success: false,
       state: BootstrapState.ERROR,
-      error: error.message
+      error: error.message,
+      retry: () => bootstrapApp(options)
     };
     return lastBootstrapResult;
   }
 }
 
-/**
- * 현재 부트스트랩 상태 조회
- */
+//+_+// 현재 부트스트랩 상태 조회
 export function getBootstrapState() {
   return currentBootstrapState;
 }
 
-/**
- * 마지막 부트스트랩 결과 조회
- */
+//+_+// 마지막 부트스트랩 결과 조회
 export function getLastBootstrapResult() {
   return lastBootstrapResult;
 }

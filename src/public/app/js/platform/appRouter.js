@@ -1,10 +1,9 @@
-/**
- * Math Canvas Pro - 플랫폼 라우터 (App Router)
- * SSOT Section 12~13 및 Phase F3 명세 준수
- * - 브라우저 History API (pushState, replaceState, popstate) 기반
- * - Route Guard (active learner 미존재 시 /learners 리다이렉트)
- * - Deep Link 안전 처리 (복원할 세션 없는 practice 직접 로드 -> /math/arithmetic 복귀)
- */
+//+_+// Math Canvas Pro - 플랫폼 라우터 (App Router)
+//+_+// SSOT Section 12~13 및 Phase F3 재검토 명세 준수
+//+_+// - 브라우저 History API (pushState, replaceState, popstate) 기반 단일 SSOT 라우터
+//+_+// - Route Guard (active learner 미존재 시 /learners 리다이렉트)
+//+_+// - Deep Link 안전 처리 (복원할 세션/Draft 없는 practice 직접 로드 -> /math/arithmetic 복귀)
+//+_+// - windowRef 주입 지원을 통한 Node 및 브라우저 환경 완벽 대응
 
 import { getActiveLearnerId } from "../learners/learnerQueries.js";
 
@@ -19,7 +18,7 @@ export const ROUTES = Object.freeze({
   MATH_RESULT: "/math/arithmetic/result"
 });
 
-// 활성 학습자가 필요한 보호된 라우트 목록
+//+_+// 활성 학습자가 필요한 보호된 라우트 목록
 const PROTECTED_ROUTES = new Set([
   ROUTES.HOME,
   ROUTES.MATH_HOME,
@@ -32,11 +31,10 @@ const PROTECTED_ROUTES = new Set([
 let currentPath = ROUTES.ROOT;
 let routeListeners = new Set();
 let sessionCheckCallback = null;
-let initialized = false;
+let activeWindowRef = null;
+let popstateHandler = null;
 
-/**
- * URL 경로 정규화 (base path 제거 및 끝 슬래시 정리)
- */
+//+_+// URL 경로 정규화 (base path 제거 및 쿼리/해시/끝 슬래시 정리)
 export function normalizePath(pathStr) {
   if (!pathStr) return ROUTES.ROOT;
   let p = String(pathStr).trim();
@@ -44,15 +42,13 @@ export function normalizePath(pathStr) {
     if (p.startsWith("http://") || p.startsWith("https://")) {
       p = new URL(p).pathname;
     }
-  } catch (_) {}
+  } catch (err) {
+    //+_+// URL 파싱 불가 시 원본 문자열 기반으로 정규화 진행
+  }
 
-  // query / hash 제거
   p = p.split("?")[0].split("#")[0];
-
-  // 연속 슬래시 단일화
   p = p.replace(/\/+/g, "/");
 
-  // 끝 슬래시 정리 (루트 제외)
   if (p.length > 1 && p.endsWith("/")) {
     p = p.slice(0, -1);
   }
@@ -60,38 +56,36 @@ export function normalizePath(pathStr) {
   return p || ROUTES.ROOT;
 }
 
-/**
- * 라우트 유효성 및 가드 검사 후 최종 목적지 경로 결정
- */
+//+_+// 라우트 유효성 및 가드 검사 후 최종 목적지 경로 결정
 export function resolveGuardedPath(targetPath) {
   const normalized = normalizePath(targetPath);
   const activeLearnerId = getActiveLearnerId();
 
-  // 1. 루트 경로인 경우 학습자 상태에 따라 분기
+  //+_+// 1. 루트 경로인 경우 활성 학습자 유무에 따라 분기
   if (normalized === ROUTES.ROOT) {
     return activeLearnerId ? ROUTES.HOME : ROUTES.LEARNERS;
   }
 
-  // 2. 보호된 라우트인데 활성 학습자가 없으면 /learners 로 redirect
+  //+_+// 2. 보호된 라우트인데 활성 학습자가 없으면 /learners 로 redirect
   if (PROTECTED_ROUTES.has(normalized) && !activeLearnerId) {
     return ROUTES.LEARNERS;
   }
 
-  // 3. 풀이 화면 직접 진입 가드 (세션/Draft 미존재 시 설정 화면으로 안전 복귀)
+  //+_+// 3. 풀이 화면 직접 진입 가드 (세션/Draft 미존재 시 설정 화면으로 안전 복귀)
   if (normalized === ROUTES.MATH_PRACTICE) {
     if (sessionCheckCallback && !sessionCheckCallback("practice")) {
       return ROUTES.MATH_ARITHMETIC;
     }
   }
 
-  // 4. 채점 화면 직접 진입 가드
+  //+_+// 4. 채점 화면 직접 진입 가드
   if (normalized === ROUTES.MATH_GRADING) {
     if (sessionCheckCallback && !sessionCheckCallback("grading")) {
       return ROUTES.MATH_ARITHMETIC;
     }
   }
 
-  // 5. 결과 화면 직접 진입 가드
+  //+_+// 5. 결과 화면 직접 진입 가드
   if (normalized === ROUTES.MATH_RESULT) {
     if (sessionCheckCallback && !sessionCheckCallback("result")) {
       return ROUTES.MATH_ARITHMETIC;
@@ -101,16 +95,12 @@ export function resolveGuardedPath(targetPath) {
   return normalized;
 }
 
-/**
- * 현재 라우트 경로 반환
- */
+//+_+// 현재 라우트 경로 반환
 export function getCurrentRoute() {
   return currentPath;
 }
 
-/**
- * 라우트 변경 리스너 등록
- */
+//+_+// 라우트 변경 리스너 등록
 export function addRouteListener(listener) {
   if (typeof listener === "function") {
     routeListeners.add(listener);
@@ -118,9 +108,7 @@ export function addRouteListener(listener) {
   return () => routeListeners.delete(listener);
 }
 
-/**
- * 라우트 변경 알림 발생
- */
+//+_+// 라우트 변경 알림 발생
 function notifyRouteListeners(newPath, oldPath, state = {}) {
   for (const listener of routeListeners) {
     try {
@@ -131,94 +119,118 @@ function notifyRouteListeners(newPath, oldPath, state = {}) {
   }
 }
 
-/**
- * 새 경로로 이동 (History pushState)
- */
+//+_+// 새 경로로 이동 (History pushState)
 export function navigate(targetPath, state = {}) {
   const resolved = resolveGuardedPath(targetPath);
   const oldPath = currentPath;
 
   currentPath = resolved;
 
-  if (typeof window !== "undefined" && window.history) {
+  if (activeWindowRef && activeWindowRef.history) {
     try {
-      window.history.pushState(state, "", resolved);
-    } catch (_) {}
+      activeWindowRef.history.pushState(state, "", resolved);
+      if (activeWindowRef.location) {
+        activeWindowRef.location.pathname = resolved;
+      }
+    } catch (err) {
+      //+_+// 히스토리 push 실패 시 메모리 라우트 상태 유지
+    }
   }
 
   notifyRouteListeners(resolved, oldPath, state);
   return resolved;
 }
 
-/**
- * 현재 경로 교체 (History replaceState)
- */
+//+_+// 현재 경로 교체 (History replaceState)
 export function replace(targetPath, state = {}) {
   const resolved = resolveGuardedPath(targetPath);
   const oldPath = currentPath;
 
   currentPath = resolved;
 
-  if (typeof window !== "undefined" && window.history) {
+  if (activeWindowRef && activeWindowRef.history) {
     try {
-      window.history.replaceState(state, "", resolved);
-    } catch (_) {}
+      activeWindowRef.history.replaceState(state, "", resolved);
+      if (activeWindowRef.location) {
+        activeWindowRef.location.pathname = resolved;
+      }
+    } catch (err) {
+      //+_+// 히스토리 replace 실패 시 메모리 라우트 상태 유지
+    }
   }
 
   notifyRouteListeners(resolved, oldPath, state);
   return resolved;
 }
 
-/**
- * 라우터 초기화
- */
+//+_+// 라우터 초기화 (단일 SSOT: 전달된 initialPath 또는 window.location.pathname 기준)
 export function initRouter(options = {}) {
   if (options.hasActiveSession) {
     sessionCheckCallback = options.hasActiveSession;
   }
 
-  if (typeof window !== "undefined") {
-    if (!initialized) {
-      window.addEventListener("popstate", (event) => {
-        const pathFromUrl = normalizePath(window.location.pathname);
-        const resolved = resolveGuardedPath(pathFromUrl);
-        const oldPath = currentPath;
-        currentPath = resolved;
+  const win = options.windowRef || (typeof window !== "undefined" ? window : null);
+  activeWindowRef = win;
 
-        if (resolved !== pathFromUrl) {
-          try {
-            window.history.replaceState(event.state || {}, "", resolved);
-          } catch (_) {}
+  //+_+// 1. 시작 경로 결정 (명시적 initialPath가 있으면 우선, 없으면 window.location.pathname 사용)
+  const candidatePath = options.initialPath !== undefined
+    ? options.initialPath
+    : (win && win.location ? win.location.pathname : ROUTES.ROOT);
+
+  const resolved = resolveGuardedPath(candidatePath);
+  const oldPath = currentPath;
+  currentPath = resolved;
+
+  if (win) {
+    //+_+// 이전 리스너 해제 후 신규 popstate 리스너 등록
+    if (popstateHandler && win.removeEventListener) {
+      win.removeEventListener("popstate", popstateHandler);
+    }
+
+    popstateHandler = (event) => {
+      const pathFromUrl = normalizePath(win.location ? win.location.pathname : "/");
+      const poppedResolved = resolveGuardedPath(pathFromUrl);
+      const prevPath = currentPath;
+      currentPath = poppedResolved;
+
+      if (poppedResolved !== pathFromUrl && win.history) {
+        try {
+          win.history.replaceState(event.state || {}, "", poppedResolved);
+          if (win.location) win.location.pathname = poppedResolved;
+        } catch (err) {
+          //+_+// 상태 동기화 실패 시 무시
         }
+      }
 
-        notifyRouteListeners(resolved, oldPath, event.state || {});
-      });
-      initialized = true;
+      notifyRouteListeners(poppedResolved, prevPath, event.state || {});
+    };
+
+    if (win.addEventListener) {
+      win.addEventListener("popstate", popstateHandler);
     }
 
-    const initialPath = normalizePath(window.location.pathname);
-    const resolved = resolveGuardedPath(initialPath);
-    currentPath = resolved;
-
-    if (resolved !== initialPath) {
+    if (win.history && win.history.replaceState) {
       try {
-        window.history.replaceState({}, "", resolved);
-      } catch (_) {}
+        win.history.replaceState({}, "", resolved);
+        if (win.location) win.location.pathname = resolved;
+      } catch (err) {
+        //+_+// 초기 history 동기화
+      }
     }
-
-    return resolved;
   }
 
-  currentPath = resolveGuardedPath(options.initialPath || ROUTES.ROOT);
-  return currentPath;
+  notifyRouteListeners(resolved, oldPath, {});
+  return resolved;
 }
 
-/**
- * 테스트용 라우터 리셋
- */
+//+_+// 테스트용 라우터 리셋
 export function _resetRouterForTesting() {
+  if (activeWindowRef && popstateHandler && activeWindowRef.removeEventListener) {
+    activeWindowRef.removeEventListener("popstate", popstateHandler);
+  }
   currentPath = ROUTES.ROOT;
   routeListeners.clear();
   sessionCheckCallback = null;
-  initialized = false;
+  activeWindowRef = null;
+  popstateHandler = null;
 }

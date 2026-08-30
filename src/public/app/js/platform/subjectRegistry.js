@@ -1,9 +1,7 @@
-/**
- * Math Canvas Pro - 과목 레지스트리 (Subject Registry)
- * SSOT Section 10~11 및 Phase F3 명세 준수
- * - 단일 Registry로 과목(수학, 국어, 영어) 및 하위 모듈 계약 관리
- * - UI 하드코딩 방지 및 다과목 확장성 확보
- */
+//+_+// Math Canvas Pro - 과목 레지스트리 (Subject Registry)
+//+_+// SSOT Section 10~11 및 Phase F3 명세 준수
+//+_+// - 단일 Registry로 과목(수학, 국어, 영어) 및 하위 모듈 계약 관리
+//+_+// - UI 하드코딩 방지 및 다과목 확장성 확보
 
 export const SUBJECTS = Object.freeze([
   {
@@ -113,40 +111,30 @@ export const SUBJECTS = Object.freeze([
   }
 ]);
 
-/**
- * 모든 등록 과목 목록 반환
- */
+//+_+// 모든 등록 과목 목록 반환
 export function getAllSubjects() {
   return SUBJECTS;
 }
 
-/**
- * 활성(active & enabled) 상태인 과목 목록 반환
- */
+//+_+// 활성(active & enabled) 상태인 과목 목록 반환
 export function getActiveSubjects() {
   return SUBJECTS.filter((subject) => subject.status === "active" && subject.enabled);
 }
 
-/**
- * 과목 ID로 과목 정보 조회
- */
+//+_+// 과목 ID로 과목 정보 조회
 export function getSubject(subjectId) {
   if (!subjectId) return null;
   return SUBJECTS.find((s) => s.id === subjectId) || null;
 }
 
-/**
- * 특정 과목의 하위 모듈 정보 조회
- */
+//+_+// 특정 과목의 하위 모듈 정보 조회
 export function getSubjectModule(subjectId, moduleId) {
   const subject = getSubject(subjectId);
   if (!subject || !Array.isArray(subject.modules)) return null;
   return subject.modules.find((m) => m.id === moduleId) || null;
 }
 
-/**
- * 경로(route)에 해당하는 과목 또는 모듈 정보 조회
- */
+//+_+// 경로(route)에 해당하는 과목 또는 모듈 정보 조회
 export function resolveSubjectByRoute(routePath) {
   if (!routePath) return null;
   const path = String(routePath).trim();

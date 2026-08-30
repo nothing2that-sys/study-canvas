@@ -266,7 +266,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260830T025244400Z-d49ba27",
+    appBuildId: "20260830T030120130Z-9091da3",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -2540,7 +2540,73 @@ async function renderAdaptiveRecommendCard() {
   }
 }
 
-// 🌟 미완료 Draft 복구 체크
+//+_+// 미완료 Draft 복원 실행 헬퍼
+function restoreSessionFromDraft(draft) {
+  if (!draft || !draft.questions || draft.questions.length === 0) return;
+
+  lastSessionConfig = draft.config;
+  currentDraftCreatedAt = draft.createdAt || Date.now();
+  currentQuestions = draft.questions;
+  currentSession = createSession({ ...draft.config, sessionId: draft.sessionId }, draft.questions);
+  questionStrokesMap.clear();
+  gradingStrokesMap.clear();
+  gradingResultsMap.clear();
+
+  if (draft.studentStrokesMap) {
+    Object.entries(draft.studentStrokesMap).forEach(([k, v]) => {
+      questionStrokesMap.set(k, v);
+    });
+  }
+  if (draft.gradingStrokesMap) {
+    Object.entries(draft.gradingStrokesMap).forEach(([k, v]) => {
+      gradingStrokesMap.set(k, v);
+    });
+  }
+  if (draft.gradingResults) {
+    Object.entries(draft.gradingResults).forEach(([k, v]) => gradingResultsMap.set(k, v));
+  }
+
+  if (draft.inputProfile && Object.values(InputProfile).includes(draft.inputProfile)) {
+    currentInputProfile = resolveInputProfile({
+      savedProfile: draft.inputProfile,
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+      maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
+      hasTouchStart: typeof window !== "undefined" && "ontouchstart" in window
+    });
+    updatePencilModeUI();
+  }
+  currentPenColor = draft.penColor || currentPenColor;
+  currentPenWidth = Number(draft.penWidth) || currentPenWidth;
+  currentIsEraser = Boolean(draft.isEraser);
+
+  currentSession.start();
+  currentSession.setQuestionSolveTimes(draft.perQuestionElapsedMs || {});
+  currentSession.goToPage(draft.currentPageIndex || 0);
+  draftCoordinator.setRevision(draft.revision || 0);
+
+  //+_+// 단일 계약으로 복원 시간부터 정밀 흐름 시작!
+  startSessionTimer(questionTimer, draft.totalElapsedMs || 0);
+
+  if (draft.sessionState === SessionState.GRADING_ACTIVE || draft.sessionType === "grading") {
+    hideAnswersInGrading = Boolean(draft.answersHidden);
+    currentSession.submitPractice(draft.totalElapsedMs || 0);
+    currentSession.startGrading();
+    questionTimer.stop();
+    Object.entries(draft.gradingResults || {}).forEach(([questionId, grade]) => {
+      if (typeof grade.isCorrect === "boolean") {
+        currentSession.gradeQuestion(questionId, grade.isCorrect, grade.comment || "");
+      }
+    });
+    switchView(gradingView, false);
+    renderGradingView();
+  } else {
+    switchView(practiceView, false);
+    renderCurrentWorksheetPage();
+  }
+  updateToolDockUI();
+}
+
+//+_+// 🌟 미완료 Draft 복구 체크 (시작 시 모달 안내)
 async function checkDraftResumeOnStartup() {
   const draftModal = document.querySelector("#draftResumeModal");
   const resumeBtn = document.querySelector("#draftResumeBtn");
@@ -2556,67 +2622,7 @@ async function checkDraftResumeOnStartup() {
       if (resumeBtn) {
         resumeBtn.onclick = () => {
           draftModal.close();
-          // 세션 복원
-          lastSessionConfig = draft.config;
-          currentDraftCreatedAt = draft.createdAt || Date.now();
-          currentQuestions = draft.questions;
-          currentSession = createSession({ ...draft.config, sessionId: draft.sessionId }, draft.questions);
-          questionStrokesMap.clear();
-          gradingStrokesMap.clear();
-          gradingResultsMap.clear();
-
-          if (draft.studentStrokesMap) {
-            Object.entries(draft.studentStrokesMap).forEach(([k, v]) => {
-              questionStrokesMap.set(k, v);
-            });
-          }
-          if (draft.gradingStrokesMap) {
-            Object.entries(draft.gradingStrokesMap).forEach(([k, v]) => {
-              gradingStrokesMap.set(k, v);
-            });
-          }
-          if (draft.gradingResults) {
-            Object.entries(draft.gradingResults).forEach(([k, v]) => gradingResultsMap.set(k, v));
-          }
-
-          if (draft.inputProfile && Object.values(InputProfile).includes(draft.inputProfile)) {
-            currentInputProfile = resolveInputProfile({
-              savedProfile: draft.inputProfile,
-              userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
-              maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
-              hasTouchStart: typeof window !== "undefined" && "ontouchstart" in window
-            });
-            updatePencilModeUI();
-          }
-          currentPenColor = draft.penColor || currentPenColor;
-          currentPenWidth = Number(draft.penWidth) || currentPenWidth;
-          currentIsEraser = Boolean(draft.isEraser);
-
-          currentSession.start();
-          currentSession.setQuestionSolveTimes(draft.perQuestionElapsedMs || {});
-          currentSession.goToPage(draft.currentPageIndex || 0);
-          draftCoordinator.setRevision(draft.revision || 0);
-
-          //+_+// 단일 계약으로 복원 시간부터 정밀 흐름 시작!
-          startSessionTimer(questionTimer, draft.totalElapsedMs || 0);
-
-          if (draft.sessionState === SessionState.GRADING_ACTIVE || draft.sessionType === "grading") {
-            hideAnswersInGrading = Boolean(draft.answersHidden);
-            currentSession.submitPractice(draft.totalElapsedMs || 0);
-            currentSession.startGrading();
-            questionTimer.stop();
-            Object.entries(draft.gradingResults || {}).forEach(([questionId, grade]) => {
-              if (typeof grade.isCorrect === "boolean") {
-                currentSession.gradeQuestion(questionId, grade.isCorrect, grade.comment || "");
-              }
-            });
-            switchView(gradingView);
-            renderGradingView();
-          } else {
-            switchView(practiceView);
-            renderCurrentWorksheetPage();
-          }
-          updateToolDockUI();
+          restoreSessionFromDraft(draft);
         };
       }
 
@@ -2688,9 +2694,9 @@ function setupServiceWorkerUpdates() {
   }).catch(() => {});
 }
 
-// ----------------------------------------------------
-// Phase F3: 초기 부트스트랩 및 라우팅 연결
-// ----------------------------------------------------
+//+_+// ----------------------------------------------------
+//+_+// Phase F3: 초기 부트스트랩 및 라우팅 연결
+//+_+// ----------------------------------------------------
 restoreFormSettings();
 applyTheme(getCurrentTheme());
 updateThemeUI();
@@ -2701,7 +2707,13 @@ updateSoundUI();
 updateToolDockUI();
 
 if (typeof document !== "undefined") {
-  initLearnerView();
+  const isCurrentSessionActive = () => Boolean(
+    currentSession && (currentSession.state === SessionState.PRACTICE_ACTIVE || currentSession.state === SessionState.GRADING_ACTIVE)
+  );
+
+  initLearnerView({
+    isSessionActive: isCurrentSessionActive
+  });
 
   addRouteListener(async ({ path }) => {
     if (path === ROUTES.LEARNERS) {
@@ -2722,7 +2734,7 @@ if (typeof document !== "undefined") {
   });
 
   bootstrapApp({
-    isSessionActive: () => Boolean(currentSession && (currentSession.state === SessionState.PRACTICE_ACTIVE || currentSession.state === SessionState.GRADING_ACTIVE)),
+    isSessionActive: isCurrentSessionActive,
     hasActiveSession: (mode) => {
       if (!currentSession) return false;
       if (mode === "practice") return currentSession.state === SessionState.PRACTICE_ACTIVE;
@@ -2739,6 +2751,10 @@ if (typeof document !== "undefined") {
         renderCurriculumRoadmap();
         renderStudyCalendar(currentCalYear, currentCalMonth);
         await checkDraftResumeOnStartup();
+      } else if (route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_GRADING) {
+        if (result.persistedDraft) {
+          restoreSessionFromDraft(result.persistedDraft);
+        }
       } else if (route === ROUTES.LEARNERS) {
         await renderLearnerSelectView();
       } else if (route === ROUTES.HOME) {

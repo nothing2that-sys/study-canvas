@@ -1,426 +1,450 @@
-/**
- * Math Canvas Pro - 학습자 및 통합 홈 UI 관리자 (Learner & Home View)
- * SSOT Section 5, 6, 9, 10, 15, 17 및 Phase F3 명세 준수
- * - 학습자 선택 화면 (최근 학습자 강조, 큰 프로필 카드, 44px+ 터치 타깃)
- * - 학습자 추가/수정/보관 모달
- * - 통합 학습자 홈 (수학/국어/영어 카드, 준비 중 시각화)
- * - 수학 과목 홈 (/math)
- */
+//+_+// Math Canvas Pro - 학습자 UI 뷰 렌더러 (Learner View)
+//+_+// SSOT Section 6 & 8 및 Phase F3 재검토 명세 준수
+//+_+// - 학습자 선택 화면 (#learnerSelectView)
+//+_+// - 통합 학습자 홈 화면 (#learnerHomeView)
+//+_+// - 과목 홈 화면 (#subjectHomeView)
+//+_+// - 학습자 생성/수정/보관 모달 관리 (#learnerModal)
+//+_+// - 활성 세션 진행 중 학습자 전환 원천 차단
 
-import { getLearners, getActiveLearner, getArchivedLearnersList, getLearnerById } from "./learnerQueries.js";
-import { createLearner, updateLearner, archiveLearner, restoreLearner, selectLearner } from "./learnerCommands.js";
+import {
+  createLearner,
+  updateLearner,
+  archiveLearner,
+  restoreLearner,
+  selectLearner
+} from "./learnerCommands.js";
+
+import {
+  getActiveLearner,
+  getActiveLearnerId,
+  getLearners,
+  getArchivedLearnersList,
+  getLearnerById
+} from "./learnerQueries.js";
+
+import { getLearnerHomeSummary } from "../data/learningQueries.js";
 import { getAllSubjects, getSubject } from "../platform/subjectRegistry.js";
 import { navigate, ROUTES } from "../platform/appRouter.js";
-import { updateShellHeader } from "../platform/appShell.js";
 
-const AVATAR_LIST = ["🌱", "🚀", "🐱", "🐶", "⭐", "🎨", "🦁", "🐬", "🦊", "🦉", "🐰", "🐯"];
+let dom = {};
+let isSessionActiveFn = null;
 
-let isInitialized = false;
-let currentEditingLearnerId = null;
-
-/**
- * 학습자 UI 및 홈 뷰 이벤트 바인딩
- */
+//+_+// 학습자 뷰 초기화 및 이벤트 리스너 바인딩
 export function initLearnerView(options = {}) {
   const doc = options.documentRef || (typeof document !== "undefined" ? document : null);
   if (!doc) return;
 
-  const addLearnerBtn = doc.querySelector("#addLearnerBtn");
-  const learnerModal = doc.querySelector("#learnerModal");
-  const learnerForm = doc.querySelector("#learnerForm");
-  const learnerModalCloseBtn = doc.querySelector("#learnerModalCloseBtn");
-  const learnerCancelBtn = doc.querySelector("#learnerCancelBtn");
-  const archiveLearnerBtn = doc.querySelector("#archiveLearnerBtn");
-  const showArchivedBtn = doc.querySelector("#showArchivedBtn");
-  const archivedLearnersSection = doc.querySelector("#archivedLearnersSection");
+  if (options.isSessionActive) {
+    isSessionActiveFn = options.isSessionActive;
+  }
 
-  // 1. 학습자 추가 버튼
-  if (addLearnerBtn) {
-    addLearnerBtn.onclick = () => {
-      openLearnerModal(null, doc);
+  dom = {
+    //+_+// 학습자 선택 화면 요소
+    learnerSelectView: doc.querySelector("#learnerSelectView"),
+    activeLearnersList: doc.querySelector("#activeLearnersList"),
+    addLearnerBtn: doc.querySelector("#addLearnerBtn"),
+    archivedLearnersToggleBtn: doc.querySelector("#archivedLearnersToggleBtn"),
+    archivedLearnersContainer: doc.querySelector("#archivedLearnersContainer"),
+    archivedLearnersList: doc.querySelector("#archivedLearnersList"),
+
+    //+_+// 통합 학습자 홈 요소
+    learnerHomeView: doc.querySelector("#learnerHomeView"),
+    homeLearnerAvatar: doc.querySelector("#homeLearnerAvatar"),
+    homeLearnerGreeting: doc.querySelector("#homeLearnerGreeting"),
+    subjectCardsGrid: doc.querySelector("#subjectCardsGrid"),
+    recentLearningStats: doc.querySelector("#recentLearningStats"),
+
+    //+_+// 과목 홈 요소
+    subjectHomeView: doc.querySelector("#subjectHomeView"),
+    subjectHomeTitle: doc.querySelector("#subjectHomeTitle"),
+    subjectHomeDescription: doc.querySelector("#subjectHomeDescription"),
+    moduleCardsGrid: doc.querySelector("#moduleCardsGrid"),
+    backToHomeBtn: doc.querySelector("#backToHomeBtn"),
+
+    //+_+// 학습자 모달 요소
+    learnerModal: doc.querySelector("#learnerModal"),
+    learnerModalTitle: doc.querySelector("#learnerModalTitle"),
+    learnerNameInput: doc.querySelector("#learnerNameInput"),
+    avatarOptionsGrid: doc.querySelector("#avatarOptionsGrid"),
+    saveLearnerBtn: doc.querySelector("#saveLearnerBtn"),
+    archiveLearnerBtn: doc.querySelector("#archiveLearnerBtn"),
+    cancelLearnerModalBtn: doc.querySelector("#cancelLearnerModalBtn"),
+    learnerModalError: doc.querySelector("#learnerModalError")
+  };
+
+  bindEvents();
+}
+
+let editingLearnerId = null;
+let selectedAvatarKey = "🌱";
+
+function bindEvents() {
+  if (dom.addLearnerBtn) {
+    dom.addLearnerBtn.onclick = () => openLearnerModal(null);
+  }
+
+  if (dom.archivedLearnersToggleBtn) {
+    dom.archivedLearnersToggleBtn.onclick = () => {
+      if (dom.archivedLearnersContainer) {
+        const isHidden = dom.archivedLearnersContainer.hidden;
+        dom.archivedLearnersContainer.hidden = !isHidden;
+        dom.archivedLearnersToggleBtn.textContent = isHidden
+          ? "보관된 학습자 접기"
+          : "보관된 학습자 보기";
+        if (isHidden) {
+          renderArchivedLearners();
+        }
+      }
     };
   }
 
-  // 2. 모달 닫기
-  if (learnerModalCloseBtn) {
-    learnerModalCloseBtn.onclick = () => closeLearnerModal(doc);
-  }
-  if (learnerCancelBtn) {
-    learnerCancelBtn.onclick = () => closeLearnerModal(doc);
+  if (dom.cancelLearnerModalBtn) {
+    dom.cancelLearnerModalBtn.onclick = () => closeLearnerModal();
   }
 
-  // 3. 학습자 저장 (추가 또는 수정)
-  if (learnerForm) {
-    learnerForm.onsubmit = async (e) => {
-      e.preventDefault();
-      const nameInput = doc.querySelector("#learnerNameInput");
-      const selectedAvatar = doc.querySelector('input[name="learnerAvatar"]:checked')?.value || "🌱";
-      const name = String(nameInput?.value || "").trim();
+  if (dom.saveLearnerBtn) {
+    dom.saveLearnerBtn.onclick = async () => {
+      await handleSaveLearner();
+    };
+  }
 
-      if (!name) {
-        alert("학습자 이름을 입력해 주세요.");
+  if (dom.archiveLearnerBtn) {
+    dom.archiveLearnerBtn.onclick = async () => {
+      await handleArchiveLearner();
+    };
+  }
+
+  if (dom.avatarOptionsGrid) {
+    dom.avatarOptionsGrid.onclick = (e) => {
+      const btn = e.target.closest(".avatar-choice-btn");
+      if (!btn) return;
+      selectedAvatarKey = btn.dataset.avatar || "🌱";
+      dom.avatarOptionsGrid.querySelectorAll(".avatar-choice-btn").forEach((b) => {
+        b.classList.toggle("selected", b.dataset.avatar === selectedAvatarKey);
+      });
+    };
+  }
+
+  if (dom.backToHomeBtn) {
+    dom.backToHomeBtn.onclick = () => navigate(ROUTES.HOME);
+  }
+}
+
+//+_+// 학습자 선택 화면 렌더링
+export async function renderLearnerSelectView() {
+  if (!dom.activeLearnersList) return;
+
+  const learners = await getLearners();
+  const activeId = getActiveLearnerId();
+
+  dom.activeLearnersList.innerHTML = "";
+
+  if (learners.length === 0) {
+    dom.activeLearnersList.innerHTML = `
+      <div class="empty-learners-message">
+        <p>등록된 학습자가 없습니다.</p>
+        <p class="subtitle">새 학습자를 추가하여 학습을 시작하세요!</p>
+      </div>
+    `;
+    return;
+  }
+
+  learners.forEach((learner) => {
+    const card = document.createElement("div");
+    card.className = `learner-card ${learner.id === activeId ? "active-learner-card" : ""}`;
+    card.setAttribute("role", "button");
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("aria-label", `${learner.name} 학습자 선택`);
+
+    card.innerHTML = `
+      <div class="learner-card-avatar">${escapeHtml(learner.avatar || "🌱")}</div>
+      <div class="learner-card-info">
+        <div class="learner-card-name">${escapeHtml(learner.name)}</div>
+        <div class="learner-card-badge">${learner.id === activeId ? "최근 학습" : "학습자"}</div>
+      </div>
+      <button type="button" class="edit-learner-btn icon-btn" title="프로필 수정" aria-label="프로필 수정">
+        ✏️
+      </button>
+    `;
+
+    //+_+// 카드 클릭 시 학습자 선택 (활성 세션 중 변경 차단)
+    card.onclick = async (e) => {
+      if (e.target.closest(".edit-learner-btn")) return;
+
+      if (isSessionActiveFn && isSessionActiveFn()) {
+        const msg = "현재 학습 세션이 진행 중입니다. 학습자를 변경하려면 먼저 세션을 종료해야 합니다.";
+        if (typeof window !== "undefined" && typeof window.alert === "function") {
+          window.alert(msg);
+        } else {
+          console.warn(`[LearnerView] ${msg}`);
+        }
         return;
       }
 
-      try {
-        if (currentEditingLearnerId) {
-          await updateLearner(currentEditingLearnerId, { name, avatar: selectedAvatar });
-        } else {
-          await createLearner({ name, avatar: selectedAvatar }, { makeActive: true });
-        }
-
-        closeLearnerModal(doc);
-        await updateShellHeader();
-        await renderLearnerSelectView(doc);
-        navigate(ROUTES.HOME);
-      } catch (err) {
-        alert(`저장에 실패했습니다: ${err.message}`);
-      }
+      await selectLearner(learner.id, { isSessionActive: isSessionActiveFn });
+      navigate(ROUTES.HOME);
     };
-  }
 
-  // 4. 학습자 보관
-  if (archiveLearnerBtn) {
-    archiveLearnerBtn.onclick = async () => {
-      if (!currentEditingLearnerId) return;
-      const confirmArchive = typeof window !== "undefined" && window.confirm
-        ? window.confirm("이 학습자를 보관하시겠습니까?\n(기존 학습 기록은 안전하게 보존됩니다.)")
-        : true;
-      if (!confirmArchive) return;
-
-      try {
-        await archiveLearner(currentEditingLearnerId);
-        closeLearnerModal(doc);
-        await updateShellHeader();
-        await renderLearnerSelectView(doc);
-        
-        const activeLearners = await getLearners();
-        if (activeLearners.length === 0) {
-          navigate(ROUTES.LEARNERS);
-        } else {
-          navigate(ROUTES.HOME);
-        }
-      } catch (err) {
-        alert(`보관에 실패했습니다: ${err.message}`);
-      }
-    };
-  }
-
-  // 5. 보관된 학습자 토글
-  if (showArchivedBtn && archivedLearnersSection) {
-    showArchivedBtn.onclick = async () => {
-      const isHidden = archivedLearnersSection.hidden;
-      archivedLearnersSection.hidden = !isHidden;
-      showArchivedBtn.textContent = isHidden ? "보관된 학습자 숨기기" : "보관된 학습자 보기";
-      if (isHidden) {
-        await renderArchivedLearnersList(doc);
-      }
-    };
-  }
-
-  isInitialized = true;
-}
-
-/**
- * 학습자 추가/수정 모달 열기
- */
-export async function openLearnerModal(learnerId = null, docRef = null) {
-  const doc = docRef || (typeof document !== "undefined" ? document : null);
-  if (!doc) return;
-
-  const modal = doc.querySelector("#learnerModal");
-  const title = doc.querySelector("#learnerModalTitle");
-  const nameInput = doc.querySelector("#learnerNameInput");
-  const avatarListWrap = doc.querySelector("#learnerAvatarList");
-  const archiveBtn = doc.querySelector("#archiveLearnerBtn");
-
-  currentEditingLearnerId = learnerId;
-
-  let existing = null;
-  if (learnerId) {
-    existing = await getLearnerById(learnerId);
-  }
-
-  if (title) {
-    title.textContent = existing ? "학습자 프로필 수정" : "새 학습자 추가";
-  }
-
-  if (nameInput) {
-    nameInput.value = existing ? existing.name : "";
-  }
-
-  if (archiveBtn) {
-    archiveBtn.hidden = !existing;
-  }
-
-  // 아바타 선택 그리드 렌더링
-  if (avatarListWrap) {
-    const currentAvatar = existing ? existing.avatar : "🌱";
-    avatarListWrap.innerHTML = AVATAR_LIST.map((av, idx) => `
-      <label class="avatar-option ${av === currentAvatar ? "selected" : ""}">
-        <input type="radio" name="learnerAvatar" value="${av}" ${av === currentAvatar ? "checked" : ""}>
-        <span class="avatar-emoji">${av}</span>
-      </label>
-    `).join("");
-
-    avatarListWrap.querySelectorAll('input[name="learnerAvatar"]').forEach((radio) => {
-      radio.onchange = () => {
-        avatarListWrap.querySelectorAll(".avatar-option").forEach((opt) => opt.classList.remove("selected"));
-        radio.closest(".avatar-option")?.classList.add("selected");
-      };
-    });
-  }
-
-  if (modal) {
-    if (typeof modal.showModal === "function") {
-      modal.showModal();
-    } else {
-      modal.setAttribute("open", "");
-    }
-  }
-}
-
-/**
- * 학습자 모달 닫기
- */
-export function closeLearnerModal(docRef = null) {
-  const doc = docRef || (typeof document !== "undefined" ? document : null);
-  if (!doc) return;
-
-  const modal = doc.querySelector("#learnerModal");
-  if (modal) {
-    if (typeof modal.close === "function") {
-      modal.close();
-    } else {
-      modal.removeAttribute("open");
-    }
-  }
-  currentEditingLearnerId = null;
-}
-
-/**
- * 학습자 선택 화면 렌더링
- */
-export async function renderLearnerSelectView(docRef = null) {
-  const doc = docRef || (typeof document !== "undefined" ? document : null);
-  if (!doc) return;
-
-  const listContainer = doc.querySelector("#learnerListContainer");
-  if (!listContainer) return;
-
-  const learners = await getLearners();
-  const activeLearner = await getActiveLearner();
-
-  if (learners.length === 0) {
-    listContainer.innerHTML = `
-      <div class="learner-empty-state">
-        <span class="empty-icon">🌱</span>
-        <p>등록된 학습자가 없습니다.<br>아래 버튼을 눌러 첫 학습자를 등록해 보세요!</p>
-      </div>
-    `;
-    return;
-  }
-
-  listContainer.innerHTML = learners.map((learner, index) => {
-    const isCurrent = activeLearner && activeLearner.id === learner.id;
-    const isFirst = index === 0;
-    const badgeText = isCurrent ? "현재 학습자" : (isFirst ? "지난번 학습 이어가기" : "");
-
-    return `
-      <div class="learner-card ${isCurrent ? "active-learner-card" : ""} ${isFirst ? "featured-learner-card" : ""}" data-learner-id="${learner.id}">
-        <button type="button" class="learner-card-main-btn" aria-label="${learner.name} 학습 시작">
-          <div class="learner-avatar-wrap">
-            <span class="learner-avatar">${learner.avatar || "🌱"}</span>
-          </div>
-          <div class="learner-info">
-            <div class="learner-name-row">
-              <strong class="learner-name">${learner.name}</strong>
-              ${badgeText ? `<span class="learner-badge">${badgeText}</span>` : ""}
-            </div>
-            <p class="learner-subtext">터치하여 학습 시작</p>
-          </div>
-          <span class="learner-arrow" aria-hidden="true">➔</span>
-        </button>
-        <button type="button" class="learner-edit-btn" aria-label="${learner.name} 프로필 수정" title="프로필 수정">
-          ✏️
-        </button>
-      </div>
-    `;
-  }).join("");
-
-  // 이벤트 바인딩
-  listContainer.querySelectorAll(".learner-card").forEach((card) => {
-    const learnerId = card.getAttribute("data-learner-id");
-    const mainBtn = card.querySelector(".learner-card-main-btn");
-    const editBtn = card.querySelector(".learner-edit-btn");
-
-    if (mainBtn) {
-      mainBtn.onclick = async () => {
-        try {
-          await selectLearner(learnerId);
-          await updateShellHeader();
-          navigate(ROUTES.HOME);
-        } catch (err) {
-          alert(err.message);
-        }
-      };
-    }
-
+    const editBtn = card.querySelector(".edit-learner-btn");
     if (editBtn) {
       editBtn.onclick = (e) => {
         e.stopPropagation();
-        openLearnerModal(learnerId, doc);
+        openLearnerModal(learner.id);
       };
     }
+
+    dom.activeLearnersList.appendChild(card);
   });
 }
 
-/**
- * 보관된 학습자 목록 렌더링
- */
-export async function renderArchivedLearnersList(docRef = null) {
-  const doc = docRef || (typeof document !== "undefined" ? document : null);
-  if (!doc) return;
-
-  const container = doc.querySelector("#archivedLearnersList");
-  if (!container) return;
+//+_+// 보관된 학습자 목록 렌더링
+export async function renderArchivedLearners() {
+  if (!dom.archivedLearnersList) return;
 
   const archived = await getArchivedLearnersList();
+  dom.archivedLearnersList.innerHTML = "";
+
   if (archived.length === 0) {
-    container.innerHTML = `<p class="archived-empty">보관된 학습자가 없습니다.</p>`;
+    dom.archivedLearnersList.innerHTML = `<p class="empty-hint">보관된 학습자가 없습니다.</p>`;
     return;
   }
 
-  container.innerHTML = archived.map((l) => `
-    <div class="archived-learner-item" data-learner-id="${l.id}">
-      <span class="archived-avatar">${l.avatar || "🌱"}</span>
-      <span class="archived-name">${l.name}</span>
-      <button type="button" class="btn-restore-learner" aria-label="${l.name} 복원">복원</button>
-    </div>
-  `).join("");
+  archived.forEach((learner) => {
+    const item = document.createElement("div");
+    item.className = "archived-learner-item";
+    item.innerHTML = `
+      <div class="archived-info">
+        <span class="avatar">${escapeHtml(learner.avatar || "🌱")}</span>
+        <span class="name">${escapeHtml(learner.name)}</span>
+      </div>
+      <button type="button" class="btn secondary sm restore-btn">보관 해제</button>
+    `;
 
-  container.querySelectorAll(".btn-restore-learner").forEach((btn) => {
-    btn.onclick = async (e) => {
-      const item = e.target.closest(".archived-learner-item");
-      const learnerId = item?.getAttribute("data-learner-id");
-      if (learnerId) {
-        await restoreLearner(learnerId);
-        await renderLearnerSelectView(doc);
-        await renderArchivedLearnersList(doc);
-      }
-    };
+    const restoreBtn = item.querySelector(".restore-btn");
+    if (restoreBtn) {
+      restoreBtn.onclick = async () => {
+        await restoreLearner(learner.id);
+        await renderLearnerSelectView();
+        await renderArchivedLearners();
+      };
+    }
+
+    dom.archivedLearnersList.appendChild(item);
   });
 }
 
-/**
- * 통합 학습자 홈 뷰 렌더링
- */
-export async function renderLearnerHomeView(docRef = null) {
-  const doc = docRef || (typeof document !== "undefined" ? document : null);
-  if (!doc) return;
+//+_+// 통합 학습자 홈 (#learnerHomeView) 렌더링
+export async function renderLearnerHomeView() {
+  const learner = await getActiveLearner();
+  if (!learner) return;
 
-  const activeLearner = await getActiveLearner();
-  const greetingName = doc.querySelector("#learnerGreetingName");
-  const subjectGrid = doc.querySelector("#homeSubjectGrid");
+  if (dom.homeLearnerAvatar) dom.homeLearnerAvatar.textContent = learner.avatar || "🌱";
+  if (dom.homeLearnerGreeting) dom.homeLearnerGreeting.textContent = `${learner.name}님, 환영합니다!`;
 
-  if (greetingName) {
-    greetingName.textContent = activeLearner ? activeLearner.name : "학습자";
+  //+_+// 과목 목록 렌더링
+  if (dom.subjectCardsGrid) {
+    const subjects = getAllSubjects();
+    dom.subjectCardsGrid.innerHTML = "";
+
+    subjects.forEach((subj) => {
+      const card = document.createElement("div");
+      card.className = `subject-card ${subj.enabled ? "enabled" : "disabled"}`;
+      card.setAttribute("role", subj.enabled ? "button" : "region");
+      if (subj.enabled) card.setAttribute("tabindex", "0");
+
+      card.innerHTML = `
+        <div class="subject-card-icon">${escapeHtml(subj.icon || "📚")}</div>
+        <div class="subject-card-content">
+          <div class="subject-card-title">${escapeHtml(subj.title)}</div>
+          <div class="subject-card-desc">${escapeHtml(subj.description)}</div>
+        </div>
+        <div class="subject-card-status">
+          ${subj.enabled ? '<span class="status-badge active">학습하기</span>' : '<span class="status-badge coming-soon">준비 중</span>'}
+        </div>
+      `;
+
+      if (subj.enabled) {
+        card.onclick = () => {
+          navigate(subj.entryRoute);
+        };
+      }
+
+      dom.subjectCardsGrid.appendChild(card);
+    });
   }
 
-  if (subjectGrid) {
-    const subjects = getAllSubjects();
-    subjectGrid.innerHTML = subjects.map((subject) => {
-      const isActive = subject.status === "active" && subject.enabled;
-
-      return `
-        <div class="subject-card ${isActive ? "subject-active" : "subject-coming-soon"}" data-subject-id="${subject.id}">
-          <div class="subject-card-header">
-            <span class="subject-icon" aria-hidden="true">${subject.icon}</span>
-            <span class="subject-badge ${isActive ? "badge-active" : "badge-coming-soon"}">
-              ${subject.badgeText || (isActive ? "학습 가능" : "준비 중")}
-            </span>
+  //+_+// 최근 학습 요약 통계 렌더링
+  if (dom.recentLearningStats) {
+    try {
+      const summary = await getLearnerHomeSummary(learner.id);
+      dom.recentLearningStats.innerHTML = `
+        <div class="stats-summary-card">
+          <div class="stat-item">
+            <span class="stat-label">완료한 학습</span>
+            <span class="stat-value">${summary.recentSessionsCount}회</span>
           </div>
-          <div class="subject-card-body">
-            <h3 class="subject-title">${subject.title}</h3>
-            <p class="subject-desc">${subject.description}</p>
+          <div class="stat-item">
+            <span class="stat-label">평균 정답률</span>
+            <span class="stat-value">${summary.stats?.accuracyRate || 0}%</span>
           </div>
-          <div class="subject-card-footer">
-            ${isActive ? `
-              <button type="button" class="btn-start-subject primary-action" aria-label="${subject.title} 시작하기">
-                <span>학습하기</span><b>➔</b>
-              </button>
-            ` : `
-              <span class="coming-soon-label" aria-disabled="true">곧 찾아옵니다</span>
-            `}
+          <div class="stat-item">
+            <span class="stat-label">연속 학습</span>
+            <span class="stat-value">${summary.currentStreak}일 🔥</span>
           </div>
         </div>
       `;
-    }).join("");
+    } catch (statsErr) {
+      dom.recentLearningStats.innerHTML = "";
+    }
+  }
+}
 
-    // 과목 카드 클릭 이벤트 바인딩
-    subjectGrid.querySelectorAll(".subject-card").forEach((card) => {
-      const subjectId = card.getAttribute("data-subject-id");
-      const subject = getSubject(subjectId);
-      const startBtn = card.querySelector(".btn-start-subject");
+//+_+// 수학 과목 홈 (#subjectHomeView) 렌더링
+export async function renderSubjectHomeView() {
+  const math = getSubject("math");
+  if (!math) return;
 
-      if (startBtn && subject && subject.status === "active") {
-        startBtn.onclick = () => {
-          navigate(subject.entryRoute || ROUTES.MATH_HOME);
+  if (dom.subjectHomeTitle) dom.subjectHomeTitle.textContent = "수학 학습관";
+  if (dom.subjectHomeDescription) dom.subjectHomeDescription.textContent = math.description;
+
+  if (dom.moduleCardsGrid) {
+    dom.moduleCardsGrid.innerHTML = "";
+
+    (math.modules || []).forEach((mod) => {
+      const card = document.createElement("div");
+      const isEnabled = mod.status === "active";
+      card.className = `module-card ${isEnabled ? "enabled" : "disabled"}`;
+      card.setAttribute("role", isEnabled ? "button" : "region");
+      if (isEnabled) card.setAttribute("tabindex", "0");
+
+      card.innerHTML = `
+        <div class="module-card-icon">${escapeHtml(mod.icon || "✏️")}</div>
+        <div class="module-card-content">
+          <div class="module-card-title">${escapeHtml(mod.title)}</div>
+          <div class="module-card-desc">${escapeHtml(mod.description)}</div>
+        </div>
+        <div class="module-card-status">
+          ${isEnabled ? '<span class="status-badge active">시작하기</span>' : '<span class="status-badge coming-soon">준비 중</span>'}
+        </div>
+      `;
+
+      if (isEnabled) {
+        card.onclick = () => {
+          navigate(mod.route);
         };
       }
+
+      dom.moduleCardsGrid.appendChild(card);
     });
   }
 }
 
-/**
- * 수학 과목 홈 (/math) 뷰 렌더링
- */
-export async function renderSubjectHomeView(docRef = null) {
-  const doc = docRef || (typeof document !== "undefined" ? document : null);
-  if (!doc) return;
+//+_+// 학습자 생성/수정 모달 열기
+export async function openLearnerModal(learnerId = null) {
+  editingLearnerId = learnerId;
+  if (!dom.learnerModal) return;
 
-  const mathSubject = getSubject("math");
-  const moduleGrid = doc.querySelector("#mathModuleGrid");
+  if (dom.learnerModalError) dom.learnerModalError.hidden = true;
 
-  if (moduleGrid && mathSubject && Array.isArray(mathSubject.modules)) {
-    moduleGrid.innerHTML = mathSubject.modules.map((mod) => {
-      const isActive = mod.status === "active" && mod.enabled;
+  if (learnerId) {
+    const learner = await getLearnerById(learnerId);
+    if (!learner) return;
+    if (dom.learnerModalTitle) dom.learnerModalTitle.textContent = "학습자 프로필 수정";
+    if (dom.learnerNameInput) dom.learnerNameInput.value = learner.name;
+    selectedAvatarKey = learner.avatar || "🌱";
+    if (dom.archiveLearnerBtn) dom.archiveLearnerBtn.hidden = false;
+  } else {
+    if (dom.learnerModalTitle) dom.learnerModalTitle.textContent = "새 학습자 추가";
+    if (dom.learnerNameInput) dom.learnerNameInput.value = "";
+    selectedAvatarKey = "🌱";
+    if (dom.archiveLearnerBtn) dom.archiveLearnerBtn.hidden = true;
+  }
 
-      return `
-        <div class="module-card ${isActive ? "module-active" : "module-coming-soon"}" data-module-id="${mod.id}">
-          <div class="module-card-header">
-            <span class="module-icon">${mod.icon || "📐"}</span>
-            <span class="module-badge ${isActive ? "badge-active" : "badge-coming-soon"}">
-              ${mod.badgeText || (isActive ? "학습 가능" : "준비 중")}
-            </span>
-          </div>
-          <div class="module-card-body">
-            <h3 class="module-title">${mod.title}</h3>
-            <p class="module-desc">${mod.description}</p>
-          </div>
-          <div class="module-card-footer">
-            ${isActive ? `
-              <button type="button" class="btn-start-module primary-action" aria-label="${mod.title} 시작">
-                <span>학습 시작</span><b>➔</b>
-              </button>
-            ` : `
-              <span class="coming-soon-label" aria-disabled="true">준비 중</span>
-            `}
-          </div>
-        </div>
-      `;
-    }).join("");
-
-    moduleGrid.querySelectorAll(".module-card").forEach((card) => {
-      const moduleId = card.getAttribute("data-module-id");
-      const mod = mathSubject.modules.find((m) => m.id === moduleId);
-      const startBtn = card.querySelector(".btn-start-module");
-
-      if (startBtn && mod && mod.status === "active") {
-        startBtn.onclick = () => {
-          navigate(mod.route || ROUTES.MATH_ARITHMETIC);
-        };
-      }
+  //+_+// 아바타 그리드 선택 상태 갱신
+  if (dom.avatarOptionsGrid) {
+    dom.avatarOptionsGrid.querySelectorAll(".avatar-choice-btn").forEach((b) => {
+      b.classList.toggle("selected", b.dataset.avatar === selectedAvatarKey);
     });
   }
+
+  if (typeof dom.learnerModal.showModal === "function") {
+    dom.learnerModal.showModal();
+  }
+}
+
+//+_+// 학습자 모달 닫기
+export function closeLearnerModal() {
+  if (dom.learnerModal && typeof dom.learnerModal.close === "function") {
+    dom.learnerModal.close();
+  }
+  editingLearnerId = null;
+}
+
+//+_+// 학습자 저장 (생성 또는 수정)
+async function handleSaveLearner() {
+  const name = dom.learnerNameInput ? dom.learnerNameInput.value.trim() : "";
+  if (!name) {
+    if (dom.learnerModalError) {
+      dom.learnerModalError.textContent = "이름을 입력해주세요.";
+      dom.learnerModalError.hidden = false;
+    }
+    return;
+  }
+
+  try {
+    if (editingLearnerId) {
+      await updateLearner(editingLearnerId, {
+        name,
+        avatar: selectedAvatarKey,
+        icon: selectedAvatarKey,
+        avatarKey: selectedAvatarKey
+      });
+    } else {
+      await createLearner({
+        name,
+        avatar: selectedAvatarKey,
+        icon: selectedAvatarKey,
+        avatarKey: selectedAvatarKey
+      });
+    }
+    closeLearnerModal();
+    navigate(ROUTES.HOME);
+  } catch (error) {
+    if (dom.learnerModalError) {
+      dom.learnerModalError.textContent = error.message || "저장에 실패했습니다.";
+      dom.learnerModalError.hidden = false;
+    }
+  }
+}
+
+//+_+// 학습자 보관 처리
+async function handleArchiveLearner() {
+  if (!editingLearnerId) return;
+
+  const confirmed = typeof window !== "undefined" && typeof window.confirm === "function"
+    ? window.confirm("이 학습자를 보관하시겠습니까? 학습 기록은 안전하게 보존되며 나중에 다시 복원할 수 있습니다.")
+    : true;
+
+  if (!confirmed) return;
+
+  try {
+    await archiveLearner(editingLearnerId);
+    closeLearnerModal();
+    await renderLearnerSelectView();
+  } catch (error) {
+    if (dom.learnerModalError) {
+      dom.learnerModalError.textContent = error.message || "보관 처리에 실패했습니다.";
+      dom.learnerModalError.hidden = false;
+    }
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }

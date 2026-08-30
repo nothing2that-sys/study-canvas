@@ -1,24 +1,23 @@
-/**
- * Math Canvas Pro - 공통 앱 셸 관리자 (App Shell)
- * SSOT Section 7 & 8 및 Phase F3 명세 준수
- * - 상단 공통 네비게이션 및 학습자 상태 렌더링
- * - 메인 라우트 뷰 전환 관리 (#platformRoot, #mathAppRoot 등)
- * - 풀이/채점 세션 중 학습자 임의 변경 차단 가드
- */
+//+_+// Math Canvas Pro - 공통 앱 셸 관리자 (App Shell)
+//+_+// SSOT Section 7 & 8 및 Phase F3 재검토 명세 준수
+//+_+// - 상단 공통 네비게이션 및 학습자 상태 렌더링
+//+_+// - 메인 라우트 뷰 전환 관리 (#platformRoot, #mathAppRoot 등)
+//+_+// - 풀이/채점 세션 중 학습자 임의 변경 완전 차단 (안내 표시 후 이동 차단)
 
 import { getActiveLearner } from "../learners/learnerQueries.js";
 import { navigate, ROUTES, getCurrentRoute } from "./appRouter.js";
-import { SUBJECTS, getSubject } from "./subjectRegistry.js";
 
 let domElements = {};
 let isSessionActiveCallback = null;
+let activeWindowRef = null;
 
-/**
- * App Shell DOM 캐싱 및 이벤트 바인딩
- */
+//+_+// App Shell DOM 캐싱 및 이벤트 바인딩
 export function initAppShell(options = {}) {
   const doc = options.documentRef || (typeof document !== "undefined" ? document : null);
+  const win = options.windowRef || (typeof window !== "undefined" ? window : null);
   if (!doc) return;
+
+  activeWindowRef = win;
 
   if (options.isSessionActive) {
     isSessionActiveCallback = options.isSessionActive;
@@ -31,8 +30,8 @@ export function initAppShell(options = {}) {
     activeLearnerAvatar: doc.querySelector("#activeLearnerAvatar"),
     activeLearnerName: doc.querySelector("#activeLearnerName"),
     switchLearnerBtn: doc.querySelector("#switchLearnerBtn"),
-    
-    // 메인 뷰 컨테이너들
+
+    //+_+// 메인 뷰 컨테이너들
     platformRoot: doc.querySelector("#platformRoot"),
     learnerSelectView: doc.querySelector("#learnerSelectView"),
     learnerHomeView: doc.querySelector("#learnerHomeView"),
@@ -40,48 +39,51 @@ export function initAppShell(options = {}) {
     mathAppRoot: doc.querySelector("#mathAppRoot"),
     migrationErrorView: doc.querySelector("#migrationErrorView"),
 
-    // 기존 수학 뷰들
+    //+_+// 기존 수학 뷰들
     setupView: doc.querySelector("#setupView"),
     practiceView: doc.querySelector("#practiceView"),
     gradingView: doc.querySelector("#gradingView"),
     resultView: doc.querySelector("#resultView"),
 
-    // 세션 종료/나가기 버튼
+    //+_+// 세션 종료/나가기 버튼
     abortSessionBtn: doc.querySelector("#abortSessionBtn")
   };
 
-  // 1. 학습자 전환 버튼 이벤트
+  //+_+// 1. 학습자 전환 버튼 이벤트 (활성 세션 중 변경 완전 차단)
   if (domElements.switchLearnerBtn) {
     domElements.switchLearnerBtn.onclick = () => {
-      // 학습 중 learner 변경 금지 가드
       if (isSessionActiveCallback && isSessionActiveCallback()) {
-        const confirmLeave = typeof window !== "undefined" && window.confirm
-          ? window.confirm("현재 학습 세션이 진행 중입니다. 학습자를 변경하려면 먼저 세션을 종료해야 합니다.\n학습자 선택 화면으로 이동하시겠습니까?")
-          : false;
-        if (!confirmLeave) return;
+        const message = "현재 학습 세션이 진행 중입니다. 학습자를 변경하려면 먼저 세션을 종료해야 합니다.";
+        if (activeWindowRef && typeof activeWindowRef.alert === "function") {
+          activeWindowRef.alert(message);
+        } else {
+          console.warn(`[AppShell] ${message}`);
+        }
+        return;
       }
       navigate(ROUTES.LEARNERS);
     };
   }
 
-  // 2. 홈 브랜드 로고 클릭 이벤트 (Router 연동)
+  //+_+// 2. 홈 브랜드 로고 클릭 이벤트 (Router 연동)
   if (domElements.brandLink) {
     domElements.brandLink.onclick = (e) => {
       e.preventDefault();
       if (isSessionActiveCallback && isSessionActiveCallback()) {
-        const confirmLeave = typeof window !== "undefined" && window.confirm
-          ? window.confirm("진행 중인 학습 세션이 있습니다. 홈으로 이동하시겠습니까?")
-          : true;
-        if (!confirmLeave) return;
+        const message = "진행 중인 학습 세션이 있습니다. 먼저 세션을 종료하거나 나가기를 눌러주세요.";
+        if (activeWindowRef && typeof activeWindowRef.alert === "function") {
+          activeWindowRef.alert(message);
+        } else {
+          console.warn(`[AppShell] ${message}`);
+        }
+        return;
       }
       navigate(ROUTES.HOME);
     };
   }
 }
 
-/**
- * 상단 헤더 학습자 정보 업데이트
- */
+//+_+// 상단 헤더 학습자 정보 업데이트
 export async function updateShellHeader(options = {}) {
   const activeLearner = options.learner !== undefined ? options.learner : await getActiveLearner();
 
@@ -99,7 +101,7 @@ export async function updateShellHeader(options = {}) {
     }
   }
 
-  // 풀이 또는 채점 중인 경우 상단 셸 최소화 스타일 조정
+  //+_+// 풀이 또는 채점 중인 경우 상단 셸 최소화 스타일 조정
   const route = getCurrentRoute();
   const isPracticeMode = route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_GRADING;
   if (domElements.topbar) {
@@ -111,9 +113,7 @@ export async function updateShellHeader(options = {}) {
   }
 }
 
-/**
- * 라우트에 따른 뷰 표시/숨김 처리
- */
+//+_+// 라우트에 따른 뷰 표시/숨김 처리
 export function renderRouteView(routePath) {
   const allViews = [
     domElements.learnerSelectView,
@@ -126,7 +126,6 @@ export function renderRouteView(routePath) {
     domElements.resultView
   ];
 
-  // 모든 뷰 비활성화
   allViews.forEach((v) => {
     if (v) {
       v.hidden = true;
@@ -134,7 +133,6 @@ export function renderRouteView(routePath) {
     }
   });
 
-  // mathAppRoot 컨테이너 상태 제어
   const isMathRoute = routePath.startsWith("/math");
   if (domElements.mathAppRoot) {
     domElements.mathAppRoot.hidden = !isMathRoute;
@@ -205,9 +203,7 @@ export function renderRouteView(routePath) {
   }
 }
 
-/**
- * 마이그레이션 실패 시 안전 화면 표시
- */
+//+_+// 마이그레이션 실패 시 안전 화면 표시
 export function showMigrationError(errorMessage, retryCallback) {
   if (domElements.platformRoot) domElements.platformRoot.hidden = false;
   if (domElements.mathAppRoot) domElements.mathAppRoot.hidden = true;
