@@ -31,6 +31,11 @@ import {
   performPracticeToolSelect,
   performPracticePageNav
 } from "./practiceInteractionGuard.js";
+import {
+  rollbackSubmissionToPractice as sharedRollbackSubmissionToPractice,
+  restoreSessionStateFromDraft,
+  evaluateStartupDraftResumePolicy
+} from "./submissionLifecycle.js";
 
 // 앱 전역 인터랙션 가드 초기화
 const interactionGuard = setupInteractionGuard(typeof document !== "undefined" ? document : null);
@@ -275,7 +280,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260830T112736877Z-72c3271",
+    appBuildId: "20260830T113802843Z-777afa5",
     sessionId: currentSession.id,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -1627,21 +1632,19 @@ async function handleNextPage() {
   }
 }
 
-//+_+// Phase F4: 제출 실패 시 PRACTICE_ACTIVE 및 Draft 상태 원복 공통 헬퍼
-async function rollbackSubmissionToPractice(err) {
-  console.error("제출 Snapshot 저장 실패 및 롤백:", err);
-  if (typeof currentSession?.rollbackSubmitting === "function") {
-    currentSession.rollbackSubmitting();
-  }
-  setPracticeInteractionLocked(false);
-  questionTimer.start(); // 세션 및 시간 복구
-
-  try {
-    triggerDraftSave();
-    await flushDraftSave();
-  } catch (draftRestoreError) {
-    console.error("제출 실패 후 PRACTICE_ACTIVE Draft 복구 저장 실패:", draftRestoreError);
-  }
+//+_+// Phase F4: 제출 실패 시 PRACTICE_ACTIVE 및 Draft 상태 원복 공통 헬퍼 (풀이 시간 무손실 유지)
+async function rollbackSubmissionToPractice(err, elapsedMs) {
+  await sharedRollbackSubmissionToPractice({
+    session: currentSession,
+    elapsedMs,
+    unlockInteraction: () => setPracticeInteractionLocked(false),
+    restoreTimer: (ms) => startSessionTimer(questionTimer, ms),
+    persistDraft: async (ms) => {
+      triggerDraftSave();
+      await flushDraftSave();
+    },
+    error: err
+  });
 }
 
 // 학생 풀이 완료 및 제출 -> 불변 Snapshot 저장 후 채점 모드 전환
@@ -1650,17 +1653,20 @@ async function handleSubmitPractice() {
     return;
   }
 
-  //+_+// 1. 제출 시작 즉시 상태 전이 (PRACTICE_ACTIVE -> SUBMITTING) 및 UI 잠금
+  //+_+// 1. 제출 시도 직전 경과 시간 보존 (실패 시 무손실 복구용)
+  const elapsedBeforeSubmitMs = questionTimer.getElapsedMs();
+
+  //+_+// 2. 제출 시작 즉시 상태 전이 (PRACTICE_ACTIVE -> SUBMITTING) 및 UI 잠금
   if (typeof currentSession.startSubmitting === "function") {
     currentSession.startSubmitting();
   }
   setPracticeInteractionLocked(true);
 
-  //+_+// 2. 제출 전 Draft flush (실패 시 제출 중단 및 PRACTICE_ACTIVE 복구)
+  //+_+// 3. 제출 전 Draft flush (실패 시 제출 중단 및 PRACTICE_ACTIVE 복구)
   try {
     await flushDraftSave();
   } catch (draftErr) {
-    await rollbackSubmissionToPractice(draftErr);
+    await rollbackSubmissionToPractice(draftErr, elapsedBeforeSubmitMs);
     alert("풀이 데이터 임시 저장에 실패하여 제출을 중단합니다. 다시 시도해 주세요.");
     return;
   }
@@ -1669,7 +1675,7 @@ async function handleSubmitPractice() {
   const activeLId = getActiveLearnerId();
 
   try {
-    //+_+// 3. 불변 제출 Snapshot 영구 스토리지에 원자적 저장 및 Active Draft 정리
+    //+_+// 4. 불변 제출 Snapshot 영구 스토리지에 원자적 저장 및 Active Draft 정리
     await submitLearningSession({
       session: currentSession,
       learnerId: activeLId,
@@ -1682,7 +1688,7 @@ async function handleSubmitPractice() {
       appBuildId: typeof BUILD_ID !== "undefined" ? BUILD_ID : "unknown"
     });
   } catch (err) {
-    await rollbackSubmissionToPractice(err);
+    await rollbackSubmissionToPractice(err, elapsedMs || elapsedBeforeSubmitMs);
     alert("풀이 제출 저장에 실패했습니다. 다시 시도해 주세요.");
     return;
   }
@@ -2694,34 +2700,31 @@ function restoreSessionFromDraft(draft) {
   currentPenWidth = Number(draft.penWidth) || currentPenWidth;
   currentIsEraser = Boolean(draft.isEraser);
 
-  currentSession.start();
-  currentSession.setQuestionSolveTimes(draft.perQuestionElapsedMs || {});
-  currentSession.goToPage(draft.currentPageIndex || 0);
   draftCoordinator.setRevision(draft.revision || 0);
 
   //+_+// 단일 계약으로 복원 시간부터 정밀 흐름 시작!
   startSessionTimer(questionTimer, draft.totalElapsedMs || 0);
 
-  if (draft.sessionState === SessionState.GRADING_ACTIVE || draft.sessionType === "grading") {
-    hideAnswersInGrading = Boolean(draft.answersHidden);
-    currentSession.submitPractice(draft.totalElapsedMs || 0);
-    currentSession.startGrading();
-    questionTimer.stop();
-    Object.entries(draft.gradingResults || {}).forEach(([questionId, grade]) => {
-      if (typeof grade.isCorrect === "boolean") {
-        currentSession.gradeQuestion(questionId, grade.isCorrect, grade.comment || "");
-      }
-    });
-    switchView(gradingView, false);
-    renderGradingView();
-  } else {
-    switchView(practiceView, false);
-    renderCurrentWorksheetPage();
-  }
+  //+_+// F4-R5-08 ~ F4-R5-11: strict state machine을 준수하는 공용 restore helper 호출
+  restoreSessionStateFromDraft({
+    session: currentSession,
+    draft,
+    onGradingActive: () => {
+      hideAnswersInGrading = Boolean(draft.answersHidden);
+      questionTimer.stop();
+      switchView(gradingView, false);
+      renderGradingView();
+    },
+    onPracticeActive: () => {
+      switchView(practiceView, false);
+      renderCurrentWorksheetPage();
+    }
+  });
+
   updateToolDockUI();
 }
 
-//+_+// 🌟 미완료 Draft 복구 체크 (시작 시 모달 안내)
+//+_+// 🌟 미완료 Draft 복구 체크 (F4-R5-12 ~ F4-R5-18: Submission 우선 정책 적용)
 async function checkDraftResumeOnStartup() {
   const draftModal = document.querySelector("#draftResumeModal");
   const resumeBtn = document.querySelector("#draftResumeBtn");
@@ -2730,6 +2733,21 @@ async function checkDraftResumeOnStartup() {
   try {
     const draft = await getDraft();
     if (!draft || !draft.questions || draft.questions.length === 0) return;
+
+    //+_+// 같은 sessionId의 SubmissionSnapshot 존재 여부 확인 및 우선순위 정책 평가
+    const submission = draft.sessionId ? await getSubmissionBySessionId(draft.sessionId) : null;
+    const policy = evaluateStartupDraftResumePolicy({ draft, submission });
+
+    if (!policy.canResumePractice) {
+      if (policy.shouldCleanupStaleDraft) {
+        try {
+          await clearDraft();
+        } catch (cleanupErr) {
+          console.warn("Stale practice draft cleanup on startup failed:", cleanupErr);
+        }
+      }
+      return;
+    }
 
     if (draftModal && typeof draftModal.showModal === "function") {
       draftModal.showModal();

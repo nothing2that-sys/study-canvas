@@ -1,5 +1,5 @@
 //+_+// Math Canvas Pro - Phase F4 Submission Snapshot & Answer Lock Comprehensive Tests
-//+_+// SSOT Section 16 및 Phase F4 4차 명세 준수
+//+_+// SSOT Section 16 및 Phase F4 5차 명세 준수
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -13,6 +13,11 @@ import {
   SessionState,
   mistakeToQuestion
 } from "../public/app/js/sessionEngine.js";
+
+import {
+  createQuestionTimer,
+  startSessionTimer
+} from "../public/app/js/timer.js";
 
 import {
   getDB,
@@ -89,6 +94,13 @@ import {
   performPracticeToolSelect,
   performPracticePageNav
 } from "../public/app/js/practiceInteractionGuard.js";
+
+import {
+  rollbackSubmissionToPractice,
+  restoreSessionStateFromDraft,
+  evaluateStartupDraftResumePolicy,
+  isSubmittedSnapshotStatus
+} from "../public/app/js/submissionLifecycle.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1043,7 +1055,7 @@ test("Phase F4: 25. [F4-12] PARENT_GRADING_PENDING 복원 및 getPendingSubmissi
 });
 
 // ============================================================================
-// Phase F4 Reviewer Rework 4차 신규/보강 테스트 (26 ~ 45)
+// Phase F4 Reviewer Rework 4차/5차 신규/보강 테스트 (26 ~ 54)
 // ============================================================================
 
 test("Phase F4: 26. [F4-R4-02 & F4-R4-03] production applyStudentStrokeChange의 PRACTICE_ACTIVE 성공 및 SUBMITTING 차단 검증", async () => {
@@ -1461,51 +1473,101 @@ test("Phase F4: 38. [F4-R4-08] 동시 3개 submit 호출 시 최초 Snapshot 1�
   assert.equal(all.length, 1);
 });
 
-test("Phase F4: 39. [F4-R4-10 & F4-R4-12] submission failure rollback 시 persisted Draft의 sessionState가 PRACTICE_ACTIVE로 유지/복구 검증", async () => {
+test("Phase F4: 39. [F4-R5-05 & F4-R5-06] production rollbackSubmissionToPractice 헬퍼가 persisted Draft를 PRACTICE_ACTIVE로 직접 저장 및 sessionState/데이터 복구 검증", async () => {
   await clearAllData();
   const learner = await createLearner({ name: "학습자A" });
   await selectLearner(learner.id);
 
   const questions = createSampleQuestions();
-  const session = createSession({ sessionId: "sess_draft_rollback_state" }, questions);
+  const session = createSession({ sessionId: "sess_draft_rollback_state", pageSize: 1 }, questions);
   session.start();
+  session.nextPage(); // pageIndex = 1
 
-  // 1. PRACTICE_ACTIVE Draft 저장
+  const studentStrokes = {
+    q_1: [{ id: "str_orig", points: [{ x: 10, y: 10 }] }]
+  };
+
+  // 1. 초기 PRACTICE_ACTIVE Draft 저장
   await saveDraft({
     sessionId: "sess_draft_rollback_state",
     sessionState: "PRACTICE_ACTIVE",
+    config: { pageSize: 1 },
     questions,
-    currentPageIndex: 0
+    currentPageIndex: 1,
+    totalElapsedMs: 43210,
+    studentStrokesMap: studentStrokes,
+    inputProfile: "DESKTOP_MOUSE_PEN"
   }, { learnerId: learner.id });
 
-  // 2. Storage write 실패 강제 주입
+  // 2. 제출 시작 전이 및 flush
+  session.startSubmitting();
+  await saveDraft({
+    sessionId: "sess_draft_rollback_state",
+    sessionState: "SUBMITTING",
+    config: { pageSize: 1 },
+    questions,
+    currentPageIndex: 1,
+    totalElapsedMs: 43210,
+    studentStrokesMap: studentStrokes,
+    inputProfile: "DESKTOP_MOUSE_PEN"
+  }, { learnerId: learner.id });
+
+  // 3. Storage write 실패 강제 주입
   _setSubmissionFailureInjectorForTesting(({ tx }) => {
     tx.abort();
   });
 
   try {
-    await assert.rejects(async () => {
+    let thrownError = null;
+    try {
       await submitLearningSession({
         session,
         learnerId: learner.id,
         questions
       });
+    } catch (err) {
+      thrownError = err;
+    }
+
+    assert.ok(thrownError, "submitLearningSession은 트랜잭션 abort 시 reject되어야 함");
+
+    // 4. production rollback helper 실행 (테스트가 직접 saveDraft 호출하지 않고 rollback 함수가 저장)
+    let timerRestoredMs = 0;
+    let interactionUnlocked = false;
+
+    await rollbackSubmissionToPractice({
+      session,
+      elapsedMs: 43210,
+      unlockInteraction: () => { interactionUnlocked = true; },
+      restoreTimer: (ms) => { timerRestoredMs = ms; },
+      persistDraft: async (ms) => {
+        await saveDraft({
+          sessionId: "sess_draft_rollback_state",
+          sessionState: session.state,
+          config: { pageSize: 1 },
+          questions,
+          currentPageIndex: 1,
+          totalElapsedMs: ms,
+          studentStrokesMap: studentStrokes,
+          inputProfile: "DESKTOP_MOUSE_PEN"
+        }, { learnerId: learner.id });
+      },
+      error: thrownError
     });
 
-    // 3. 실패 후 session 상태 확인
+    // 5. 검증: 세션 상태 복구, 상호작용 잠금 해제, 타이머 시간 보존
     assert.equal(session.state, SessionState.PRACTICE_ACTIVE);
+    assert.equal(interactionUnlocked, true);
+    assert.equal(timerRestoredMs, 43210);
 
-    // 4. Draft 재저장 및 reload 후 sessionState 확인
-    await saveDraft({
-      sessionId: "sess_draft_rollback_state",
-      sessionState: session.state,
-      questions,
-      currentPageIndex: 0
-    }, { learnerId: learner.id });
-
+    // 6. 영구 저장된 Draft 확인
     const restoredDraft = await getDraft({ learnerId: learner.id });
     assert.ok(restoredDraft);
-    assert.equal(restoredDraft.sessionState, SessionState.PRACTICE_ACTIVE, "Draft sessionState는 PRACTICE_ACTIVE로 유지/복원됨");
+    assert.equal(restoredDraft.sessionState, SessionState.PRACTICE_ACTIVE, "Draft sessionState는 PRACTICE_ACTIVE로 복구");
+    assert.equal(restoredDraft.totalElapsedMs, 43210, "Draft totalElapsedMs 43210ms 무손실 유지");
+    assert.equal(restoredDraft.currentPageIndex, 1);
+    assert.deepEqual(restoredDraft.studentStrokesMap, studentStrokes);
+    assert.deepEqual(restoredDraft.questions, questions);
   } finally {
     _setSubmissionFailureInjectorForTesting(null);
   }
@@ -1607,4 +1669,301 @@ test("Phase F4: 45. [F4-R4-18] 정상 세션 상태 흐름 전체 수명주기 �
   assert.equal(session.state, SessionState.SESSION_COMPLETE);
   assert.equal(summary.correctCount, 2);
   assert.equal(summary.accuracyRate, 100);
+});
+
+// ============================================================================
+// Phase F4 Reviewer Rework 5차 신규 테스트 (46 ~ 54)
+// ============================================================================
+
+test("Phase F4: 46. [F4-R5-01, F4-R5-02, F4-R5-07] 제출 실패 rollback 시 38초 경과 시간이 0초로 초기화되지 않고 유지 검증", async () => {
+  const timer = createQuestionTimer();
+  startSessionTimer(timer, 38000);
+
+  const session = createSession({ sessionId: "sess_timer_rollback" }, createSampleQuestions());
+  session.start();
+
+  // 제출 시도 직전 경과 시간 보존
+  const elapsedBeforeSubmitMs = timer.getElapsedMs();
+  assert.ok(elapsedBeforeSubmitMs >= 38000, "제출 직전 시간 38초 이상");
+
+  session.startSubmitting();
+
+  // rollback 실행 (38초 시간 보존)
+  await rollbackSubmissionToPractice({
+    session,
+    elapsedMs: elapsedBeforeSubmitMs,
+    restoreTimer: (ms) => startSessionTimer(timer, ms)
+  });
+
+  const restoredElapsedMs = timer.getElapsedMs();
+  assert.ok(restoredElapsedMs >= 38000, "복구 후 경과 시간이 38초 이상으로 유지되어야 함 (0초 초기화 금지)");
+  assert.equal(session.state, SessionState.PRACTICE_ACTIVE);
+});
+
+test("Phase F4: 47. [F4-R5-05 & F4-R5-06] production rollbackSubmissionToPractice 헬퍼가 persisted Draft를 PRACTICE_ACTIVE로 직접 저장 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+  const session = createSession({ sessionId: "sess_r5_prod_draft", pageSize: 2 }, questions);
+  session.start();
+
+  // 초기 상태 저장
+  await saveDraft({
+    sessionId: "sess_r5_prod_draft",
+    sessionState: "SUBMITTING",
+    questions,
+    currentPageIndex: 0,
+    totalElapsedMs: 25000
+  }, { learnerId: learner.id });
+
+  // production rollback 실행
+  await rollbackSubmissionToPractice({
+    session,
+    elapsedMs: 25000,
+    persistDraft: async (ms) => {
+      await saveDraft({
+        sessionId: "sess_r5_prod_draft",
+        sessionState: session.state,
+        questions,
+        currentPageIndex: 0,
+        totalElapsedMs: ms
+      }, { learnerId: learner.id });
+    }
+  });
+
+  // IndexedDB에 저장된 Draft가 PRACTICE_ACTIVE인지 확인
+  const persisted = await getDraft({ learnerId: learner.id });
+  assert.ok(persisted);
+  assert.equal(persisted.sessionState, SessionState.PRACTICE_ACTIVE);
+  assert.equal(persisted.totalElapsedMs, 25000);
+});
+
+test("Phase F4: 48. [F4-R5-06] production rollback 후 Draft의 totalElapsedMs 및 strokes/page/config 100% 무손실 보존 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+  const session = createSession({ sessionId: "sess_r5_lossless", pageSize: 1, operation: "mul" }, questions);
+  session.start();
+  session.nextPage(); // page 1
+
+  const strokesMap = {
+    q_1: [{ id: "st_1", points: [{ x: 10, y: 10 }, { x: 20, y: 20 }] }],
+    q_2: [{ id: "st_2", points: [{ x: 30, y: 30 }] }]
+  };
+
+  await saveDraft({
+    sessionId: "sess_r5_lossless",
+    sessionState: "SUBMITTING",
+    config: { pageSize: 1, operation: "mul" },
+    questions,
+    currentPageIndex: 1,
+    totalElapsedMs: 50000,
+    studentStrokesMap: strokesMap,
+    inputProfile: "IPAD_PENCIL_ONLY"
+  }, { learnerId: learner.id });
+
+  await rollbackSubmissionToPractice({
+    session,
+    elapsedMs: 50000,
+    persistDraft: async (ms) => {
+      await saveDraft({
+        sessionId: "sess_r5_lossless",
+        sessionState: session.state,
+        config: { pageSize: 1, operation: "mul" },
+        questions,
+        currentPageIndex: session.getPageQuestions().pageIndex,
+        totalElapsedMs: ms,
+        studentStrokesMap: strokesMap,
+        inputProfile: "IPAD_PENCIL_ONLY"
+      }, { learnerId: learner.id });
+    }
+  });
+
+  const draft = await getDraft({ learnerId: learner.id });
+  assert.ok(draft);
+  assert.equal(draft.sessionState, SessionState.PRACTICE_ACTIVE);
+  assert.equal(draft.totalElapsedMs, 50000);
+  assert.equal(draft.currentPageIndex, 1);
+  assert.equal(draft.inputProfile, "IPAD_PENCIL_ONLY");
+  assert.deepEqual(draft.studentStrokesMap, strokesMap);
+  assert.deepEqual(draft.questions, questions);
+});
+
+test("Phase F4: 49. [F4-R5-08 ~ F4-R5-10] grading Draft restore가 strict lifecycle을 정상 통과하여 GRADING_ACTIVE 진입 검증", () => {
+  const questions = createSampleQuestions();
+  const session = createSession({ sessionId: "sess_grading_restore_lifecycle" }, questions);
+
+  const gradingDraft = {
+    sessionId: "sess_grading_restore_lifecycle",
+    sessionState: SessionState.GRADING_ACTIVE,
+    sessionType: "grading",
+    questions,
+    totalElapsedMs: 30000,
+    perQuestionElapsedMs: { q_1: 15000, q_2: 15000 },
+    currentPageIndex: 0,
+    gradingResults: {
+      q_1: { isCorrect: true, comment: "완벽!" }
+    }
+  };
+
+  let gradingHookCalled = false;
+
+  // 공용 restore helper 실행
+  restoreSessionStateFromDraft({
+    session,
+    draft: gradingDraft,
+    onGradingActive: () => {
+      gradingHookCalled = true;
+    }
+  });
+
+  assert.equal(session.state, SessionState.GRADING_ACTIVE);
+  assert.equal(gradingHookCalled, true);
+  const status = session.getGradingStatus();
+  assert.equal(status.graded, 1);
+  assert.equal(status.correct, 1);
+});
+
+test("Phase F4: 50. [F4-R5-10, F4-R5-11] grading Draft restore 후 기존 gradingResults 및 코멘트 복원 검증", () => {
+  const questions = createSampleQuestions();
+  const session = createSession({ sessionId: "sess_grading_results_restore" }, questions);
+
+  const draft = {
+    sessionId: "sess_grading_results_restore",
+    sessionState: SessionState.GRADING_ACTIVE,
+    questions,
+    totalElapsedMs: 22000,
+    gradingResults: {
+      q_1: { isCorrect: true, comment: "정답입니다" },
+      q_2: { isCorrect: false, comment: "구구단 확인 필요" }
+    }
+  };
+
+  restoreSessionStateFromDraft({ session, draft });
+
+  assert.equal(session.state, SessionState.GRADING_ACTIVE);
+  const status = session.getGradingStatus();
+  assert.equal(status.graded, 2);
+  assert.equal(status.correct, 1);
+  assert.equal(status.wrong, 1);
+
+  // 채점 완료 요약 생성 시 comment 포함 확인
+  const summary = session.finishGrading();
+  assert.equal(summary.results[0].comment, "정답입니다");
+  assert.equal(summary.results[1].comment, "구구단 확인 필요");
+});
+
+test("Phase F4: 51. [F4-R5-11] grading Draft restore 후 page, studentStrokes, gradingStrokes 유지 및 런타임 예외 없음 검증", () => {
+  const questions = createSampleQuestions();
+  const session = createSession({ sessionId: "sess_grading_full_preserve", pageSize: 1 }, questions);
+
+  const draft = {
+    sessionId: "sess_grading_full_preserve",
+    sessionState: SessionState.GRADING_ACTIVE,
+    questions,
+    totalElapsedMs: 45000,
+    currentPageIndex: 1,
+    perQuestionElapsedMs: { q_1: 20000, q_2: 25000 },
+    studentStrokesMap: { q_1: [{ id: "s1" }], q_2: [{ id: "s2" }] },
+    gradingStrokesMap: { q_1: [{ id: "g1" }] },
+    gradingResults: { q_1: { isCorrect: true } }
+  };
+
+  assert.doesNotThrow(() => {
+    restoreSessionStateFromDraft({ session, draft });
+  });
+
+  assert.equal(session.state, SessionState.GRADING_ACTIVE);
+  assert.equal(session.getPageQuestions().pageIndex, 1);
+});
+
+test("Phase F4: 52. [F4-R5-12 ~ F4-R5-15] SubmissionSnapshot 존재 시 evaluateStartupDraftResumePolicy에서 stale Practice Draft resume 차단 검증", () => {
+  const draft = {
+    sessionId: "sess_submitted_already",
+    sessionState: "PRACTICE_ACTIVE",
+    sessionType: "practice",
+    questions: createSampleQuestions()
+  };
+
+  const submission = {
+    sessionId: "sess_submitted_already",
+    status: "PARENT_GRADING_PENDING"
+  };
+
+  const policy = evaluateStartupDraftResumePolicy({ draft, submission });
+  assert.equal(policy.canResumePractice, false, "SubmissionSnapshot이 존재하면 Practice 이어하기 차단");
+  assert.equal(policy.shouldCleanupStaleDraft, true, "잔여 stale Draft 정리 플래그 true");
+  assert.equal(policy.reason, "SUBMISSION_EXISTS_PRACTICE_BLOCKED");
+});
+
+test("Phase F4: 53. [F4-R5-16 ~ F4-R5-18] Crash Window: Draft cleanup failure 후 reload 시 Submission 우선 및 Draft 복원 차단 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+  const session = createSession({ sessionId: "sess_crash_window" }, questions);
+  session.start();
+
+  // 1. Draft 생성
+  await saveDraft({
+    sessionId: "sess_crash_window",
+    sessionState: "SUBMITTING",
+    questions
+  }, { learnerId: learner.id });
+
+  // 2. Draft cleanup failure 강제 주입
+  _setDraftCleanupFailureInjectorForTesting(() => {
+    throw new Error("Simulated cleanup crash");
+  });
+
+  try {
+    // 3. 제출 수행 (Snapshot commit 성공, Draft cleanup 실패)
+    const result = await submitLearningSession({
+      session,
+      learnerId: learner.id,
+      questions
+    });
+
+    assert.ok(result);
+    assert.equal(result.draftCleaned, false);
+
+    // 4. 앱 재실행 모사: Storage에는 Submission과 stale Draft가 모두 존재
+    const storedDraft = await getDraft({ learnerId: learner.id });
+    const storedSubmission = await getSubmissionBySessionId("sess_crash_window", { learnerId: learner.id });
+
+    assert.ok(storedDraft);
+    assert.ok(storedSubmission);
+
+    // 5. startup resume policy 평가
+    const policy = evaluateStartupDraftResumePolicy({ draft: storedDraft, submission: storedSubmission });
+    assert.equal(policy.canResumePractice, false, "제출본이 존재하는 경우 Practice 복원 불가");
+    assert.equal(policy.shouldCleanupStaleDraft, true);
+  } finally {
+    _setDraftCleanupFailureInjectorForTesting(null);
+  }
+});
+
+test("Phase F4: 54. [F4-R5-14, F4-R5-17] stale SUBMITTING Draft + Snapshot 존재 시 학생 editable Practice 진입 차단 검증", () => {
+  const staleDraft = {
+    sessionId: "sess_stale_sub_snapshot",
+    sessionState: "SUBMITTING",
+    questions: createSampleQuestions()
+  };
+
+  const completedSubmission = {
+    sessionId: "sess_stale_sub_snapshot",
+    status: "GRADED"
+  };
+
+  // normalizeDraft를 통과하더라도 startup policy에서 Submission이 우선됨을 검증
+  const normalized = normalizeDraft(staleDraft);
+  assert.equal(normalized.sessionState, "PRACTICE_ACTIVE");
+
+  const policy = evaluateStartupDraftResumePolicy({ draft: normalized, submission: completedSubmission });
+  assert.equal(policy.canResumePractice, false, "GRADED 제출본이 존재하므로 학생 Practice 진입 차단");
 });
