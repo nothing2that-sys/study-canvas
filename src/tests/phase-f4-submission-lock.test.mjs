@@ -102,6 +102,9 @@ import {
   isSubmittedSnapshotStatus
 } from "../public/app/js/submissionLifecycle.js";
 
+import { bootstrapApp } from "../public/app/js/platform/appBootstrap.js";
+import { ROUTES } from "../public/app/js/platform/appRouter.js";
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // 테스트용 표준 샘플 문제 생성 헬퍼
@@ -1967,3 +1970,196 @@ test("Phase F4: 54. [F4-R5-14, F4-R5-17] stale SUBMITTING Draft + Snapshot 존�
   const policy = evaluateStartupDraftResumePolicy({ draft: normalized, submission: completedSubmission });
   assert.equal(policy.canResumePractice, false, "GRADED 제출본이 존재하므로 학생 Practice 진입 차단");
 });
+
+test("Phase F4: 55. [F4-R6-12] bootstrapApp: Snapshot + stale Practice Draft + /math/practice 직접 진입 차단 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+
+  // 1. Practice Draft 저장
+  await saveDraft({
+    sessionId: "sess_boot_sub_first",
+    sessionState: "PRACTICE_ACTIVE",
+    questions,
+    currentPageIndex: 0
+  }, { learnerId: learner.id });
+
+  // 2. 동일 sessionId에 대한 SubmissionSnapshot 저장 (PARENT_GRADING_PENDING)
+  await saveSubmissionSnapshot({
+    sessionId: "sess_boot_sub_first",
+    questions,
+    config: { pageSize: 2 },
+    totalPages: 1,
+    pageSize: 2,
+    status: "PARENT_GRADING_PENDING",
+    submittedAt: Date.now()
+  }, { learnerId: learner.id });
+
+  // 3. /math/practice 직접 deep link 진입 시도
+  const result = await bootstrapApp({
+    initialPath: ROUTES.MATH_PRACTICE
+  });
+
+  assert.equal(result.success, true);
+  assert.notEqual(result.route, ROUTES.MATH_PRACTICE, "/math/practice 직접 진입은 차단되어야 함");
+  assert.equal(result.route, ROUTES.MATH_ARITHMETIC, "Submission이 존재할 경우 안전 fallback 경로인 /math/arithmetic으로 라우팅");
+  assert.equal(result.persistedDraft, null, "stale Draft는 bootstrap 결과에서 null 처리되어야 함");
+  assert.equal(result.draftResumePolicy?.canResumePractice, false, "policy상 practice 복원 차단");
+});
+
+test("Phase F4: 56. [F4-R6-13] bootstrapApp: Draft cleanup failure crash window에서도 /math/practice 차단 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+  const session = createSession({ sessionId: "sess_boot_crash_window", pageSize: 2 }, questions);
+  session.start();
+
+  // 초기 Practice Draft 저장
+  await saveDraft({
+    sessionId: "sess_boot_crash_window",
+    sessionState: "PRACTICE_ACTIVE",
+    questions,
+    currentPageIndex: 0
+  }, { learnerId: learner.id });
+
+  // Draft cleanup 실패 강제 주입하여 Crash Window 재현
+  _setDraftCleanupFailureInjectorForTesting(() => {
+    throw new Error("Crash window simulated cleanup fail");
+  });
+
+  try {
+    // 제출 수행 -> Snapshot 저장 성공, Draft cleanup 실패
+    await submitLearningSession({
+      session,
+      learnerId: learner.id,
+      questions
+    });
+
+    // 앱 재실행 모사 (initialPath = /math/practice)
+    const result = await bootstrapApp({
+      initialPath: ROUTES.MATH_PRACTICE
+    });
+
+    assert.equal(result.success, true);
+    assert.notEqual(result.route, ROUTES.MATH_PRACTICE, "Crash window 상태에서도 Practice route 진입 차단");
+    assert.equal(result.route, ROUTES.MATH_ARITHMETIC);
+    assert.equal(result.persistedDraft, null, "stale Draft 반환 차단");
+    assert.equal(result.draftResumePolicy?.canResumePractice, false);
+
+    // DB 내 SubmissionSnapshot은 정상 유지 확인
+    const sub = await queryGetSubmissionBySessionId("sess_boot_crash_window", { learnerId: learner.id });
+    assert.ok(sub);
+    assert.equal(sub.sessionId, "sess_boot_crash_window");
+  } finally {
+    _setDraftCleanupFailureInjectorForTesting(null);
+  }
+});
+
+test("Phase F4: 57. [F4-R6-14] bootstrapApp: Submission 없는 정상 Practice Draft deep link 유지 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+
+  // 정상 Practice Draft 저장 (Submission 없음)
+  await saveDraft({
+    sessionId: "sess_boot_valid_practice",
+    sessionState: "PRACTICE_ACTIVE",
+    questions,
+    currentPageIndex: 0
+  }, { learnerId: learner.id });
+
+  // /math/practice 직접 deep link 진입 시도
+  const result = await bootstrapApp({
+    initialPath: ROUTES.MATH_PRACTICE
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.route, ROUTES.MATH_PRACTICE, "정상 Practice Draft는 /math/practice 진입 허용");
+  assert.ok(result.persistedDraft);
+  assert.equal(result.persistedDraft.sessionId, "sess_boot_valid_practice");
+  assert.equal(result.draftResumePolicy?.canResumePractice, true);
+});
+
+test("Phase F4: 58. [F4-R6-15] bootstrapApp: 다른 sessionId Submission은 Practice Draft에 영향 없음 검증", async () => {
+  await clearAllData();
+  const learner = await createLearner({ name: "학습자A" });
+  await selectLearner(learner.id);
+
+  const questions = createSampleQuestions();
+
+  // 과거 세션 B의 완료된 Submission 존재
+  await saveSubmissionSnapshot({
+    sessionId: "sess_past_completed_B",
+    questions,
+    config: { pageSize: 2 },
+    totalPages: 1,
+    pageSize: 2,
+    status: "GRADED",
+    submittedAt: Date.now() - 100000
+  }, { learnerId: learner.id });
+
+  // 현재 진행 중인 세션 A의 Practice Draft 저장
+  await saveDraft({
+    sessionId: "sess_current_active_A",
+    sessionState: "PRACTICE_ACTIVE",
+    questions,
+    currentPageIndex: 0
+  }, { learnerId: learner.id });
+
+  // /math/practice 직접 deep link 진입 시도
+  const result = await bootstrapApp({
+    initialPath: ROUTES.MATH_PRACTICE
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.route, ROUTES.MATH_PRACTICE, "다른 세션의 제출본이 있더라도 현재 세션 Draft의 진입은 정상 허용");
+  assert.ok(result.persistedDraft);
+  assert.equal(result.persistedDraft.sessionId, "sess_current_active_A");
+  assert.equal(result.draftResumePolicy?.canResumePractice, true);
+});
+
+test("Phase F4: 59. [F4-R6-16] bootstrapApp: 다른 learner Submission은 현재 learner Draft를 차단하지 않음 검증", async () => {
+  await clearAllData();
+  const learnerA = await createLearner({ name: "학습자A" });
+  const learnerB = await createLearner({ name: "학습자B" });
+
+  const questions = createSampleQuestions();
+
+  // 학습자 B가 동일 sessionId로 이미 제출 완료
+  await saveSubmissionSnapshot({
+    sessionId: "sess_shared_name_id",
+    questions,
+    config: { pageSize: 2 },
+    totalPages: 1,
+    pageSize: 2,
+    status: "PARENT_GRADING_PENDING",
+    submittedAt: Date.now()
+  }, { learnerId: learnerB.id });
+
+  // 학습자 A의 Practice Draft 저장
+  await selectLearner(learnerA.id);
+  await saveDraft({
+    sessionId: "sess_shared_name_id",
+    sessionState: "PRACTICE_ACTIVE",
+    questions,
+    currentPageIndex: 0
+  }, { learnerId: learnerA.id });
+
+  // 학습자 A 활성 상태에서 /math/practice 직접 진입
+  const result = await bootstrapApp({
+    initialPath: ROUTES.MATH_PRACTICE
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.route, ROUTES.MATH_PRACTICE, "타 학습자의 제출본은 현재 학습자의 Draft를 차단하지 않음");
+  assert.ok(result.persistedDraft);
+  assert.equal(result.persistedDraft.sessionId, "sess_shared_name_id");
+  assert.equal(result.draftResumePolicy?.canResumePractice, true);
+});
+

@@ -14,7 +14,8 @@
 import { getDB } from "../storage.js";
 import { detectLegacyData, migrateLegacyData } from "../migrationEngine.js";
 import { restoreActiveLearner, getLearners, getActiveLearner } from "../learners/learnerQueries.js";
-import { getDraft } from "../data/learningQueries.js";
+import { getDraft, getSubmissionBySessionId } from "../data/learningQueries.js";
+import { evaluateStartupDraftResumePolicy } from "../submissionLifecycle.js";
 import { initRouter, ROUTES, getCurrentRoute, normalizePath } from "./appRouter.js";
 import { initAppShell, updateShellHeader, renderRouteView, showMigrationError } from "./appShell.js";
 
@@ -98,11 +99,27 @@ export async function bootstrapApp(options = {}) {
       desiredRoute = normalizedUrl === ROUTES.ROOT ? ROUTES.LEARNERS : normalizedUrl;
     }
 
-    //+_+// 6.1 Persisted Draft 조회 (active learner 기준 deep link 검증에 활용)
+    //+_+// 6.1 Persisted Draft 및 Submission-First Policy 조회 (active learner 기준 deep link 검증에 활용)
     let persistedDraft = null;
+    let persistedSubmission = null;
+    let draftResumePolicy = null;
+
     if (restoredLearnerId) {
       try {
         persistedDraft = await getDraft({ learnerId: restoredLearnerId });
+        if (persistedDraft?.sessionId) {
+          try {
+            persistedSubmission = await getSubmissionBySessionId(persistedDraft.sessionId, {
+              learnerId: restoredLearnerId
+            });
+          } catch (subErr) {
+            console.warn("[Bootstrap] Submission query failed:", subErr);
+          }
+        }
+        draftResumePolicy = evaluateStartupDraftResumePolicy({
+          draft: persistedDraft,
+          submission: persistedSubmission
+        });
       } catch (draftErr) {
         console.warn("[Bootstrap] Persisted draft query failed:", draftErr);
       }
@@ -117,13 +134,21 @@ export async function bootstrapApp(options = {}) {
       if (mode === "practice_active" || mode === "grading_active" || mode === "active_session") {
         return false;
       }
-      //+_+// 영구 저장된 Draft 소유권 및 상태 검증
+      //+_+// 영구 저장된 Draft 소유권 및 Submission-First policy 검증
       if (persistedDraft && persistedDraft.learnerId === restoredLearnerId && persistedDraft.questions?.length > 0) {
         if (mode === "practice") {
-          return persistedDraft.sessionState !== "GRADING_ACTIVE" && persistedDraft.sessionType !== "grading";
+          return Boolean(
+            draftResumePolicy?.canResumePractice === true &&
+            persistedDraft.sessionState !== "GRADING_ACTIVE" &&
+            persistedDraft.sessionType !== "grading"
+          );
         }
         if (mode === "grading") {
-          return persistedDraft.sessionState === "GRADING_ACTIVE" || persistedDraft.sessionType === "grading";
+          return Boolean(
+            draftResumePolicy?.canResumeGrading === true ||
+            persistedDraft.sessionState === "GRADING_ACTIVE" ||
+            persistedDraft.sessionType === "grading"
+          );
         }
       }
       return false;
@@ -148,6 +173,10 @@ export async function bootstrapApp(options = {}) {
       renderRouteView(finalRoute);
     }
 
+    const resumableDraft = draftResumePolicy?.canResumePractice || draftResumePolicy?.canResumeGrading
+      ? persistedDraft
+      : null;
+
     currentBootstrapState = BootstrapState.SUCCESS;
     lastBootstrapResult = {
       success: true,
@@ -155,7 +184,9 @@ export async function bootstrapApp(options = {}) {
       route: finalRoute,
       restoredLearnerId,
       learnerCount: activeLearners.length,
-      persistedDraft
+      persistedDraft: resumableDraft,
+      persistedSubmission,
+      draftResumePolicy
     };
 
     return lastBootstrapResult;
