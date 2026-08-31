@@ -101,14 +101,8 @@ test("Learner regression: 현재 index.html의 학습자 DOM ID와 learnerView p
 
 test("Learner regression: Vercel client route는 정적 asset 다음 SPA index fallback으로 처리한다", () => {
   const vercel = JSON.parse(fs.readFileSync(path.join(__dirname, "../vercel.json"), "utf8"));
-  assert.ok(Array.isArray(vercel.routes));
-  assert.ok(vercel.routes.length >= 3);
-
-  const fallback = vercel.routes.at(-1);
-  assert.equal(fallback.src, "/(.*)");
-  assert.equal(fallback.dest, "/index.html", "/home, /learners 등 client route는 SPA index로 fallback되어야 함");
-
-  const assetRoute = vercel.routes.find((route) => route.status === 404);
-  assert.ok(assetRoute, "SPA fallback 전에 정적 asset 전달 route가 있어야 함");
-  assert.ok(vercel.routes.indexOf(assetRoute) < vercel.routes.indexOf(fallback));
+  assert.ok(Array.isArray(vercel.rewrites));
+  assert.equal(vercel.rewrites.length, 1);
+  assert.equal(vercel.rewrites[0].source, "/(.*)");
+  assert.equal(vercel.rewrites[0].destination, "/index.html", "/home, /learners 등 client route는 SPA index로 fallback되어야 함");
 });
