@@ -1,11 +1,11 @@
-const CACHE_NAME = "math-canvas-pro-v20260830T115005170Z-1765cc8";
+const CACHE_NAME = "math-canvas-pro-v20260831T004528281Z-da3d18b";
 
 //+_+// PWA 오프라인 구동을 위한 필수 App Shell 자산 목록
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/app.css?v=20260830T115005170Z-1765cc8",
-  "./js/app.js?v=20260830T115005170Z-1765cc8",
+  "./css/app.css?v=20260831T004528281Z-da3d18b",
+  "./js/app.js?v=20260831T004528281Z-da3d18b",
   "./js/canvasEngine.js",
   "./js/sessionEngine.js",
   "./js/mathGen.js",
@@ -96,7 +96,9 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() => {
-          return caches.match("./index.html") || caches.match("./");
+          return caches.open(CACHE_NAME).then(async (cache) => {
+            return (await cache.match("./index.html")) || cache.match("./");
+          });
         })
     );
     return;
@@ -104,13 +106,13 @@ self.addEventListener("fetch", (event) => {
 
   //+_+// 정적 Asset은 BUILD_ID cache 단위로 Cache First와 Network Fallback을 사용한다.
   event.respondWith(
-    caches.match(event.request).then(async (cachedResponse) => {
+    caches.open(CACHE_NAME).then(async (cache) => {
+      const cachedResponse = await cache.match(event.request);
       if (cachedResponse) return cachedResponse;
       return fetch(event.request).then(async (response) => {
         if (response && response.status === 200) {
           const copy = response.clone();
           try {
-            const cache = await caches.open(CACHE_NAME);
             await cache.put(event.request, copy);
           } catch {}
         }
