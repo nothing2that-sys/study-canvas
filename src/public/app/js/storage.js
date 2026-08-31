@@ -1,4 +1,5 @@
 import { normalizeDraft } from "./draftEngine.js";
+import { getGradingProgress } from "./parentGrading.js";
 
 /**
  * Math Canvas Pro - IndexedDB 로컬 영구 스토리지 관리자 (Phase F1: 스키마 버전 및 학습자 프로필)
@@ -1465,6 +1466,10 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
     studentStrokesMap: studentStrokesMapObj,
     gradingStrokesMap: gradingStrokesMapObj,
     gradingResults: gradingResultsObj,
+    gradingProgress: getGradingProgress(snapshotData.questions || [], gradingResultsObj),
+    gradingViewMode: snapshotData.gradingViewMode || "quick",
+    currentGradingQuestionId: snapshotData.currentGradingQuestionId || null,
+    answersHidden: Boolean(snapshotData.answersHidden),
     totalSolveTimeMs: Math.max(0, Number(snapshotData.totalSolveTimeMs) || 0),
     perQuestionElapsedMs: deepClone(snapshotData.perQuestionElapsedMs || {}),
     totalPages: Math.max(1, Number(snapshotData.totalPages) || 1),
@@ -1669,14 +1674,27 @@ export async function updateSubmissionGrading(id, gradingResults = {}, gradingSt
     ...(rawExisting.gradingStrokesMap || {}),
     ...mapToObject(gradingStrokesMap)
   };
+  const gradingProgress = getGradingProgress(rawExisting.questions || [], updatedGradingResults);
+  const nextStatus = options.status || rawExisting.status;
+  if (options.requireAllGraded && (nextStatus === "GRADED" || nextStatus === "SESSION_COMPLETE") && !gradingProgress.allGraded) {
+    throw new Error(`미채점 ${gradingProgress.remaining}문제가 남아 있어 채점을 완료할 수 없습니다.`);
+  }
 
   //+_+// 불변 학생 영역(questions, studentStrokesMap, config 등) 100% 보존 & 가변 채점 영역만 갱신
   const updatedRecord = {
     ...rawExisting,
     gradingResults: updatedGradingResults,
     gradingStrokesMap: updatedGradingStrokes,
-    status: options.status || rawExisting.status,
-    gradedAt: options.gradedAt || rawExisting.gradedAt || now,
+    status: nextStatus,
+    gradingProgress,
+    gradingViewMode: options.gradingViewMode || rawExisting.gradingViewMode || "quick",
+    currentGradingQuestionId: options.currentGradingQuestionId !== undefined
+      ? options.currentGradingQuestionId
+      : (rawExisting.currentGradingQuestionId || null),
+    answersHidden: options.answersHidden !== undefined
+      ? Boolean(options.answersHidden)
+      : Boolean(rawExisting.answersHidden),
+    gradedAt: gradingProgress.graded > 0 ? (options.gradedAt || rawExisting.gradedAt || now) : rawExisting.gradedAt,
     completedAt: options.completedAt !== undefined ? options.completedAt : rawExisting.completedAt
   };
 
@@ -1692,5 +1710,3 @@ export async function updateSubmissionGrading(id, gradingResults = {}, gradingSt
     tx.onerror = (e) => reject(e.target?.error || new Error("채점 정보 갱신 실패"));
   });
 }
-
-

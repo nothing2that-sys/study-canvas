@@ -22,12 +22,13 @@ import {
   getLearnerById
 } from "./learnerQueries.js";
 
-import { getLearnerHomeSummary } from "../data/learningQueries.js";
+import { getLearnerHomeSummary, getAllSubmissions } from "../data/learningQueries.js";
 import { getAllSubjects, getSubject } from "../platform/subjectRegistry.js";
 import { navigate, ROUTES } from "../platform/appRouter.js";
 
 let dom = {};
 let isSessionActiveFn = null;
+let openPendingGradingFn = null;
 
 const DEFAULT_AVATARS = ["🌱", "🚀", "⭐", "🦊", "🐳", "🐰", "🦖", "🦁"];
 
@@ -59,6 +60,9 @@ export function initLearnerView(options = {}) {
 
   if (options.isSessionActive) {
     isSessionActiveFn = options.isSessionActive;
+  }
+  if (options.onOpenPendingGrading) {
+    openPendingGradingFn = options.onOpenPendingGrading;
   }
 
   dom = {
@@ -282,6 +286,37 @@ export async function renderLearnerHomeView() {
     dom.homeLearnerGreeting.textContent = dom.homeLearnerGreeting.id === "learnerGreetingName"
       ? learner.name
       : `${learner.name}님, 환영합니다!`;
+  }
+
+  //+_+// Phase F5: 활성 학습자의 보호자 채점 대기 또는 진행 중 Submission을 홈에 표시한다.
+  if (dom.learnerHomeView) {
+    let gradingEntry = dom.learnerHomeView.querySelector("#pendingParentGradingEntry");
+    const submissions = await getAllSubmissions({ learnerId: learner.id });
+    const pendingSubmission = submissions.find((submission) => (
+      submission.status === "PARENT_GRADING_PENDING" || submission.status === "GRADING_ACTIVE"
+    ));
+    if (!pendingSubmission) {
+      gradingEntry?.remove();
+    } else {
+      if (!gradingEntry) {
+        gradingEntry = document.createElement("section");
+        gradingEntry.id = "pendingParentGradingEntry";
+        gradingEntry.className = "parent-grading-home-entry";
+        dom.learnerHomeView.querySelector(".subject-section")?.before(gradingEntry);
+      }
+      const progress = pendingSubmission.gradingProgress || {};
+      gradingEntry.innerHTML = `
+        <div>
+          <p class="eyebrow">보호자 채점</p>
+          <h2>${pendingSubmission.status === "GRADING_ACTIVE" ? "진행 중인 채점을 이어가세요" : "채점을 기다리는 풀이가 있어요"}</h2>
+          <p>${progress.graded || 0} / ${progress.total || pendingSubmission.questions?.length || 0} 문제 채점 완료</p>
+        </div>
+        <button type="button" class="primary-action" id="openPendingGradingBtn">${pendingSubmission.status === "GRADING_ACTIVE" ? "채점 이어하기" : "보호자 채점 열기"}</button>
+      `;
+      gradingEntry.querySelector("#openPendingGradingBtn")?.addEventListener("click", () => {
+        openPendingGradingFn?.(pendingSubmission);
+      });
+    }
   }
 
   //+_+// 과목 목록 렌더링

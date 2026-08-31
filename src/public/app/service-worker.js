@@ -8,6 +8,7 @@ const APP_SHELL = [
   "./js/app.js?v=20260831T004528281Z-da3d18b",
   "./js/canvasEngine.js",
   "./js/sessionEngine.js",
+  "./js/parentGrading.js",
   "./js/mathGen.js",
   "./js/storage.js",
   "./js/draftEngine.js",

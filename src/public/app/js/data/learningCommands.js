@@ -113,3 +113,18 @@ export async function updateSubmissionGrading(submissionId, gradingResults = {},
   return await storageUpdateSubmissionGrading(submissionId, gradingResults, gradingStrokesMap, options);
 }
 
+//+_+// Phase F5: 보호자가 명시적으로 채점을 시작할 때만 GRADING_ACTIVE로 전환
+export async function startSubmissionGrading(submissionId, options = {}) {
+  return await storageUpdateSubmissionGrading(submissionId, {}, new Map(), {
+    ...options,
+    status: "GRADING_ACTIVE"
+  });
+}
+
+//+_+// Phase F5: 문제별 판정과 빨간 펜을 Submission의 가변 채점 영역에 저장
+export async function saveSubmissionGradingProgress(submissionId, gradingResults = {}, gradingStrokesMap = new Map(), options = {}) {
+  return await storageUpdateSubmissionGrading(submissionId, gradingResults, gradingStrokesMap, {
+    ...options,
+    status: options.status || "GRADING_ACTIVE"
+  });
+}

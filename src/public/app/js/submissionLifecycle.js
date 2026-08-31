@@ -88,8 +88,8 @@ export function restoreSessionStateFromDraft({
     // 4. GRADING_ACTIVE 상태에서 개별 채점 결과 복원
     if (draft.gradingResults && typeof session.gradeQuestion === "function") {
       Object.entries(draft.gradingResults).forEach(([questionId, grade]) => {
-        if (grade && typeof grade.isCorrect === "boolean") {
-          session.gradeQuestion(questionId, grade.isCorrect, grade.comment || "");
+        if (grade && (grade.decision || typeof grade.isCorrect === "boolean")) {
+          session.gradeQuestion(questionId, grade.decision ?? grade.isCorrect, grade.comment || "");
         }
       });
     }

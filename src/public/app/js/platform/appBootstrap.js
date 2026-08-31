@@ -14,7 +14,7 @@
 import { getDB } from "../storage.js";
 import { detectLegacyData, migrateLegacyData } from "../migrationEngine.js";
 import { restoreActiveLearner, getLearners, getActiveLearner } from "../learners/learnerQueries.js";
-import { getDraft, getSubmissionBySessionId } from "../data/learningQueries.js";
+import { getDraft, getSubmissionBySessionId, getAllSubmissions } from "../data/learningQueries.js";
 import { evaluateStartupDraftResumePolicy } from "../submissionLifecycle.js";
 import { initRouter, ROUTES, getCurrentRoute, normalizePath } from "./appRouter.js";
 import { initAppShell, updateShellHeader, renderRouteView, showMigrationError } from "./appShell.js";
@@ -116,6 +116,12 @@ export async function bootstrapApp(options = {}) {
             console.warn("[Bootstrap] Submission query failed:", subErr);
           }
         }
+        if (!persistedSubmission) {
+          const submissions = await getAllSubmissions({ learnerId: restoredLearnerId });
+          persistedSubmission = submissions.find((submission) => (
+            submission.status === "PARENT_GRADING_PENDING" || submission.status === "GRADING_ACTIVE"
+          )) || null;
+        }
         draftResumePolicy = evaluateStartupDraftResumePolicy({
           draft: persistedDraft,
           submission: persistedSubmission
@@ -133,6 +139,12 @@ export async function bootstrapApp(options = {}) {
       }
       if (mode === "practice_active" || mode === "grading_active" || mode === "active_session") {
         return false;
+      }
+      if (mode === "grading" && (
+        persistedSubmission?.status === "PARENT_GRADING_PENDING" ||
+        persistedSubmission?.status === "GRADING_ACTIVE"
+      )) {
+        return true;
       }
       //+_+// 영구 저장된 Draft 소유권 및 Submission-First policy 검증
       if (persistedDraft && persistedDraft.learnerId === restoredLearnerId && persistedDraft.questions?.length > 0) {

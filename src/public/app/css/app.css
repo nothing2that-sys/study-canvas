@@ -3242,6 +3242,26 @@ body.mode-grading {
   font-weight: 700;
 }
 
+.parent-grading-start { margin: 24px 0; padding: 24px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 18px; background: var(--paper); border: 2px solid var(--green); border-radius: 22px; }
+.parent-grading-home-entry { margin: 20px 0; padding: 22px; display: flex; align-items: center; justify-content: space-between; gap: 18px; background: var(--paper); border: 2px solid var(--green); border-radius: 22px; }
+.parent-grading-home-entry h2, .parent-grading-home-entry p { margin: 0 0 6px; }
+.parent-grading-start[hidden] { display: none; }
+.parent-grading-start h2, .parent-grading-start p { margin: 0 0 6px; }
+.grading-view-tabs { display: flex; gap: 8px; }
+.grading-grid.view-detail { grid-template-columns: minmax(0, 1fr) !important; max-width: 1080px; margin: 0 auto; }
+.grading-grid.view-detail .grading-card:not([aria-current="step"]) { display: none; }
+.grading-card.is-graded-retry { border-color: #b7791f; background: #fffaf0; }
+.grading-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.retry-choice.active { background: #b7791f; color: #fff; }
+.grading-card-detail-btn { align-self: flex-end; }
+
+@media (max-width: 760px) {
+  .parent-grading-start { grid-template-columns: 1fr; }
+  .parent-grading-home-entry { align-items: stretch; flex-direction: column; }
+  .grading-quick-actions, .grading-view-tabs { flex-wrap: wrap; }
+  .grading-actions { grid-template-columns: 1fr; }
+}
+
 body.large-problems .worksheet-grid {
   grid-template-columns: minmax(0, 1fr) !important;
 }
@@ -3889,4 +3909,3 @@ body.theme-midnight .active-learner-pill {
   display: flex;
   justify-content: center;
 }
-

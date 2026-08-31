@@ -1,3 +1,5 @@
+import { GradeDecision, createGradeDecision, getGradingProgress, normalizeGradeDecision } from "./parentGrading.js";
+
 /**
  * Math Canvas Pro - 세션 상태 머신, 워크시트 페이지 및 채점 엔진
  * 워크시트 페이지네이션, 학생 풀이 제출, 채점자 평가(정답 확인 & 맞음/틀림 판정) 및 세션 통계 관리
@@ -229,7 +231,7 @@ export function createSession(config = {}, questions = []) {
   }
 
   //+_+// Phase F4: 개별 문제 채점 (GRADING_ACTIVE 상태에서만 허용)
-  function gradeQuestion(questionId, isCorrect, comment = "") {
+  function gradeQuestion(questionId, decision, comment = "") {
     if (state !== SessionState.GRADING_ACTIVE) {
       throw new Error(`채점할 수 없는 상태입니다. 현재 상태: ${state} (GRADING_ACTIVE 상태에서만 가능)`);
     }
@@ -239,28 +241,13 @@ export function createSession(config = {}, questions = []) {
       throw new Error(`해당 ID(${questionId})의 문제를 찾을 수 없습니다.`);
     }
 
-    const existingGrade = grades.get(questionId);
-    const finalComment = comment !== undefined && comment !== null
-      ? String(comment).trim()
-      : (existingGrade?.comment || "");
-
-    const gradeData = {
-      questionId: question.id,
-      questionKey: question.key || `${question.operation || operation}:${question.operandA}:${question.operandB}`,
+    const gradeData = createGradeDecision({
+      ...question,
       operation: question.operation || operation,
       level: question.level || macroLevelId,
       macroLevelId: question.macroLevelId || macroLevelId,
-      stageId: question.stageId || stageId,
-      operandA: question.operandA,
-      operandB: question.operandB,
-      answer: question.answer !== undefined ? question.answer : question.expectedAnswer,
-      expectedAnswer: question.answer !== undefined ? question.answer : question.expectedAnswer,
-      isCorrect: Boolean(isCorrect),
-      comment: finalComment,
-      sourceWrongAnswerId: question.sourceWrongAnswerId || null,
-      errorCategories: question.errorCategories || [],
-      gradedAt: Date.now()
-    };
+      stageId: question.stageId || stageId
+    }, decision, comment, grades.get(questionId));
 
     grades.set(questionId, gradeData);
     question.grade = gradeData;
@@ -272,35 +259,19 @@ export function createSession(config = {}, questions = []) {
   }
 
   // 전체 문제 일괄 채점
-  function gradeAll(isCorrect) {
+  function gradeAll(decision) {
     questions.forEach((q) => {
-      gradeQuestion(q.id, isCorrect);
+      gradeQuestion(q.id, decision);
     });
     return getGradingStatus();
   }
 
   // 채점 진행 현황
   function getGradingStatus() {
-    const total = questions.length;
-    let correct = 0;
-    let wrong = 0;
-
-    for (const q of questions) {
-      const g = grades.get(q.id);
-      if (g) {
-        if (g.isCorrect) correct += 1;
-        else wrong += 1;
-      }
-    }
-
-    const graded = correct + wrong;
+    const status = getGradingProgress(questions, grades);
     return {
-      total,
-      graded,
-      correct,
-      wrong,
-      allGraded: graded === total,
-      progressPercent: Math.round((graded / total) * 100)
+      ...status,
+      allGraded: status.allGraded
     };
   }
 
@@ -353,6 +324,10 @@ export function createSession(config = {}, questions = []) {
       studentStrokesMap: studentStrokesMapObj,
       gradingStrokesMap: {},
       gradingResults: {},
+      gradingProgress: getGradingProgress(questions, {}),
+      gradingViewMode: "quick",
+      currentGradingQuestionId: null,
+      answersHidden: false,
       totalSolveTimeMs: totalSolveTimeMs || Math.max(0, Math.round(options.totalSolveTimeMs || 0)),
       perQuestionElapsedMs: options.perQuestionElapsedMs || getQuestionSolveTimes(),
       totalPages,
@@ -379,7 +354,8 @@ export function createSession(config = {}, questions = []) {
 
     for (const q of questions) {
       const g = grades.get(q.id);
-      const isCorrect = g ? g.isCorrect : false;
+      const decision = normalizeGradeDecision(g?.decision ?? g?.isCorrect);
+      const isCorrect = decision === GradeDecision.CORRECT;
       const comment = g ? g.comment : "";
       if (isCorrect) correctCount += 1;
       else wrongCount += 1;
@@ -403,6 +379,8 @@ export function createSession(config = {}, questions = []) {
         answer: qAns,
         expectedAnswer: qAns,
         isCorrect,
+        decision,
+        retryRequested: decision === GradeDecision.RETRY,
         comment,
         solveTimeMs: actualSolveTime,
         sourceWrongAnswerId: q.sourceWrongAnswerId || null,
