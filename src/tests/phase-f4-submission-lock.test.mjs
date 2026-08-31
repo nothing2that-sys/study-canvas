@@ -2163,3 +2163,13 @@ test("Phase F4: 59. [F4-R6-16] bootstrapApp: 다른 learner Submission은 현재
   assert.equal(result.draftResumePolicy?.canResumePractice, true);
 });
 
+test("Phase F4: 60. Production 제출 잠금은 선언된 필기 비우기 버튼만 참조한다", () => {
+  const appPath = path.resolve(__dirname, "../public/app/js/app.js");
+  const appSource = fs.readFileSync(appPath, "utf-8");
+  const lockFunction = appSource.match(/function setPracticeInteractionLocked\(locked\) \{[\s\S]*?\n\}/)?.[0];
+
+  assert.ok(lockFunction, "setPracticeInteractionLocked production 함수를 찾을 수 있어야 함");
+  assert.match(appSource, /const clearAllCanvasBtn = document\.querySelector\("#clearAllCanvasBtn"\);/);
+  assert.match(lockFunction, /if \(clearAllCanvasBtn\) clearAllCanvasBtn\.disabled = locked;/);
+  assert.doesNotMatch(lockFunction, /\bclearCanvasBtn\b/);
+});

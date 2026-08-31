@@ -1506,7 +1506,7 @@ function setPracticeInteractionLocked(locked) {
   if (eraserToggleBtn) eraserToggleBtn.disabled = locked;
   if (undoBtn) undoBtn.disabled = locked;
   if (redoBtn) redoBtn.disabled = locked;
-  if (clearCanvasBtn) clearCanvasBtn.disabled = locked;
+  if (clearAllCanvasBtn) clearAllCanvasBtn.disabled = locked;
   colorChips?.forEach((b) => { b.disabled = locked; });
   widthChips?.forEach((b) => { b.disabled = locked; });
 }
