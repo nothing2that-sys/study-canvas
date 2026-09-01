@@ -138,12 +138,32 @@ export async function startSubmissionGrading(submissionId, options = {}) {
 
   return await storageUpdateSubmissionGrading(submissionId, {}, new Map(), {
     ...options,
-    status: "GRADING_ACTIVE"
+    status: "GRADING_ACTIVE",
+    allowStartTransition: true,
+    transitionIntent: "START_GRADING"
   });
 }
 
-//+_+// Phase F5: 문제별 판정과 빨간 펜을 Submission의 가변 채점 영역에 저장
+//+_+// Phase F5: 문제별 판정과 빨간 펜을 Submission의 가변 채점 영역에 저장 (GRADING_ACTIVE 상태에서만 허용)
 export async function saveSubmissionGradingProgress(submissionId, gradingResults = {}, gradingStrokesMap = new Map(), options = {}) {
+  if (!submissionId) throw new Error("채점 진행 상태를 저장할 submission ID가 필요합니다.");
+
+  const rawExisting = await storageGetSubmission(submissionId, { allLearners: true });
+  if (!rawExisting) {
+    throw new Error(`해당 ID(${submissionId})의 submission snapshot을 찾을 수 없습니다.`);
+  }
+
+  // 소유권 검사
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId());
+  if (targetLearnerId && (rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    throw new Error("해당 제출본에 대한 접근 또는 수정 권한이 없습니다.");
+  }
+
+  const currentStatus = rawExisting.status || "PARENT_GRADING_PENDING";
+  if (currentStatus !== "GRADING_ACTIVE") {
+    throw new Error(`GRADING_ACTIVE 상태의 제출본만 채점 진행 상태를 저장할 수 있습니다. (현재 상태: ${currentStatus})`);
+  }
+
   return await storageUpdateSubmissionGrading(submissionId, gradingResults, gradingStrokesMap, {
     ...options,
     status: options.status || "GRADING_ACTIVE"

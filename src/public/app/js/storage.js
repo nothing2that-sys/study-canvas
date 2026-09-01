@@ -1650,7 +1650,14 @@ export async function getPendingSubmissions(filter = {}) {
   return getAllSubmissions({ ...filter, status: "PARENT_GRADING_PENDING" });
 }
 
-//+_+// Phase F4: 보호자 채점 정보 갱신 (소유권 검증 및 불변 학생 영역 유지)
+const ALLOWED_LIFECYCLE_TRANSITIONS = {
+  PARENT_GRADING_PENDING: ["PARENT_GRADING_PENDING", "GRADING_ACTIVE"],
+  GRADING_ACTIVE: ["GRADING_ACTIVE", "GRADED"],
+  GRADED: ["GRADED", "SESSION_COMPLETE"],
+  SESSION_COMPLETE: ["SESSION_COMPLETE"]
+};
+
+//+_+// Phase F4/F5: 보호자 채점 정보 갱신 (소유권 검증, 전수 판정 불변식 및 forward-only lifecycle whitelist 강제)
 export async function updateSubmissionGrading(id, gradingResults = {}, gradingStrokesMap = new Map(), options = {}) {
   if (!id) throw new Error("업데이트할 submission ID가 필요합니다.");
   const rawExisting = await getSubmission(id, { allLearners: true });
@@ -1678,21 +1685,23 @@ export async function updateSubmissionGrading(id, gradingResults = {}, gradingSt
   const currentStatus = rawExisting.status || "PARENT_GRADING_PENDING";
   const nextStatus = options.status || currentStatus;
 
-  //+_+// F5 Invariant 1: nextStatus가 GRADED 또는 SESSION_COMPLETE라면 requireAllGraded 옵션 값과 무관하게 항상 전 문제 채점 완료 필수
-  if (nextStatus === "GRADED" || nextStatus === "SESSION_COMPLETE") {
-    if (!gradingProgress.allGraded) {
-      throw new Error(`미채점 ${gradingProgress.remaining}문제가 남아 있어 채점을 완료할 수 없습니다.`);
-    }
-    // PARENT_GRADING_PENDING 상태에서 바로 완료(GRADED/SESSION_COMPLETE)로 전이 불가 (채점 시작 GRADING_ACTIVE 거쳐야 함)
-    if (currentStatus === "PARENT_GRADING_PENDING") {
-      throw new Error("채점 시작(GRADING_ACTIVE) 단계를 거치지 않고 바로 완료(GRADED) 상태로 전환할 수 없습니다.");
+  //+_+// F5 Invariant 1: Forward-only 상태 전이 Whitelist 검사
+  const allowedTargets = ALLOWED_LIFECYCLE_TRANSITIONS[currentStatus];
+  if (!allowedTargets || !allowedTargets.includes(nextStatus)) {
+    throw new Error(`유효하지 않은 채점 상태 전이입니다: ${currentStatus} -> ${nextStatus}`);
+  }
+
+  //+_+// F5 Invariant 2: PARENT_GRADING_PENDING -> GRADING_ACTIVE는 명시적 Start Command intent(allowStartTransition)를 통해서만 허용
+  if (currentStatus === "PARENT_GRADING_PENDING" && nextStatus === "GRADING_ACTIVE") {
+    if (!options.allowStartTransition && options.transitionIntent !== "START_GRADING") {
+      throw new Error("PARENT_GRADING_PENDING에서 GRADING_ACTIVE로의 전이는 startSubmissionGrading()을 통해서만 가능합니다.");
     }
   }
 
-  //+_+// F5 Invariant 2: 역방향 전이 차단 (GRADED / SESSION_COMPLETE -> GRADING_ACTIVE / PARENT_GRADING_PENDING 불가)
-  if (currentStatus === "GRADED" || currentStatus === "SESSION_COMPLETE") {
-    if (nextStatus === "GRADING_ACTIVE" || nextStatus === "PARENT_GRADING_PENDING") {
-      throw new Error(`이미 ${currentStatus} 상태로 완료된 제출본은 ${nextStatus} 상태로 되돌릴 수 없습니다.`);
+  //+_+// F5 Invariant 3: GRADED 또는 SESSION_COMPLETE 전환 시 requireAllGraded 옵션 유무와 무관하게 항상 전 문제 채점 완료 필수
+  if (nextStatus === "GRADED" || nextStatus === "SESSION_COMPLETE") {
+    if (!gradingProgress.allGraded) {
+      throw new Error(`미채점 ${gradingProgress.remaining}문제가 남아 있어 채점을 완료할 수 없습니다.`);
     }
   }
 

@@ -47,6 +47,7 @@ import {
 
 import {
   submitLearningSession,
+  startSubmissionGrading,
   updateSubmissionGrading as commandUpdateSubmissionGrading,
   saveDraft,
   clearDraft,
@@ -354,7 +355,7 @@ test("Phase F4: 5. 보호자 채점(Red-pen) 레이어와 학생 필기 Snapshot
     q_1: [{ id: "red_1", color: "#c62828", points: [{ x: 50, y: 50 }] }]
   };
 
-  await updateSubmissionGrading(submission.id, {}, new Map(), { learnerId: learner.id, status: "GRADING_ACTIVE" });
+  await startSubmissionGrading(submission.id, { learnerId: learner.id });
   const updated = await updateSubmissionGrading(
     submission.id,
     {
@@ -560,7 +561,7 @@ test("Phase F4: 13. 기존 제출 -> 기존 채점 -> 세션 완료(saveSessionR
 
   // 2. 보호자 채점 진행 (PARENT_GRADING_PENDING -> GRADING_ACTIVE)
   session.startGrading();
-  await commandUpdateSubmissionGrading(submission.id, {}, new Map(), { learnerId: learner.id, status: "GRADING_ACTIVE" });
+  await startSubmissionGrading(submission.id, { learnerId: learner.id });
   session.gradeQuestion("q_1", true, "잘했음");
   session.gradeQuestion("q_2", false, "자리맞춤 실수");
 
@@ -877,7 +878,7 @@ test("Phase F4: 19. [F4-06] Submission Snapshot 불변 필드 보존 & updateSub
     totalSolveTimeMs: 18000
   });
 
-  await updateSubmissionGrading(sub.id, {}, new Map(), { learnerId: learner.id, status: "GRADING_ACTIVE" });
+  await startSubmissionGrading(sub.id, { learnerId: learner.id });
   // 채점 갱신 수행
   const graded = await updateSubmissionGrading(
     sub.id,
@@ -929,7 +930,7 @@ test("Phase F4: 21. [F4-07] updateSubmissionGrading(id) 다른 학습자 수정 
     questions: createSampleQuestions()
   });
 
-  await updateSubmissionGrading(subA.id, {}, new Map(), { learnerId: learnerA.id, status: "GRADING_ACTIVE" });
+  await startSubmissionGrading(subA.id, { learnerId: learnerA.id });
   // 학습자 B의 권한으로 학습자 A의 submission 수정 시도
   await assert.rejects(async () => {
     await updateSubmissionGrading(
@@ -1053,7 +1054,7 @@ test("Phase F4: 25. [F4-12] PARENT_GRADING_PENDING 복원 및 getPendingSubmissi
   assert.equal(pendingA[0].sessionId, "sess_p1");
 
   // 채점 완료 처리 후 대기 목록에서 제거 검증
-  await updateSubmissionGrading(pendingA[0].id, {}, new Map(), { learnerId: learnerA.id, status: "GRADING_ACTIVE" });
+  await startSubmissionGrading(pendingA[0].id, { learnerId: learnerA.id });
   await updateSubmissionGrading(
     pendingA[0].id,
     { q_1: { isCorrect: true }, q_2: { isCorrect: true } },
