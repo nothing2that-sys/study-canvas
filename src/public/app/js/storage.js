@@ -1651,11 +1651,58 @@ export async function getPendingSubmissions(filter = {}) {
 }
 
 const ALLOWED_LIFECYCLE_TRANSITIONS = {
-  PARENT_GRADING_PENDING: ["PARENT_GRADING_PENDING", "GRADING_ACTIVE"],
+  PARENT_GRADING_PENDING: ["PARENT_GRADING_PENDING"],
   GRADING_ACTIVE: ["GRADING_ACTIVE", "GRADED"],
   GRADED: ["GRADED", "SESSION_COMPLETE"],
   SESSION_COMPLETE: ["SESSION_COMPLETE"]
 };
+
+//+_+// Phase F5: 전용 Start transition API (PARENT_GRADING_PENDING -> GRADING_ACTIVE 전용)
+export async function startSubmissionGradingTransition(id, options = {}) {
+  if (!id) throw new Error("채점을 시작할 submission ID가 필요합니다.");
+  const rawExisting = await getSubmission(id, { allLearners: true });
+  if (!rawExisting) {
+    throw new Error(`해당 ID(${id})의 submission snapshot을 찾을 수 없습니다.`);
+  }
+
+  // 소유권 검사: 타겟 learnerId와 제출본 learnerId 불일치 시 명시적 거부
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId());
+  if (targetLearnerId && (rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    throw new Error("해당 제출본에 대한 접근 또는 수정 권한이 없습니다.");
+  }
+
+  const currentStatus = rawExisting.status || "PARENT_GRADING_PENDING";
+  if (currentStatus !== "PARENT_GRADING_PENDING") {
+    throw new Error(`PARENT_GRADING_PENDING 상태의 제출본만 채점을 시작할 수 있습니다. (현재 상태: ${currentStatus})`);
+  }
+
+  const db = await getDB();
+  const updatedRecord = {
+    ...rawExisting,
+    status: "GRADING_ACTIVE",
+    gradingViewMode: options.gradingViewMode || rawExisting.gradingViewMode || "quick",
+    currentGradingQuestionId: options.currentGradingQuestionId !== undefined
+      ? options.currentGradingQuestionId
+      : (rawExisting.currentGradingQuestionId || null),
+    answersHidden: options.answersHidden !== undefined
+      ? Boolean(options.answersHidden)
+      : Boolean(rawExisting.answersHidden)
+  };
+
+  if (db.isMemory) {
+    db.submissions.set(id, updatedRecord);
+    return updatedRecord;
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("submissions", "readwrite");
+    const store = tx.objectStore("submissions");
+    const request = store.put(updatedRecord);
+
+    tx.oncomplete = () => resolve(updatedRecord);
+    tx.onerror = () => reject(tx.error);
+  });
+}
 
 //+_+// Phase F4/F5: 보호자 채점 정보 갱신 (소유권 검증, 전수 판정 불변식 및 forward-only lifecycle whitelist 강제)
 export async function updateSubmissionGrading(id, gradingResults = {}, gradingStrokesMap = new Map(), options = {}) {
@@ -1685,20 +1732,13 @@ export async function updateSubmissionGrading(id, gradingResults = {}, gradingSt
   const currentStatus = rawExisting.status || "PARENT_GRADING_PENDING";
   const nextStatus = options.status || currentStatus;
 
-  //+_+// F5 Invariant 1: Forward-only 상태 전이 Whitelist 검사
+  //+_+// F5 Invariant 1: Forward-only 상태 전이 Whitelist 검사 (PARENT_GRADING_PENDING -> GRADING_ACTIVE는 generic update에서 원천 차단)
   const allowedTargets = ALLOWED_LIFECYCLE_TRANSITIONS[currentStatus];
   if (!allowedTargets || !allowedTargets.includes(nextStatus)) {
     throw new Error(`유효하지 않은 채점 상태 전이입니다: ${currentStatus} -> ${nextStatus}`);
   }
 
-  //+_+// F5 Invariant 2: PARENT_GRADING_PENDING -> GRADING_ACTIVE는 명시적 Start Command intent(allowStartTransition)를 통해서만 허용
-  if (currentStatus === "PARENT_GRADING_PENDING" && nextStatus === "GRADING_ACTIVE") {
-    if (!options.allowStartTransition && options.transitionIntent !== "START_GRADING") {
-      throw new Error("PARENT_GRADING_PENDING에서 GRADING_ACTIVE로의 전이는 startSubmissionGrading()을 통해서만 가능합니다.");
-    }
-  }
-
-  //+_+// F5 Invariant 3: GRADED 또는 SESSION_COMPLETE 전환 시 requireAllGraded 옵션 유무와 무관하게 항상 전 문제 채점 완료 필수
+  //+_+// F5 Invariant 2: GRADED 또는 SESSION_COMPLETE 전환 시 requireAllGraded 옵션 유무와 무관하게 항상 전 문제 채점 완료 필수
   if (nextStatus === "GRADED" || nextStatus === "SESSION_COMPLETE") {
     if (!gradingProgress.allGraded) {
       throw new Error(`미채점 ${gradingProgress.remaining}문제가 남아 있어 채점을 완료할 수 없습니다.`);

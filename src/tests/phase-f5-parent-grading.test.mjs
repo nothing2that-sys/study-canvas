@@ -492,7 +492,7 @@ test("Phase F5: 22. [F5-R10] Generic Update Start 우회 차단", async () => {
       learnerId,
       status: "GRADING_ACTIVE"
     });
-  }, /startSubmissionGrading/);
+  }, /유효하지 않은 채점 상태 전이/);
 
   const sub = await getSubmission(id, { learnerId });
   assert.equal(sub.status, "PARENT_GRADING_PENDING");
@@ -615,6 +615,7 @@ test("Phase F5: 27. [F5-R15] Invalid Transition Matrix", async () => {
   };
 
   const invalidPairs = [
+    { from: "PARENT_GRADING_PENDING", to: "GRADING_ACTIVE" },
     { from: "PARENT_GRADING_PENDING", to: "GRADED" },
     { from: "PARENT_GRADING_PENDING", to: "SESSION_COMPLETE" },
     { from: "GRADING_ACTIVE", to: "PARENT_GRADING_PENDING" },
@@ -651,6 +652,71 @@ test("Phase F5: 27. [F5-R15] Invalid Transition Matrix", async () => {
     const checkSub = await getSubmission(id, { learnerId });
     assert.equal(checkSub.status, from);
   }
+});
+
+test("Phase F5: 28. [F5-R16] allowStartTransition 직접 주입 우회 차단", async () => {
+  const learnerId = "f5_r16_privilege_allow";
+  const id = `sub_f5_r16_${Date.now()}`;
+  setCurrentLearnerId(learnerId);
+  await saveSubmissionSnapshot({ id, sessionId: id.slice(4), learnerId, questions: questions() });
+
+  // allowStartTransition: true 직접 주입하여 generic update 호출 시 reject
+  await assert.rejects(async () => {
+    await updateSubmissionGrading(id, {}, new Map(), {
+      learnerId,
+      status: "GRADING_ACTIVE",
+      allowStartTransition: true
+    });
+  }, /유효하지 않은 채점 상태 전이/);
+
+  const sub = await getSubmission(id, { learnerId });
+  assert.equal(sub.status, "PARENT_GRADING_PENDING");
+});
+
+test("Phase F5: 29. [F5-R17] transitionIntent 직접 주입 우회 차단", async () => {
+  const learnerId = "f5_r17_privilege_intent";
+  const id = `sub_f5_r17_${Date.now()}`;
+  setCurrentLearnerId(learnerId);
+  await saveSubmissionSnapshot({ id, sessionId: id.slice(4), learnerId, questions: questions() });
+
+  // transitionIntent: "START_GRADING" 직접 주입하여 generic update 호출 시 reject
+  await assert.rejects(async () => {
+    await updateSubmissionGrading(id, {}, new Map(), {
+      learnerId,
+      status: "GRADING_ACTIVE",
+      transitionIntent: "START_GRADING"
+    });
+  }, /유효하지 않은 채점 상태 전이/);
+
+  const sub = await getSubmission(id, { learnerId });
+  assert.equal(sub.status, "PARENT_GRADING_PENDING");
+});
+
+test("Phase F5: 30. [F5-R18] 두 privileged option 동시 주입 우회 차단 및 정상 startSubmissionGrading 전이 검증", async () => {
+  const learnerId = "f5_r18_both_options";
+  const id = `sub_f5_r18_${Date.now()}`;
+  setCurrentLearnerId(learnerId);
+  await saveSubmissionSnapshot({ id, sessionId: id.slice(4), learnerId, questions: questions() });
+
+  // allowStartTransition + transitionIntent 동시 주입하여 generic update 호출 시 reject
+  await assert.rejects(async () => {
+    await updateSubmissionGrading(id, {}, new Map(), {
+      learnerId,
+      status: "GRADING_ACTIVE",
+      allowStartTransition: true,
+      transitionIntent: "START_GRADING"
+    });
+  }, /유효하지 않은 채점 상태 전이/);
+
+  let sub = await getSubmission(id, { learnerId });
+  assert.equal(sub.status, "PARENT_GRADING_PENDING");
+
+  // 그 후 동일 Submission에 대해 정상 startSubmissionGrading 호출 시 성공 전이
+  const started = await startSubmissionGrading(id, { learnerId });
+  assert.equal(started.status, "GRADING_ACTIVE");
+
+  sub = await getSubmission(id, { learnerId });
+  assert.equal(sub.status, "GRADING_ACTIVE");
 });
 
 test.after(async () => {

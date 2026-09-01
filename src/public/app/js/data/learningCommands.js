@@ -11,7 +11,8 @@ import {
   getSubmission as storageGetSubmission,
   getCurrentLearnerId,
   DEFAULT_LEGACY_LEARNER_ID,
-  updateSubmissionGrading as storageUpdateSubmissionGrading
+  updateSubmissionGrading as storageUpdateSubmissionGrading,
+  startSubmissionGradingTransition
 } from "../storage.js";
 
 //+_+// 완료된 학습 세션 레코드 저장 (최종 채점 완료 후 sessions/attempts/mistakes 반영)
@@ -116,32 +117,9 @@ export async function updateSubmissionGrading(submissionId, gradingResults = {},
   return await storageUpdateSubmissionGrading(submissionId, gradingResults, gradingStrokesMap, options);
 }
 
-//+_+// Phase F5: 보호자가 명시적으로 채점을 시작할 때만 GRADING_ACTIVE로 전환 (PARENT_GRADING_PENDING -> GRADING_ACTIVE 전이만 허용)
+//+_+// Phase F5: 보호자가 명시적으로 채점을 시작할 때만 GRADING_ACTIVE로 전환 (전용 storage start transition API 호출)
 export async function startSubmissionGrading(submissionId, options = {}) {
-  if (!submissionId) throw new Error("채점을 시작할 submission ID가 필요합니다.");
-
-  const rawExisting = await storageGetSubmission(submissionId, { allLearners: true });
-  if (!rawExisting) {
-    throw new Error(`해당 ID(${submissionId})의 submission snapshot을 찾을 수 없습니다.`);
-  }
-
-  // 소유권 검사
-  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId());
-  if (targetLearnerId && (rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
-    throw new Error("해당 제출본에 대한 접근 또는 수정 권한이 없습니다.");
-  }
-
-  const currentStatus = rawExisting.status || "PARENT_GRADING_PENDING";
-  if (currentStatus !== "PARENT_GRADING_PENDING") {
-    throw new Error(`PARENT_GRADING_PENDING 상태의 제출본만 채점을 시작할 수 있습니다. (현재 상태: ${currentStatus})`);
-  }
-
-  return await storageUpdateSubmissionGrading(submissionId, {}, new Map(), {
-    ...options,
-    status: "GRADING_ACTIVE",
-    allowStartTransition: true,
-    transitionIntent: "START_GRADING"
-  });
+  return await startSubmissionGradingTransition(submissionId, options);
 }
 
 //+_+// Phase F5: 문제별 판정과 빨간 펜을 Submission의 가변 채점 영역에 저장 (GRADING_ACTIVE 상태에서만 허용)
