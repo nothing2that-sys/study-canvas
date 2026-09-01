@@ -354,9 +354,13 @@ test("Phase F4: 5. 보호자 채점(Red-pen) 레이어와 학생 필기 Snapshot
     q_1: [{ id: "red_1", color: "#c62828", points: [{ x: 50, y: 50 }] }]
   };
 
+  await updateSubmissionGrading(submission.id, {}, new Map(), { learnerId: learner.id, status: "GRADING_ACTIVE" });
   const updated = await updateSubmissionGrading(
     submission.id,
-    { q_1: { isCorrect: true, comment: "참 잘했어요" } },
+    {
+      q_1: { isCorrect: true, comment: "참 잘했어요" },
+      q_2: { isCorrect: true }
+    },
     redPenStrokes,
     { learnerId: learner.id, status: "GRADED" }
   );
@@ -556,6 +560,7 @@ test("Phase F4: 13. 기존 제출 -> 기존 채점 -> 세션 완료(saveSessionR
 
   // 2. 보호자 채점 진행 (PARENT_GRADING_PENDING -> GRADING_ACTIVE)
   session.startGrading();
+  await commandUpdateSubmissionGrading(submission.id, {}, new Map(), { learnerId: learner.id, status: "GRADING_ACTIVE" });
   session.gradeQuestion("q_1", true, "잘했음");
   session.gradeQuestion("q_2", false, "자리맞춤 실수");
 
@@ -872,10 +877,11 @@ test("Phase F4: 19. [F4-06] Submission Snapshot 불변 필드 보존 & updateSub
     totalSolveTimeMs: 18000
   });
 
+  await updateSubmissionGrading(sub.id, {}, new Map(), { learnerId: learner.id, status: "GRADING_ACTIVE" });
   // 채점 갱신 수행
   const graded = await updateSubmissionGrading(
     sub.id,
-    { q_1: { isCorrect: true } },
+    { q_1: { isCorrect: true }, q_2: { isCorrect: true } },
     new Map([["q_1", [{ id: "red_stroke", color: "#c62828", points: [{ x: 10, y: 10 }] }]]]),
     { learnerId: learner.id, status: "GRADED" }
   );
@@ -923,11 +929,12 @@ test("Phase F4: 21. [F4-07] updateSubmissionGrading(id) 다른 학습자 수정 
     questions: createSampleQuestions()
   });
 
+  await updateSubmissionGrading(subA.id, {}, new Map(), { learnerId: learnerA.id, status: "GRADING_ACTIVE" });
   // 학습자 B의 권한으로 학습자 A의 submission 수정 시도
   await assert.rejects(async () => {
     await updateSubmissionGrading(
       subA.id,
-      { q_1: { isCorrect: false } },
+      { q_1: { isCorrect: false }, q_2: { isCorrect: false } },
       new Map(),
       { learnerId: learnerB.id, status: "GRADED" }
     );
@@ -936,7 +943,7 @@ test("Phase F4: 21. [F4-07] updateSubmissionGrading(id) 다른 학습자 수정 
   // 학습자 A 권한으로 수정 시 정상 처리
   const validUpdate = await updateSubmissionGrading(
     subA.id,
-    { q_1: { isCorrect: true } },
+    { q_1: { isCorrect: true }, q_2: { isCorrect: true } },
     new Map(),
     { learnerId: learnerA.id, status: "GRADED" }
   );
@@ -1046,7 +1053,13 @@ test("Phase F4: 25. [F4-12] PARENT_GRADING_PENDING 복원 및 getPendingSubmissi
   assert.equal(pendingA[0].sessionId, "sess_p1");
 
   // 채점 완료 처리 후 대기 목록에서 제거 검증
-  await updateSubmissionGrading(pendingA[0].id, {}, new Map(), { learnerId: learnerA.id, status: "GRADED" });
+  await updateSubmissionGrading(pendingA[0].id, {}, new Map(), { learnerId: learnerA.id, status: "GRADING_ACTIVE" });
+  await updateSubmissionGrading(
+    pendingA[0].id,
+    { q_1: { isCorrect: true }, q_2: { isCorrect: true } },
+    new Map(),
+    { learnerId: learnerA.id, status: "GRADED" }
+  );
 
   const pendingAAfter = await queryGetPendingSubmissions({ learnerId: learnerA.id });
   assert.equal(pendingAAfter.length, 0);
