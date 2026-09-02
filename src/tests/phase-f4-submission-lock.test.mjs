@@ -708,7 +708,7 @@ test("Phase F4: 15. [F4-01] 실제 IndexedDB v3 -> v4 업그레이드 및 7개 S
 
   // 2. v4 storage.js getDB()로 오픈 (onupgradeneeded v3 -> v4 트리거)
   const db4 = await getDB();
-  assert.equal(db4.version, 4, "DB 버전이 4로 성공적으로 업그레이드됨");
+  assert.ok(db4.version >= 4, "DB 버전이 4 이상으로 성공적으로 업그레이드됨");
 
   // 3. 신규 submissions Store 및 5대 필수 인덱스 검증
   assert.ok(db4.objectStoreNames.contains("submissions"), "신규 submissions Store 존재");

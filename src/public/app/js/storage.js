@@ -1,5 +1,5 @@
 import { normalizeDraft } from "./draftEngine.js";
-import { getGradingProgress } from "./parentGrading.js";
+import { getGradingProgress, normalizeGradeDecision, createGradeDecision } from "./parentGrading.js";
 
 /**
  * Math Canvas Pro - IndexedDB 로컬 영구 스토리지 관리자 (Phase F1: 스키마 버전 및 학습자 프로필)
@@ -11,7 +11,7 @@ import { getGradingProgress } from "./parentGrading.js";
  */
 
 const DB_NAME = "math_canvas_pro_db";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 //+_+// 기존 레거시 데이터 및 미지정 데이터용 기본 학습자 식별자
 export const DEFAULT_LEGACY_LEARNER_ID = "legacy_default_learner";
@@ -228,6 +228,21 @@ export function getDB() {
           submissionStore.createIndex("learnerId", "learnerId", { unique: false });
         }
       }
+
+      //+_+// 9. progressAggregates store (Phase F6: 결과 확정 및 통계 재계산)
+      if (!db.objectStoreNames.contains("progressAggregates")) {
+        const progressAggStore = db.createObjectStore("progressAggregates", { keyPath: "id" });
+        progressAggStore.createIndex("learnerId", "learnerId", { unique: false });
+        progressAggStore.createIndex("subjectId", "subjectId", { unique: false });
+        progressAggStore.createIndex("levelId", "levelId", { unique: false });
+        progressAggStore.createIndex("macroLevelId", "macroLevelId", { unique: false });
+        progressAggStore.createIndex("updatedAt", "updatedAt", { unique: false });
+      } else {
+        const progressAggStore = request.transaction.objectStore("progressAggregates");
+        if (!progressAggStore.indexNames.contains("learnerId")) {
+          progressAggStore.createIndex("learnerId", "learnerId", { unique: false });
+        }
+      }
     };
 
     request.onsuccess = (event) => {
@@ -254,7 +269,8 @@ let memoryStore = {
   stageProgress: new Map(),
   strokes: new Map(),
   draftSessions: new Map(),
-  submissions: new Map()
+  submissions: new Map(),
+  progressAggregates: new Map()
 };
 
 function createMemoryFallbackDB() {
@@ -267,7 +283,8 @@ function createMemoryFallbackDB() {
     stageProgress: memoryStore.stageProgress,
     strokes: memoryStore.strokes,
     draftSessions: memoryStore.draftSessions,
-    submissions: memoryStore.submissions
+    submissions: memoryStore.submissions,
+    progressAggregates: memoryStore.progressAggregates
   };
 }
 
@@ -1320,13 +1337,16 @@ export async function clearAllData(options = {}) {
       for (const [key, sub] of db.submissions.entries()) {
         if ((sub.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.submissions.delete(key);
       }
+      for (const [key, agg] of db.progressAggregates.entries()) {
+        if ((agg.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.progressAggregates.delete(key);
+      }
       const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
       db.draftSessions.delete(draftKey);
       return true;
     }
 
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions"], "readwrite");
+      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates"], "readwrite");
       // sessions
       const sessionStore = tx.objectStore("sessions");
       sessionStore.openCursor().onsuccess = (e) => {
@@ -1387,6 +1407,16 @@ export async function clearAllData(options = {}) {
         }
       };
 
+      // progressAggregates
+      const progressAggStore = tx.objectStore("progressAggregates");
+      progressAggStore.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if ((cursor.value.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) cursor.delete();
+          cursor.continue();
+        }
+      };
+
       tx.oncomplete = () => resolve(true);
       tx.onerror = (e) => reject(e.target.error);
     });
@@ -1404,11 +1434,12 @@ export async function clearAllData(options = {}) {
     db.strokes.clear();
     db.draftSessions.clear();
     db.submissions.clear();
+    db.progressAggregates.clear();
     return true;
   }
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(["learnerProfiles", "sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions"], "readwrite");
+    const tx = db.transaction(["learnerProfiles", "sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates"], "readwrite");
     tx.objectStore("learnerProfiles").clear();
     tx.objectStore("sessions").clear();
     tx.objectStore("attempts").clear();
@@ -1417,6 +1448,7 @@ export async function clearAllData(options = {}) {
     tx.objectStore("strokes").clear();
     tx.objectStore("draftSessions").clear();
     tx.objectStore("submissions").clear();
+    tx.objectStore("progressAggregates").clear();
     tx.oncomplete = () => resolve(true);
     tx.onerror = (e) => reject(e.target.error);
   });
@@ -1773,5 +1805,749 @@ export async function updateSubmissionGrading(id, gradingResults = {}, gradingSt
     tx.objectStore("submissions").put(updatedRecord);
     tx.oncomplete = () => resolve(updatedRecord);
     tx.onerror = (e) => reject(e.target?.error || new Error("채점 정보 갱신 실패"));
+  });
+}
+
+//+_+// ============================================================================
+//+_+// 7. Phase F6: ProgressAggregate 및 결과 확정/통계 재계산 API
+//+_+// ============================================================================
+
+export function buildProgressAggregateKey(learnerId, subjectId = "math", courseId = "arithmetic", unitId = "default", levelId = "all") {
+  const normLearner = learnerId || DEFAULT_LEGACY_LEARNER_ID;
+  const normSubject = subjectId || "math";
+  const normCourse = courseId || "arithmetic";
+  const normUnit = unitId || "default";
+  const normLevel = levelId || "all";
+  return `${normLearner}:${normSubject}:${normCourse}:${normUnit}:${normLevel}`;
+}
+
+let finalizeFailureInjector = null;
+export function _setFinalizeFailureInjectorForTesting(fn) {
+  finalizeFailureInjector = fn;
+}
+
+export async function saveProgressAggregate(aggregateData, options = {}) {
+  if (!aggregateData) throw new Error("저장할 progressAggregate 데이터가 필요합니다.");
+  const db = await getDB();
+  const learnerId = aggregateData.learnerId || options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
+  const subjectId = aggregateData.subjectId || "math";
+  const courseId = aggregateData.courseId || "arithmetic";
+  const unitId = aggregateData.unitId || "default";
+  const levelId = aggregateData.levelId || aggregateData.macroLevelId || "all";
+  const id = aggregateData.id || buildProgressAggregateKey(learnerId, subjectId, courseId, unitId, levelId);
+
+  const gradedAttemptCount = Math.max(0, Number(aggregateData.gradedAttemptCount) || 0);
+  const correctCount = Math.max(0, Number(aggregateData.correctCount) || 0);
+  const incorrectCount = Math.max(0, Number(aggregateData.incorrectCount) || 0);
+  const retryRequestedCount = Math.max(0, Number(aggregateData.retryRequestedCount) || 0);
+  const accuracy = gradedAttemptCount > 0 ? (correctCount / gradedAttemptCount) * 100 : 0;
+  const totalSolveTimeMs = Math.max(0, Number(aggregateData.totalSolveTimeMs) || 0);
+  const averageSolveTimeMs = gradedAttemptCount > 0 ? Math.round(totalSolveTimeMs / gradedAttemptCount) : 0;
+  const sessionCount = Math.max(0, Number(aggregateData.sessionCount) || 0);
+  const updatedAt = Number(aggregateData.updatedAt) || Date.now();
+
+  const record = {
+    id,
+    learnerId,
+    subjectId,
+    courseId,
+    unitId,
+    levelId,
+    macroLevelId: aggregateData.macroLevelId || levelId,
+    gradedAttemptCount,
+    correctCount,
+    incorrectCount,
+    retryRequestedCount,
+    accuracy,
+    totalSolveTimeMs,
+    averageSolveTimeMs,
+    sessionCount,
+    updatedAt
+  };
+
+  if (db.isMemory) {
+    db.progressAggregates.set(id, record);
+    return record;
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("progressAggregates", "readwrite");
+    tx.objectStore("progressAggregates").put(record);
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = (e) => reject(e.target?.error || tx.error || new Error("ProgressAggregate 저장 실패"));
+  });
+}
+
+export async function getProgressAggregate(id, options = {}) {
+  if (!id) return null;
+  const db = await getDB();
+  let record = null;
+
+  if (db.isMemory) {
+    record = db.progressAggregates.get(id) || null;
+  } else {
+    record = await new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction("progressAggregates", "readonly");
+        const req = tx.objectStore("progressAggregates").get(id);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = (e) => reject(e.target?.error || new Error("ProgressAggregate 조회 실패"));
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
+  if (!record) return null;
+
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID);
+  if (targetLearnerId && (record.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    return null;
+  }
+  return record;
+}
+
+export async function getProgressAggregateByLevel(learnerId, levelId, options = {}) {
+  const targetLearnerId = learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
+  const all = await getAllProgressAggregates({ ...options, learnerId: targetLearnerId });
+  return all.find((a) => a.levelId === levelId || a.macroLevelId === levelId) || null;
+}
+
+export async function getAllProgressAggregates(filter = {}) {
+  const db = await getDB();
+  const targetLearnerId = filter.allLearners ? null : resolveActiveLearnerId(filter);
+  let all = [];
+
+  if (db.isMemory) {
+    all = Array.from(db.progressAggregates.values());
+  } else {
+    all = await new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction("progressAggregates", "readonly");
+        const req = tx.objectStore("progressAggregates").getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = (e) => reject(e.target?.error || new Error("전체 조회 실패"));
+      } catch (_) {
+        resolve([]);
+      }
+    });
+  }
+
+  if (targetLearnerId) {
+    all = all.filter((a) => (a.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId);
+  }
+  if (filter.subjectId) {
+    all = all.filter((a) => a.subjectId === filter.subjectId);
+  }
+  if (filter.levelId) {
+    all = all.filter((a) => a.levelId === filter.levelId || a.macroLevelId === filter.levelId);
+  }
+
+  return all.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+}
+
+//+_+// Phase F6: 지정 학습자의 모든 최종 확정 세션을 기반으로 ProgressAggregate를 결정론적으로 전체 재생성
+export async function rebuildProgressAggregatesForLearner(learnerId, options = {}) {
+  const targetLearnerId = learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
+  const db = await getDB();
+
+  // 1. 해당 학습자의 모든 제출본 조회
+  const allSubs = await getAllSubmissions({ learnerId: targetLearnerId, allLearners: !targetLearnerId });
+  
+  // 2. 최종 확정된(GRADED, SESSION_COMPLETE) 세션만 선별 (PENDING, GRADING_ACTIVE 엄격 제외)
+  const finalizedSubs = allSubs.filter((s) => s.status === "GRADED" || s.status === "SESSION_COMPLETE");
+
+  // 3. 레벨별 집계 맵 구성
+  const aggMap = new Map();
+
+  finalizedSubs.forEach((sub) => {
+    const subjectId = sub.subjectId || "math";
+    const courseId = sub.courseId || sub.config?.courseId || "arithmetic";
+    const sessionId = sub.sessionId || sub.id;
+    const questions = sub.questions || [];
+    const gradingResults = sub.gradingResults || {};
+
+    questions.forEach((q) => {
+      const grade = gradingResults[q.id] || q.grade;
+      const decision = normalizeGradeDecision(grade?.decision ?? grade?.isCorrect);
+      if (!decision) return;
+
+      const unitId = sub.unitId || sub.config?.operation || (q.operation === "div" ? "div" : "mul") || "default";
+      const levelId = q.level || q.macroLevelId || sub.config?.macroLevelId || (q.operation === "div" ? "D1" : "M1");
+      const macroLevelId = q.macroLevelId || q.level || (q.operation === "div" ? "D1" : "M1");
+
+      const compoundKey = buildProgressAggregateKey(targetLearnerId, subjectId, courseId, unitId, levelId);
+
+      if (!aggMap.has(compoundKey)) {
+        aggMap.set(compoundKey, {
+          id: compoundKey,
+          learnerId: targetLearnerId,
+          subjectId,
+          courseId,
+          unitId,
+          levelId,
+          macroLevelId,
+          gradedAttemptCount: 0,
+          correctCount: 0,
+          incorrectCount: 0,
+          retryRequestedCount: 0,
+          totalSolveTimeMs: 0,
+          sessionsSet: new Set()
+        });
+      }
+
+      const item = aggMap.get(compoundKey);
+      item.gradedAttemptCount += 1;
+      if (decision === "CORRECT") {
+        item.correctCount += 1;
+      } else if (decision === "WRONG") {
+        item.incorrectCount += 1;
+      } else if (decision === "RETRY") {
+        item.retryRequestedCount += 1;
+      }
+
+      let qTime = 0;
+      if (sub.perQuestionElapsedMs && sub.perQuestionElapsedMs[q.id] !== undefined) {
+        qTime = Math.max(0, Number(sub.perQuestionElapsedMs[q.id]) || 0);
+      } else if (q.solveTimeMs !== undefined) {
+        qTime = Math.max(0, Number(q.solveTimeMs) || 0);
+      } else if (sub.totalSolveTimeMs && questions.length > 0) {
+        qTime = Math.round(Number(sub.totalSolveTimeMs) / questions.length);
+      }
+      item.totalSolveTimeMs += qTime;
+      item.sessionsSet.add(sessionId);
+    });
+  });
+
+  const now = options.updatedAt || Date.now();
+  const calculatedAggregates = Array.from(aggMap.values()).map((raw) => {
+    const accuracy = raw.gradedAttemptCount > 0 ? (raw.correctCount / raw.gradedAttemptCount) * 100 : 0;
+    const averageSolveTimeMs = raw.gradedAttemptCount > 0 ? Math.round(raw.totalSolveTimeMs / raw.gradedAttemptCount) : 0;
+    return {
+      id: raw.id,
+      learnerId: raw.learnerId,
+      subjectId: raw.subjectId,
+      courseId: raw.courseId,
+      unitId: raw.unitId,
+      levelId: raw.levelId,
+      macroLevelId: raw.macroLevelId,
+      gradedAttemptCount: raw.gradedAttemptCount,
+      correctCount: raw.correctCount,
+      incorrectCount: raw.incorrectCount,
+      retryRequestedCount: raw.retryRequestedCount,
+      accuracy,
+      totalSolveTimeMs: raw.totalSolveTimeMs,
+      averageSolveTimeMs,
+      sessionCount: raw.sessionsSet.size,
+      updatedAt: now
+    };
+  });
+
+  if (db.isMemory) {
+    for (const [key, agg] of db.progressAggregates.entries()) {
+      if ((agg.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) {
+        db.progressAggregates.delete(key);
+      }
+    }
+    calculatedAggregates.forEach((agg) => {
+      db.progressAggregates.set(agg.id, agg);
+    });
+    return calculatedAggregates;
+  }
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("progressAggregates", "readwrite");
+    const store = tx.objectStore("progressAggregates");
+
+    // 1. 기존 학습자 aggregate 삭제 후 완료 시점에 새 aggregate 일괄 저장
+    const req = store.openCursor();
+    req.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        if ((cursor.value.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) {
+          cursor.delete();
+        }
+        cursor.continue();
+      } else {
+        // 기존 레코드 정리 완료 -> 새 aggregate 일괄 삽입
+        calculatedAggregates.forEach((agg) => {
+          store.put(agg);
+        });
+      }
+    };
+    req.onerror = (e) => reject(req.error || e.target?.error || new Error("ProgressAggregate cursor 실패"));
+
+    tx.oncomplete = () => resolve(calculatedAggregates);
+    tx.onerror = (e) => reject(e.target?.error || tx.error || new Error("ProgressAggregate rebuild 실패"));
+  });
+}
+
+//+_+// Phase F6: 보호자 채점 최종 확정 Command (소유권, allGraded, 불변성 검증 및 원자적 DB 반영)
+export async function finalizeSubmissionGrading(id, options = {}) {
+  if (!id) throw new Error("결과를 확정할 submission ID가 필요합니다.");
+  const rawExisting = await getSubmission(id, { allLearners: true });
+  if (!rawExisting) {
+    throw new Error(`해당 ID(${id})의 submission snapshot을 찾을 수 없습니다.`);
+  }
+
+  // 1. 소유권 검사
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId());
+  if (targetLearnerId && (rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    throw new Error("해당 제출본에 대한 접근 또는 수정 권한이 없습니다.");
+  }
+
+  const currentStatus = rawExisting.status || "PARENT_GRADING_PENDING";
+
+  // 2. 멱등성 처리: 이미 GRADED 또는 SESSION_COMPLETE로 확정된 경우 안전한 멱등 반환
+  if (currentStatus === "GRADED" || currentStatus === "SESSION_COMPLETE") {
+    const learnerAggs = await getAllProgressAggregates({ learnerId: rawExisting.learnerId });
+    return {
+      submission: rawExisting,
+      sessionRecord: rawExisting,
+      aggregates: learnerAggs
+    };
+  }
+
+  // 3. 시작 상태 검사: GRADING_ACTIVE 상태에서만 확정 가능
+  if (currentStatus !== "GRADING_ACTIVE") {
+    throw new Error(`GRADING_ACTIVE 상태의 제출본만 결과를 확정할 수 있습니다. (현재 상태: ${currentStatus})`);
+  }
+
+  // 4. 채점 판정 및 진행률 전수 검사
+  const updatedGradingResults = {
+    ...(rawExisting.gradingResults || {}),
+    ...mapToObject(options.gradingResults)
+  };
+  const updatedGradingStrokes = {
+    ...(rawExisting.gradingStrokesMap || {}),
+    ...mapToObject(options.gradingStrokesMap)
+  };
+  const gradingProgress = getGradingProgress(rawExisting.questions || [], updatedGradingResults);
+
+  if (!gradingProgress.allGraded) {
+    throw new Error(`미채점 ${gradingProgress.remaining}문제가 남아 있어 결과를 확정할 수 없습니다.`);
+  }
+
+  // 5. 유효 판정값 검사 (CORRECT, WRONG, RETRY 외 금지)
+  for (const q of rawExisting.questions || []) {
+    const grade = updatedGradingResults[q.id];
+    const decision = normalizeGradeDecision(grade?.decision ?? grade?.isCorrect);
+    if (!decision) {
+      throw new Error(`유효하지 않은 채점 판정이 포함되어 있습니다: ${q.id}`);
+    }
+  }
+
+  const db = await getDB();
+  const now = Date.now();
+  const completedAt = options.completedAt || now;
+
+  const finalizedSubmission = {
+    ...rawExisting,
+    gradingResults: updatedGradingResults,
+    gradingStrokesMap: updatedGradingStrokes,
+    status: "GRADED",
+    gradingProgress,
+    gradedAt: rawExisting.gradedAt || now,
+    completedAt
+  };
+
+  // 호환용 Session 및 Attempt 레코드 생성
+  const sessionId = rawExisting.sessionId || rawExisting.id;
+  const operation = rawExisting.config?.operation || rawExisting.questions[0]?.operation || "mul";
+  const macroLevelId = rawExisting.config?.macroLevelId || rawExisting.questions[0]?.level || (operation === "div" ? "D1" : "M1");
+  const stageId = rawExisting.config?.stageId || macroLevelId;
+  const strokesMapObj = rawExisting.studentStrokesMap || {};
+
+  const sessionResults = (rawExisting.questions || []).map((q, idx) => {
+    const grade = updatedGradingResults[q.id];
+    const decision = normalizeGradeDecision(grade?.decision ?? grade?.isCorrect);
+    const isCorrect = decision === "CORRECT";
+    const qKey = q.questionKey || q.key || `${q.operation || operation}:${q.operandA}:${q.operandB}`;
+    const qAns = q.answer !== undefined ? q.answer : q.expectedAnswer;
+    let qSolveTime = 0;
+    if (rawExisting.perQuestionElapsedMs && rawExisting.perQuestionElapsedMs[q.id] !== undefined) {
+      qSolveTime = Number(rawExisting.perQuestionElapsedMs[q.id]) || 0;
+    } else if (q.solveTimeMs !== undefined) {
+      qSolveTime = Number(q.solveTimeMs) || 0;
+    } else if (rawExisting.totalSolveTimeMs && rawExisting.questions.length > 0) {
+      qSolveTime = Math.round(Number(rawExisting.totalSolveTimeMs) / rawExisting.questions.length);
+    }
+
+    return {
+      ...q,
+      learnerId: rawExisting.learnerId,
+      questionId: q.id || `q_${idx}`,
+      questionKey: qKey,
+      operation: q.operation || operation,
+      level: q.level || macroLevelId,
+      macroLevelId: q.macroLevelId || macroLevelId,
+      stageId: q.stageId || stageId,
+      operandA: q.operandA,
+      operandB: q.operandB,
+      answer: qAns,
+      expectedAnswer: qAns,
+      decision,
+      gradeOutcome: decision,
+      isCorrect,
+      retryRequested: decision === "RETRY",
+      comment: grade?.comment || "",
+      solveTimeMs: qSolveTime,
+      strokes: strokesMapObj[q.id] || [],
+      studentStrokes: strokesMapObj[q.id] || [],
+      gradingStrokes: updatedGradingStrokes[q.id] || [],
+      sourceWrongAnswerId: q.sourceWrongAnswerId || null,
+      errorCategories: q.errorCategories || []
+    };
+  });
+
+  const correctCount = sessionResults.filter((r) => r.isCorrect).length;
+  const wrongCount = sessionResults.length - correctCount;
+  const accuracyRate = sessionResults.length > 0 ? Math.round((correctCount / sessionResults.length) * 100) : 0;
+  const avgSolveTimeMs = sessionResults.length > 0 ? Math.round(rawExisting.totalSolveTimeMs / sessionResults.length) : 0;
+
+  const sessionRecord = {
+    id: sessionId,
+    sessionId,
+    learnerId: rawExisting.learnerId,
+    operation,
+    mathFormat: rawExisting.config?.mathFormat || "vertical",
+    macroLevelId,
+    stageId,
+    config: rawExisting.config,
+    startedAt: rawExisting.submittedAt || now,
+    submittedAt: rawExisting.submittedAt || now,
+    completedAt,
+    totalQuestions: sessionResults.length,
+    pageSize: rawExisting.pageSize || 4,
+    totalPages: rawExisting.totalPages || 1,
+    correctCount,
+    wrongCount,
+    accuracyRate,
+    totalSolveTimeMs: rawExisting.totalSolveTimeMs || 0,
+    averageSolveTimeMs: avgSolveTimeMs,
+    results: sessionResults
+  };
+
+  if (db.isMemory) {
+    if (typeof finalizeFailureInjector === "function") {
+      finalizeFailureInjector({ isMemory: true });
+    }
+
+    db.submissions.set(id, finalizedSubmission);
+    db.sessions.set(sessionId, sessionRecord);
+
+    sessionResults.forEach((r, idx) => {
+      const attemptId = `att_${sessionId}_${r.questionId || idx}_${now}`;
+      db.attempts.set(attemptId, {
+        id: attemptId,
+        sessionId,
+        learnerId: rawExisting.learnerId,
+        questionId: r.questionId,
+        questionKey: r.questionKey,
+        operation: r.operation,
+        macroLevelId: r.macroLevelId,
+        stageId: r.stageId,
+        operandA: r.operandA,
+        operandB: r.operandB,
+        answer: r.answer,
+        decision: r.decision,
+        gradeOutcome: r.decision,
+        responseState: "submitted",
+        gradingState: "graded",
+        isCorrect: r.isCorrect,
+        retryRequested: r.retryRequested,
+        solveTimeMs: r.solveTimeMs,
+        comment: r.comment,
+        sourceWrongAnswerId: r.sourceWrongAnswerId,
+        errorCategories: r.errorCategories,
+        sourceType: r.sourceWrongAnswerId ? "retry" : "normal",
+        completedAt
+      });
+
+      const mistakeCompoundKey = (!rawExisting.learnerId || rawExisting.learnerId === DEFAULT_LEGACY_LEARNER_ID)
+        ? r.questionKey
+        : `${rawExisting.learnerId}:${r.questionKey}`;
+
+      if (!r.isCorrect) {
+        const prev = db.mistakes.get(mistakeCompoundKey) || { wrongCount: 0 };
+        db.mistakes.set(mistakeCompoundKey, {
+          ...r,
+          key: r.questionKey,
+          id: mistakeCompoundKey,
+          compoundKey: mistakeCompoundKey,
+          learnerId: rawExisting.learnerId,
+          wrongCount: prev.wrongCount + 1,
+          lastWrongAt: now
+        });
+      } else {
+        db.mistakes.delete(mistakeCompoundKey);
+      }
+    });
+
+    const calculatedAggs = await rebuildProgressAggregatesForLearner(rawExisting.learnerId, { updatedAt: completedAt });
+    return {
+      submission: finalizedSubmission,
+      sessionRecord,
+      aggregates: calculatedAggs
+    };
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates"], "readwrite");
+      const subStore = tx.objectStore("submissions");
+      const sessStore = tx.objectStore("sessions");
+      const attStore = tx.objectStore("attempts");
+      const misStore = tx.objectStore("mistakes");
+
+      if (typeof finalizeFailureInjector === "function") {
+        finalizeFailureInjector({ tx });
+      }
+
+      subStore.put(finalizedSubmission);
+      sessStore.put(sessionRecord);
+
+      sessionResults.forEach((r, idx) => {
+        const attemptId = `att_${sessionId}_${r.questionId || idx}_${now}`;
+        attStore.put({
+          id: attemptId,
+          sessionId,
+          learnerId: rawExisting.learnerId,
+          questionId: r.questionId,
+          questionKey: r.questionKey,
+          operation: r.operation,
+          macroLevelId: r.macroLevelId,
+          stageId: r.stageId,
+          operandA: r.operandA,
+          operandB: r.operandB,
+          answer: r.answer,
+          decision: r.decision,
+          gradeOutcome: r.decision,
+          responseState: "submitted",
+          gradingState: "graded",
+          isCorrect: r.isCorrect,
+          retryRequested: r.retryRequested,
+          solveTimeMs: r.solveTimeMs,
+          comment: r.comment,
+          sourceWrongAnswerId: r.sourceWrongAnswerId,
+          errorCategories: r.errorCategories,
+          sourceType: r.sourceWrongAnswerId ? "retry" : "normal",
+          completedAt
+        });
+
+        const mistakeCompoundKey = (!rawExisting.learnerId || rawExisting.learnerId === DEFAULT_LEGACY_LEARNER_ID)
+          ? r.questionKey
+          : `${rawExisting.learnerId}:${r.questionKey}`;
+
+        if (!r.isCorrect) {
+          const getReq = misStore.get(mistakeCompoundKey);
+          getReq.onsuccess = () => {
+            const prev = getReq.result || { wrongCount: 0 };
+            misStore.put({
+              ...r,
+              key: r.questionKey,
+              id: mistakeCompoundKey,
+              compoundKey: mistakeCompoundKey,
+              learnerId: rawExisting.learnerId,
+              wrongCount: prev.wrongCount + 1,
+              lastWrongAt: now
+            });
+          };
+        } else {
+          misStore.delete(mistakeCompoundKey);
+        }
+      });
+
+      tx.oncomplete = async () => {
+        try {
+          const calculatedAggs = await rebuildProgressAggregatesForLearner(rawExisting.learnerId, { updatedAt: completedAt });
+          resolve({
+            submission: finalizedSubmission,
+            sessionRecord,
+            aggregates: calculatedAggs
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      tx.onerror = (e) => reject(tx.error || e.target?.error || new Error("Finalize transaction failed"));
+      tx.onabort = (e) => reject(tx.error || e.target?.error || new Error("Finalize transaction aborted"));
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+//+_+// Phase F6: 최종 확정된 판정에 대한 보호자 재채점 Revision API (상태 역행 없이 GRADED 유지)
+export async function reviseFinalizedGradeDecision(submissionId, questionId, newDecision, newComment, options = {}) {
+  if (!submissionId) throw new Error("재채점할 submission ID가 필요합니다.");
+  if (!questionId) throw new Error("재채점할 question ID가 필요합니다.");
+
+  const rawExisting = await getSubmission(submissionId, { allLearners: true });
+  if (!rawExisting) {
+    throw new Error(`해당 ID(${submissionId})의 submission snapshot을 찾을 수 없습니다.`);
+  }
+
+  // 1. 소유권 검사
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId());
+  if (targetLearnerId && (rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    throw new Error("해당 제출본에 대한 접근 또는 수정 권한이 없습니다.");
+  }
+
+  // 2. 최종 확정 상태 검사 (GRADED 또는 SESSION_COMPLETE만 재채점 가능)
+  if (rawExisting.status !== "GRADED" && rawExisting.status !== "SESSION_COMPLETE") {
+    throw new Error(`최종 확정된(GRADED) 제출본만 재채점할 수 있습니다. (현재 상태: ${rawExisting.status})`);
+  }
+
+  // 3. 대상 문제 존재 검사
+  const question = (rawExisting.questions || []).find((q) => q.id === questionId);
+  if (!question) {
+    throw new Error(`해당 ID(${questionId})의 문제를 찾을 수 없습니다.`);
+  }
+
+  // 4. 새 판정값 검증
+  const normalizedDecision = normalizeGradeDecision(newDecision);
+  if (!normalizedDecision) {
+    throw new Error("유효하지 않은 채점 판정입니다: " + newDecision);
+  }
+
+  const now = Date.now();
+  const existingGrade = rawExisting.gradingResults?.[questionId];
+  const finalComment = newComment !== undefined && newComment !== null ? String(newComment).trim() : (existingGrade?.comment || "");
+
+  const updatedGrade = {
+    ...createGradeDecision(question, normalizedDecision, finalComment, existingGrade, now),
+    revisedAt: now
+  };
+
+  const updatedGradingResults = {
+    ...(rawExisting.gradingResults || {}),
+    [questionId]: updatedGrade
+  };
+  const gradingProgress = getGradingProgress(rawExisting.questions || [], updatedGradingResults);
+
+  const revisedSubmission = {
+    ...rawExisting,
+    gradingResults: updatedGradingResults,
+    gradingProgress,
+    status: rawExisting.status // GRADED 상태 유지 (역행 금지)
+  };
+
+  const db = await getDB();
+  const sessionId = rawExisting.sessionId || rawExisting.id;
+
+  if (db.isMemory) {
+    db.submissions.set(submissionId, revisedSubmission);
+
+    // attempts 및 mistakes 갱신
+    for (const [attId, att] of db.attempts.entries()) {
+      if (att.sessionId === sessionId && att.questionId === questionId) {
+        db.attempts.set(attId, {
+          ...att,
+          decision: normalizedDecision,
+          gradeOutcome: normalizedDecision,
+          isCorrect: normalizedDecision === "CORRECT",
+          retryRequested: normalizedDecision === "RETRY",
+          comment: finalComment,
+          revisedAt: now
+        });
+      }
+    }
+
+    const qKey = question.questionKey || question.key || `${question.operation}:${question.operandA}:${question.operandB}`;
+    const mistakeCompoundKey = (!rawExisting.learnerId || rawExisting.learnerId === DEFAULT_LEGACY_LEARNER_ID)
+      ? qKey
+      : `${rawExisting.learnerId}:${qKey}`;
+
+    if (normalizedDecision !== "CORRECT") {
+      const prev = db.mistakes.get(mistakeCompoundKey) || { wrongCount: 0 };
+      db.mistakes.set(mistakeCompoundKey, {
+        ...question,
+        key: qKey,
+        id: mistakeCompoundKey,
+        compoundKey: mistakeCompoundKey,
+        learnerId: rawExisting.learnerId,
+        wrongCount: prev.wrongCount + 1,
+        lastWrongAt: now
+      });
+    } else {
+      db.mistakes.delete(mistakeCompoundKey);
+    }
+
+    const calculatedAggs = await rebuildProgressAggregatesForLearner(rawExisting.learnerId);
+    return {
+      submission: revisedSubmission,
+      aggregates: calculatedAggs
+    };
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction(["submissions", "attempts", "mistakes", "progressAggregates"], "readwrite");
+      const subStore = tx.objectStore("submissions");
+      const attStore = tx.objectStore("attempts");
+      const misStore = tx.objectStore("mistakes");
+
+      subStore.put(revisedSubmission);
+
+      // attempt 갱신
+      attStore.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if (cursor.value.sessionId === sessionId && cursor.value.questionId === questionId) {
+            cursor.update({
+              ...cursor.value,
+              decision: normalizedDecision,
+              gradeOutcome: normalizedDecision,
+              isCorrect: normalizedDecision === "CORRECT",
+              retryRequested: normalizedDecision === "RETRY",
+              comment: finalComment,
+              revisedAt: now
+            });
+          }
+          cursor.continue();
+        }
+      };
+
+      const qKey = question.questionKey || question.key || `${question.operation}:${question.operandA}:${question.operandB}`;
+      const mistakeCompoundKey = (!rawExisting.learnerId || rawExisting.learnerId === DEFAULT_LEGACY_LEARNER_ID)
+        ? qKey
+        : `${rawExisting.learnerId}:${qKey}`;
+
+      if (normalizedDecision !== "CORRECT") {
+        const getReq = misStore.get(mistakeCompoundKey);
+        getReq.onsuccess = () => {
+          const prev = getReq.result || { wrongCount: 0 };
+          misStore.put({
+            ...question,
+            key: qKey,
+            id: mistakeCompoundKey,
+            compoundKey: mistakeCompoundKey,
+            learnerId: rawExisting.learnerId,
+            wrongCount: prev.wrongCount + 1,
+            lastWrongAt: now
+          });
+        };
+      } else {
+        misStore.delete(mistakeCompoundKey);
+      }
+
+      tx.oncomplete = async () => {
+        try {
+          const calculatedAggs = await rebuildProgressAggregatesForLearner(rawExisting.learnerId);
+          resolve({
+            submission: revisedSubmission,
+            aggregates: calculatedAggs
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      tx.onerror = (e) => reject(tx.error || e.target?.error || new Error("Revision transaction failed"));
+    } catch (err) {
+      reject(err);
+    }
   });
 }

@@ -12,7 +12,10 @@ import {
   getCurrentLearnerId,
   DEFAULT_LEGACY_LEARNER_ID,
   updateSubmissionGrading as storageUpdateSubmissionGrading,
-  startSubmissionGradingTransition
+  startSubmissionGradingTransition,
+  finalizeSubmissionGrading as storageFinalizeSubmissionGrading,
+  reviseFinalizedGradeDecision as storageReviseFinalizedGradeDecision,
+  rebuildProgressAggregatesForLearner as storageRebuildProgressAggregatesForLearner
 } from "../storage.js";
 
 //+_+// 완료된 학습 세션 레코드 저장 (최종 채점 완료 후 sessions/attempts/mistakes 반영)
@@ -146,4 +149,19 @@ export async function saveSubmissionGradingProgress(submissionId, gradingResults
     ...options,
     status: options.status || "GRADING_ACTIVE"
   });
+}
+
+//+_+// Phase F6: 채점 완료 시 세션 결과를 확정하고 통계(ProgressAggregate)를 원자적으로 갱신하는 Command
+export async function finalizeSubmissionGrading(submissionId, options = {}) {
+  return await storageFinalizeSubmissionGrading(submissionId, options);
+}
+
+//+_+// Phase F6: 최종 확정된 보호자 판정을 수정(Revision)하고 관련 통계를 재계산하는 Command
+export async function reviseFinalizedGradeDecision(submissionId, questionId, newDecision, newComment, options = {}) {
+  return await storageReviseFinalizedGradeDecision(submissionId, questionId, newDecision, newComment, options);
+}
+
+//+_+// Phase F6: 학습자의 모든 확정 세션으로부터 ProgressAggregate를 결정론적으로 다시 계산하는 Command
+export async function rebuildProgressAggregates(learnerId, options = {}) {
+  return await storageRebuildProgressAggregatesForLearner(learnerId, options);
 }

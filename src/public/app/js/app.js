@@ -3,7 +3,7 @@ import { createSession, SessionState, mistakeToQuestion, escapeHtml } from "./se
 import { createQuestionTimer, formatTime, startSessionTimer } from "./timer.js";
 import { getMultiplicationSteps, getDivisionSteps } from "./explainer.js";
 import { createDrawingCanvas, InputProfile, resolveInputProfile, togglePenOnlyProfile } from "./canvasEngine.js";
-import { saveSession, saveDraft, clearDraft, clearLearnerData, submitLearningSession, startSubmissionGrading, saveSubmissionGradingProgress } from "./data/learningCommands.js";
+import { saveSession, saveDraft, clearDraft, clearLearnerData, submitLearningSession, startSubmissionGrading, saveSubmissionGradingProgress, finalizeSubmissionGrading } from "./data/learningCommands.js";
 import { getRecentSessions, getMistakes, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, getDraft, getRecentAttempts, getSubmissionBySessionId } from "./data/learningQueries.js";
 import { getActiveLearner, getActiveLearnerId, getLearners } from "./learners/learnerQueries.js";
 import { selectLearner, createLearner, configureLearnerSessionGuard } from "./learners/learnerCommands.js";
@@ -288,7 +288,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260901T090011598Z-43fe569",
+    appBuildId: "20260902T060925546Z-d5a8573",
     sessionId: currentSession.id,
     submissionId: currentSubmission?.id || `sub_${currentSession.id}`,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
@@ -2106,19 +2106,26 @@ function handleGradingCardDetail(event) {
   setGradingViewMode("detail", detailButton.dataset.detailId);
 }
 
-// 채점 완료 및 최종 성적표 보기 (IndexedDB 영구 저장 및 submission 상태 GRADED 갱신)
+// 채점 완료 및 최종 성적표 보기 (IndexedDB 영구 저장 및 finalizeSubmissionGrading 결과 확정)
 async function handleFinishGrading() {
   if (!currentSession) return;
   try {
     const activeLId = getActiveLearnerId();
-    const completedAt = Date.now();
-    currentSubmission = await persistCurrentGradingProgress({ status: "GRADED", completedAt, requireAllGraded: true });
+    const submissionId = currentSubmission?.id || `sub_${currentSession.id}`;
     const summary = currentSession.finishGrading();
-    // 영구 스토리지에 세션 및 스트로크 저장
-    const savedRecord = await saveSession(summary, questionStrokesMap, gradingStrokesMap, { learnerId: activeLId });
+    const completedAt = Date.now();
+
+    const finalizeResult = await finalizeSubmissionGrading(submissionId, {
+      learnerId: activeLId,
+      gradingResults: gradingResultsMap,
+      gradingStrokesMap,
+      completedAt
+    });
+
+    currentSubmission = finalizeResult.submission;
     await clearDraft({ learnerId: activeLId });
 
-    showSessionResult(savedRecord);
+    showSessionResult(finalizeResult.sessionRecord || summary);
   } catch (error) {
     alert(error.message);
   }

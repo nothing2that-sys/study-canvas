@@ -15,7 +15,10 @@ import {
   getSubmission as storageGetSubmission,
   getSubmissionBySessionId as storageGetSubmissionBySessionId,
   getPendingSubmissions as storageGetPendingSubmissions,
-  getAllSubmissions as storageGetAllSubmissions
+  getAllSubmissions as storageGetAllSubmissions,
+  getProgressAggregate as storageGetProgressAggregate,
+  getAllProgressAggregates as storageGetAllProgressAggregates,
+  getProgressAggregateByLevel as storageGetProgressAggregateByLevel
 } from "../storage.js";
 
 //+_+// 최근 완료 세션 목록 조회
@@ -100,5 +103,20 @@ export async function getPendingSubmissions(options = {}) {
 //+_+// Phase F4: 전체 제출본 목록 조회 (learnerId 격리)
 export async function getAllSubmissions(filter = {}) {
   return await storageGetAllSubmissions(filter);
+}
+
+//+_+// Phase F6: 특정 ID 기준 ProgressAggregate 조회
+export async function getProgressAggregate(id, options = {}) {
+  return await storageGetProgressAggregate(id, options);
+}
+
+//+_+// Phase F6: 특정 학습자의 특정 레벨 ProgressAggregate 조회
+export async function getProgressAggregateByLevel(learnerId, levelId, options = {}) {
+  return await storageGetProgressAggregateByLevel(learnerId, levelId, options);
+}
+
+//+_+// Phase F6: 전체 ProgressAggregate 목록 조회 (learnerId 격리)
+export async function getProgressAggregates(options = {}) {
+  return await storageGetAllProgressAggregates(options);
 }
 
