@@ -3,8 +3,37 @@ import { createSession, SessionState, mistakeToQuestion, escapeHtml } from "./se
 import { createQuestionTimer, formatTime, startSessionTimer } from "./timer.js";
 import { getMultiplicationSteps, getDivisionSteps } from "./explainer.js";
 import { createDrawingCanvas, InputProfile, resolveInputProfile, togglePenOnlyProfile } from "./canvasEngine.js";
-import { saveSession, saveDraft, clearDraft, clearLearnerData, submitLearningSession, startSubmissionGrading, saveSubmissionGradingProgress, finalizeSubmissionGrading } from "./data/learningCommands.js";
-import { getRecentSessions, getMistakes, getLearningStats, getCurriculumProgress, getDailyLearningMap, getCurrentStreak, getSessionsByDate, getDraft, getRecentAttempts, getSubmissionBySessionId } from "./data/learningQueries.js";
+import {
+  saveSession,
+  saveDraft,
+  clearDraft,
+  clearLearnerData,
+  submitLearningSession,
+  startSubmissionGrading,
+  saveSubmissionGradingProgress,
+  finalizeSubmissionGrading,
+  startReviewRetry,
+  deferReviewItem,
+  resolveReviewItem,
+  retryReviewItemAgain
+} from "./data/learningCommands.js";
+import {
+  getRecentSessions,
+  getMistakes,
+  getLearningStats,
+  getCurriculumProgress,
+  getDailyLearningMap,
+  getCurrentStreak,
+  getSessionsByDate,
+  getDraft,
+  getRecentAttempts,
+  getSubmissionBySessionId,
+  getSubmission,
+  getReviewItem,
+  getAllReviewItems,
+  getActiveReviewItems,
+  getReviewItemBySourceAttemptId
+} from "./data/learningQueries.js";
 import { getActiveLearner, getActiveLearnerId, getLearners } from "./learners/learnerQueries.js";
 import { selectLearner, createLearner, configureLearnerSessionGuard } from "./learners/learnerCommands.js";
 import { bootstrapApp } from "./platform/appBootstrap.js";
@@ -142,6 +171,21 @@ const modalViewCompactBtn = document.querySelector("#modalViewCompactBtn");
 const modalViewDetailBtn = document.querySelector("#modalViewDetailBtn");
 let currentModalSession = null;
 let currentModalViewMode = "detail";
+
+//+_+// Phase F7: 오답 함께 보기 및 재풀이 모달 DOM 요소
+const reviewDetailModal = document.querySelector("#reviewDetailModal");
+const reviewModalCloseBtn = document.querySelector("#reviewModalCloseBtn");
+const reviewModalTag = document.querySelector("#reviewModalTag");
+const reviewModalTitle = document.querySelector("#reviewModalTitle");
+const reviewModalStatusBar = document.querySelector("#reviewModalStatusBar");
+const reviewModalStateBadge = document.querySelector("#reviewModalStateBadge");
+const reviewModalReasonBadge = document.querySelector("#reviewModalReasonBadge");
+const reviewModalRetryCountBadge = document.querySelector("#reviewModalRetryCountBadge");
+const reviewModalProblemBody = document.querySelector("#reviewModalProblemBody");
+const reviewModalActions = document.querySelector("#reviewModalActions");
+let currentReviewItems = [];
+let currentReviewIndex = 0;
+let reviewModalCanvasInstance = null;
 
 // 결과 화면 보기 모드 탭
 const resultViewCompactBtn = document.querySelector("#resultViewCompactBtn");
@@ -288,7 +332,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260903T002815540Z-08e37a1",
+    appBuildId: "20260903T074603967Z-eaf42df",
     sessionId: currentSession.id,
     submissionId: currentSubmission?.id || `sub_${currentSession.id}`,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
@@ -976,6 +1020,291 @@ function showSessionDetail(session) {
 
   renderModalDetailItems(session, currentModalViewMode);
   sessionDetailModal.showModal();
+}
+
+//+_+// Phase F7: 오답 함께 보기 및 재풀이 모달 열기 및 렌더링
+async function openReviewDetailModal(items, index = 0) {
+  if (!reviewDetailModal) return;
+  if (!Array.isArray(items) || items.length === 0) {
+    const active = await getActiveReviewItems();
+    if (!active || active.length === 0) {
+      alert("현재 함께 볼 오답 항목이 없습니다! 👍");
+      return;
+    }
+    items = active;
+  }
+  currentReviewItems = items;
+  currentReviewIndex = Math.max(0, Math.min(index, items.length - 1));
+  await renderReviewModalItem(currentReviewItems[currentReviewIndex]);
+  if (typeof reviewDetailModal.showModal === "function" && !reviewDetailModal.open) {
+    reviewDetailModal.showModal();
+  }
+}
+
+async function renderReviewModalItem(reviewItem) {
+  if (!reviewItem || !reviewModalProblemBody) return;
+
+  if (reviewModalCanvasInstance) {
+    reviewModalCanvasInstance.destroy();
+    reviewModalCanvasInstance = null;
+  }
+
+  const learnerId = reviewItem.learnerId || getActiveLearnerId();
+  // 원본 Submission 및 문제 데이터 조회
+  const sourceSub = await getSubmission(reviewItem.sourceSubmissionId, { allLearners: true });
+  const question = sourceSub?.questions?.find((q) => q.id === reviewItem.questionId) || {
+    operandA: 0,
+    operandB: 0,
+    operation: reviewItem.unitId === "div" ? "div" : "mul",
+    answer: 0
+  };
+
+  const gradeInfo = sourceSub?.gradingResults?.[reviewItem.questionId] || {};
+  const studentStrokes = sourceSub?.studentStrokesMap?.[reviewItem.questionId] || [];
+  const gradingStrokes = sourceSub?.gradingStrokesMap?.[reviewItem.questionId] || [];
+
+  // 1. 헤더 태그 및 타이틀
+  const totalItems = currentReviewItems.length;
+  const currentNum = currentReviewIndex + 1;
+  const navHtml = totalItems > 1 ? ` (${currentNum} / ${totalItems})` : "";
+  if (reviewModalTag) {
+    reviewModalTag.textContent = `오답 함께 보기${navHtml}`;
+  }
+
+  const opSymbol = question.operation === "div" ? "÷" : "×";
+  if (reviewModalTitle) {
+    reviewModalTitle.textContent = `${question.operandA?.toLocaleString?.() ?? question.operandA} ${opSymbol} ${question.operandB?.toLocaleString?.() ?? question.operandB}`;
+  }
+
+  // 2. 상태 뱃지
+  if (reviewModalStateBadge) {
+    reviewModalStateBadge.className = `status-badge ${reviewItem.state}`;
+    const stateMap = {
+      unresolved: "복습 필요",
+      retrying: "다시 푸는 중",
+      review_pending: "보호자 확인 대기",
+      resolved: "해결 완료"
+    };
+    reviewModalStateBadge.textContent = stateMap[reviewItem.state] || reviewItem.state;
+  }
+
+  if (reviewModalReasonBadge) {
+    reviewModalReasonBadge.textContent = reviewItem.reasonCode === "RETRY" ? "재풀이 요청" : "오답";
+  }
+
+  if (reviewModalRetryCountBadge) {
+    const retryCount = reviewItem.retryAttemptIds?.length || 0;
+    if (retryCount > 0) {
+      reviewModalRetryCountBadge.hidden = false;
+      reviewModalRetryCountBadge.textContent = `재풀이 ${retryCount}회 시도`;
+    } else {
+      reviewModalRetryCountBadge.hidden = true;
+    }
+  }
+
+  // 3. 단계별 풀이 해설 생성
+  let explanationHtml = "";
+  try {
+    if (question.operation === "div") {
+      const steps = getDivisionSteps(question.operandA, question.operandB);
+      explanationHtml = `
+        <div><strong>몫:</strong> ${steps.quotient}, <strong>나머지:</strong> ${steps.remainder}</div>
+        <div style="margin-top:6px; font-size:13px; color:var(--muted);">
+          ${steps.steps.map((s, i) => `${i + 1}단계: ${s.quotientDigit} × ${steps.divisor} = ${s.multiplyValue}, 나머지 ${s.remainder}`).join("<br>")}
+        </div>
+      `;
+    } else {
+      const steps = getMultiplicationSteps(question.operandA, question.operandB);
+      explanationHtml = `
+        <div><strong>정답:</strong> ${steps.result.toLocaleString()}</div>
+        <div style="margin-top:6px; font-size:13px; color:var(--muted);">
+          ${steps.partialProducts.map((p, i) => `${i + 1}단계 (자리 ${p.digitPosition + 1}): ${steps.operandA} × ${p.digit} = ${p.rawProductStr}`).join("<br>")}
+        </div>
+      `;
+    }
+  } catch (_) {
+    explanationHtml = `정답: ${question.answer?.toLocaleString?.() ?? question.answer}`;
+  }
+
+  const feedbackComment = gradeInfo.comment ? escapeHtml(gradeInfo.comment) : "";
+
+  // 4. 모달 본문 렌더링
+  const canvasId = `reviewModalCanvas_${reviewItem.id}`;
+  reviewModalProblemBody.innerHTML = `
+    <!-- 세로셈 / 문제 표시 -->
+    <div class="review-section-box">
+      <div class="review-section-title">문제</div>
+      <div class="review-math-display">
+        ${question.operandA?.toLocaleString?.() ?? question.operandA} ${opSymbol} ${question.operandB?.toLocaleString?.() ?? question.operandB}
+      </div>
+    </div>
+
+    <!-- 학생 답안 vs 정답 비교 -->
+    <div class="review-answer-comparison">
+      <div class="review-answer-pill student-ans">
+        <small style="display:block; font-weight:700; margin-bottom:4px;">학생 풀이 결과</small>
+        <strong>${gradeInfo.decision === "RETRY" ? "재풀이 요청" : "틀림"}</strong>
+      </div>
+      <div class="review-answer-pill correct-ans">
+        <small style="display:block; font-weight:700; margin-bottom:4px;">정답</small>
+        <strong>${question.answer?.toLocaleString?.() ?? question.answer}</strong>
+      </div>
+    </div>
+
+    <!-- 원본 학생 필기 및 보호자 첨삭 캔버스 -->
+    <div class="review-section-box">
+      <div class="review-section-title">학생 필기 및 보호자 첨삭 확인</div>
+      <div class="review-canvas-container">
+        <canvas id="${canvasId}"></canvas>
+      </div>
+    </div>
+
+    <!-- 단계별 해설 -->
+    <div class="review-section-box">
+      <div class="review-section-title">💡 단계별 정답 해설</div>
+      <div class="review-solution-steps">
+        ${explanationHtml}
+      </div>
+    </div>
+
+    <!-- 보호자 코멘트 (있는 경우) -->
+    ${feedbackComment ? `
+      <div class="review-parent-feedback">
+        <strong>💬 보호자 피드백:</strong> ${feedbackComment}
+      </div>
+    ` : ""}
+  `;
+
+  // 캔버스 복원
+  requestAnimationFrame(() => {
+    const canvasEl = document.querySelector(`#${canvasId}`);
+    if (canvasEl) {
+      reviewModalCanvasInstance = createDrawingCanvas(canvasEl, {
+        readOnly: true,
+        backgroundStrokes: studentStrokes
+      });
+      if (gradingStrokes.length > 0) {
+        reviewModalCanvasInstance.setStrokes(gradingStrokes);
+      }
+    }
+  });
+
+  // 5. 액션 버튼군 렌더링
+  let navBtns = "";
+  if (currentReviewItems.length > 1) {
+    navBtns = `
+      <button type="button" class="review-btn-secondary" id="reviewPrevBtn" ${currentReviewIndex === 0 ? "disabled style='opacity:0.5;'" : ""}>이전</button>
+      <button type="button" class="review-btn-secondary" id="reviewNextBtn" ${currentReviewIndex === currentReviewItems.length - 1 ? "disabled style='opacity:0.5;'" : ""}>다음</button>
+    `;
+  }
+
+  if (reviewItem.state === "unresolved") {
+    reviewModalActions.innerHTML = `
+      ${navBtns}
+      <button type="button" class="review-btn-secondary" id="reviewDeferBtn">나중에 복습</button>
+      <button type="button" class="review-btn-primary" id="reviewRetryNowBtn">바로 다시 풀기 ✏️</button>
+    `;
+  } else if (reviewItem.state === "retrying") {
+    reviewModalActions.innerHTML = `
+      ${navBtns}
+      <button type="button" class="review-btn-secondary" id="reviewCloseBtn">닫기</button>
+      <button type="button" class="review-btn-primary" id="reviewResumeBtn">재풀이 이어하기 ✏️</button>
+    `;
+  } else if (reviewItem.state === "review_pending") {
+    reviewModalActions.innerHTML = `
+      ${navBtns}
+      <button type="button" class="review-btn-primary" id="reviewRetryAgainBtn">다시 풀기</button>
+      <button type="button" class="review-btn-success" id="reviewResolveBtn">이제 이해했어요 👍</button>
+    `;
+  } else {
+    // resolved
+    reviewModalActions.innerHTML = `
+      ${navBtns}
+      <button type="button" class="review-btn-secondary" id="reviewCloseBtn">닫기</button>
+    `;
+  }
+
+  // 버튼 이벤트 바인딩
+  reviewModalActions.querySelector("#reviewPrevBtn")?.addEventListener("click", () => {
+    if (currentReviewIndex > 0) {
+      currentReviewIndex -= 1;
+      renderReviewModalItem(currentReviewItems[currentReviewIndex]);
+    }
+  });
+  reviewModalActions.querySelector("#reviewNextBtn")?.addEventListener("click", () => {
+    if (currentReviewIndex < currentReviewItems.length - 1) {
+      currentReviewIndex += 1;
+      renderReviewModalItem(currentReviewItems[currentReviewIndex]);
+    }
+  });
+
+  reviewModalActions.querySelector("#reviewDeferBtn")?.addEventListener("click", async () => {
+    try {
+      await deferReviewItem(reviewItem.id, { learnerId });
+      reviewDetailModal.close();
+      await renderLearnerHomeView();
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "나중에 복습 처리에 실패했습니다.");
+    }
+  });
+
+  reviewModalActions.querySelector("#reviewRetryNowBtn")?.addEventListener("click", async () => {
+    try {
+      const retryResult = await startReviewRetry(reviewItem.id, { learnerId });
+      reviewDetailModal.close();
+      startSessionWithQuestions(retryResult.session.questions, retryResult.session.config);
+      if (currentSession) {
+        currentSession.reviewItemId = reviewItem.id;
+      }
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "재풀이 시작에 실패했습니다.");
+    }
+  });
+
+  reviewModalActions.querySelector("#reviewResumeBtn")?.addEventListener("click", async () => {
+    try {
+      const retryResult = await startReviewRetry(reviewItem.id, { learnerId });
+      reviewDetailModal.close();
+      startSessionWithQuestions(retryResult.session.questions, retryResult.session.config);
+      if (currentSession) {
+        currentSession.reviewItemId = reviewItem.id;
+      }
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "재풀이 이어하기에 실패했습니다.");
+    }
+  });
+
+  reviewModalActions.querySelector("#reviewResolveBtn")?.addEventListener("click", async () => {
+    try {
+      await resolveReviewItem(reviewItem.id, { learnerId, resolvedBy: "guardian" });
+      reviewDetailModal.close();
+      await renderLearnerHomeView();
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "해결 처리에 실패했습니다.");
+    }
+  });
+
+  reviewModalActions.querySelector("#reviewRetryAgainBtn")?.addEventListener("click", async () => {
+    try {
+      const retryResult = await retryReviewItemAgain(reviewItem.id, { learnerId });
+      reviewDetailModal.close();
+      startSessionWithQuestions(retryResult.session.questions, retryResult.session.config);
+      if (currentSession) {
+        currentSession.reviewItemId = reviewItem.id;
+      }
+    } catch (e) {
+      console.error(e);
+      alert(e.message || "다시 풀기 시작에 실패했습니다.");
+    }
+  });
+
+  reviewModalActions.querySelector("#reviewCloseBtn")?.addEventListener("click", () => {
+    reviewDetailModal.close();
+  });
 }
 
 async function handleStartMistakeSession() {
@@ -2179,6 +2508,10 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
     const commentHtml = safeComment ? `<span class="comment-badge">✏️ 피드백: ${safeComment}</span>` : "";
     const canvasId = `resultReviewCanvas_${r.questionId || idx}`;
 
+    const reviewBtnHtml = !r.isCorrect
+      ? `<button type="button" class="btn-review-item-action" data-qid="${r.questionId || idx}" style="margin-left:auto; font-size:12px; font-weight:700; background:#fef08a; color:#854d0e; border:1px solid #fde047; padding:4px 10px; border-radius:8px; cursor:pointer;">🔍 오답 함께 보기</button>`
+      : "";
+
     if (mode === "compact") {
       item.innerHTML = `
         <div class="detail-item-header">
@@ -2187,29 +2520,56 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
             <span class="detail-expr">${r.operandA.toLocaleString()} ${symbol} ${r.operandB.toLocaleString()} = <strong>${r.answer.toLocaleString()}</strong></span>
             <span class="detail-badge ${r.isCorrect ? "correct" : "wrong"}">${r.isCorrect ? "✔ 정답" : "✖ 오답"}</span>
           </div>
+          ${reviewBtnHtml}
           ${commentHtml}
         </div>
       `;
-      return item;
+    } else {
+      item.innerHTML = `
+        <div class="detail-item-header">
+          <div class="detail-left">
+            <span class="detail-order">${idx + 1}번</span>
+            <span class="detail-expr">${r.operandA.toLocaleString()} ${symbol} ${r.operandB.toLocaleString()} = <strong>${r.answer.toLocaleString()}</strong></span>
+            <span class="detail-badge ${r.isCorrect ? "correct" : "wrong"}">${r.isCorrect ? "✔ 정답" : "✖ 오답"}</span>
+          </div>
+          ${reviewBtnHtml}
+          ${commentHtml}
+        </div>
+        <!-- 학생 필기 및 빨간 펜 첨삭 복원 영역 -->
+        <div class="detail-review-stage">
+          <div class="problem-canvas-stage">
+            ${renderProblemStageContent(r, { showGuides: false })}
+            <canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>
+          </div>
+        </div>
+      `;
     }
 
-    item.innerHTML = `
-      <div class="detail-item-header">
-        <div class="detail-left">
-          <span class="detail-order">${idx + 1}번</span>
-          <span class="detail-expr">${r.operandA.toLocaleString()} ${symbol} ${r.operandB.toLocaleString()} = <strong>${r.answer.toLocaleString()}</strong></span>
-          <span class="detail-badge ${r.isCorrect ? "correct" : "wrong"}">${r.isCorrect ? "✔ 정답" : "✖ 오답"}</span>
-        </div>
-        ${commentHtml}
-      </div>
-      <!-- 학생 필기 및 빨간 펜 첨삭 복원 영역 -->
-      <div class="detail-review-stage">
-        <div class="problem-canvas-stage">
-          ${renderProblemStageContent(r, { showGuides: false })}
-          <canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>
-        </div>
-      </div>
-    `;
+    if (!r.isCorrect) {
+      const btn = item.querySelector(".btn-review-item-action");
+      if (btn) {
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          const learnerId = getActiveLearnerId();
+          const allItems = await getAllReviewItems({ learnerId });
+          const targetItem = allItems.find((it) => it.questionId === (r.questionId || idx) || it.sourceAttemptId === r.attemptId);
+          if (targetItem) {
+            openReviewDetailModal([targetItem], 0);
+          } else {
+            const attemptId = r.attemptId || (currentSession?.id ? `${currentSession.id}_${r.questionId || idx}` : null);
+            if (attemptId) {
+              const direct = await getReviewItemBySourceAttemptId(attemptId, { learnerId });
+              if (direct) {
+                openReviewDetailModal([direct], 0);
+                return;
+              }
+            }
+            alert("해당 문제의 복습 항목을 찾을 수 없습니다.");
+          }
+        });
+      }
+    }
+
     return item;
   }));
 
@@ -2557,6 +2917,12 @@ if (sessionDetailCloseBtn) {
 if (sessionDetailCloseBtnBottom) {
   sessionDetailCloseBtnBottom.addEventListener("click", () => {
     if (sessionDetailModal) sessionDetailModal.close();
+  });
+}
+
+if (reviewModalCloseBtn) {
+  reviewModalCloseBtn.addEventListener("click", () => {
+    if (reviewDetailModal) reviewDetailModal.close();
   });
 }
 
@@ -3001,6 +3367,9 @@ if (typeof document !== "undefined") {
       if (restoreSessionFromSubmission(submission)) {
         navigate(ROUTES.MATH_GRADING);
       }
+    },
+    onOpenReviewQueue: (items) => {
+      openReviewDetailModal(items, 0);
     }
   });
 

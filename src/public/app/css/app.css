@@ -3262,6 +3262,220 @@ body.mode-grading {
   .grading-actions { grid-template-columns: 1fr; }
 }
 
+/*+_+// Phase F7: 오답 함께 보기 & 재풀이 스타일 */
+.review-queue-home-entry {
+  margin: 20px 0;
+  padding: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  background: var(--paper);
+  border: 2px solid #eab308;
+  border-radius: 22px;
+  box-shadow: 0 4px 16px rgba(234, 179, 8, 0.12);
+}
+.review-queue-home-entry h2, .review-queue-home-entry p { margin: 0 0 6px; }
+.review-queue-home-entry .eyebrow { color: #b45309; font-weight: 800; }
+.review-queue-home-entry .review-open-btn {
+  background: #ca8a04;
+  color: #fff;
+  border: none;
+  font-weight: 800;
+  padding: 12px 24px;
+  border-radius: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.review-queue-home-entry .review-open-btn:hover {
+  background: #a16207;
+}
+
+@media (max-width: 760px) {
+  .review-queue-home-entry { align-items: stretch; flex-direction: column; }
+}
+
+.review-detail-dialog {
+  max-width: 760px;
+  width: 94vw;
+  border-radius: 24px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.review-detail-card {
+  padding: 28px;
+  max-height: 88vh;
+  overflow-y: auto;
+  border-radius: 24px;
+  background: var(--paper);
+  border: 2px solid rgba(23, 63, 53, 0.16);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+}
+.review-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 20px;
+}
+.status-badge {
+  font-size: 0.85rem;
+  font-weight: 800;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: #fef08a;
+  color: #854d0e;
+}
+.status-badge.retrying {
+  background: #bfdbfe;
+  color: #1e40af;
+}
+.status-badge.review_pending {
+  background: #fed7aa;
+  color: #9a3412;
+}
+.status-badge.resolved {
+  background: #bbf7d0;
+  color: #166534;
+}
+.reason-badge {
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--muted);
+}
+.retry-count-badge {
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+}
+
+.review-problem-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.review-section-box {
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: rgba(23, 63, 53, 0.04);
+  border: 1px solid rgba(23, 63, 53, 0.08);
+}
+.review-section-title {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.review-math-display {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: var(--ink);
+  text-align: center;
+  padding: 12px;
+}
+.review-canvas-container {
+  width: 100%;
+  height: 220px;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+.review-canvas-container canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.review-answer-comparison {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.review-answer-pill {
+  padding: 12px;
+  border-radius: 12px;
+  text-align: center;
+}
+.review-answer-pill.student-ans {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+.review-answer-pill.correct-ans {
+  background: #dcfce7;
+  border: 1px solid #86efac;
+  color: #166534;
+}
+.review-solution-steps {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--ink);
+  background: #fff;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+.review-parent-feedback {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  padding: 14px;
+  border-radius: 12px;
+  color: #92400e;
+}
+.review-dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.review-btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-weight: 800;
+  padding: 12px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  min-height: 44px;
+}
+.review-btn-primary:hover {
+  filter: brightness(1.1);
+}
+.review-btn-secondary {
+  background: transparent;
+  border: 1px solid rgba(23, 63, 53, 0.2);
+  color: var(--ink);
+  font-weight: 700;
+  padding: 12px 18px;
+  border-radius: 12px;
+  cursor: pointer;
+  min-height: 44px;
+}
+.review-btn-secondary:hover {
+  background: rgba(23, 63, 53, 0.06);
+}
+.review-btn-success {
+  background: #16a34a;
+  color: #fff;
+  border: none;
+  font-weight: 800;
+  padding: 12px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  min-height: 44px;
+}
+.review-btn-success:hover {
+  background: #15803d;
+}
+
 body.large-problems .worksheet-grid {
   grid-template-columns: minmax(0, 1fr) !important;
 }

@@ -22,13 +22,22 @@ import {
   getLearnerById
 } from "./learnerQueries.js";
 
-import { getLearnerHomeSummary, getAllSubmissions } from "../data/learningQueries.js";
+import { getLearnerHomeSummary, getAllSubmissions, getActiveReviewItems } from "../data/learningQueries.js";
 import { getAllSubjects, getSubject } from "../platform/subjectRegistry.js";
 import { navigate, ROUTES } from "../platform/appRouter.js";
 
 let dom = {};
 let isSessionActiveFn = null;
 let openPendingGradingFn = null;
+let openReviewQueueFn = null;
+
+export function setOpenPendingGradingHandler(fn) {
+  openPendingGradingFn = fn;
+}
+
+export function setOpenReviewQueueHandler(fn) {
+  openReviewQueueFn = fn;
+}
 
 const DEFAULT_AVATARS = ["🌱", "🚀", "⭐", "🦊", "🐳", "🐰", "🦖", "🦁"];
 
@@ -63,6 +72,9 @@ export function initLearnerView(options = {}) {
   }
   if (options.onOpenPendingGrading) {
     openPendingGradingFn = options.onOpenPendingGrading;
+  }
+  if (options.onOpenReviewQueue) {
+    openReviewQueueFn = options.onOpenReviewQueue;
   }
 
   dom = {
@@ -315,6 +327,39 @@ export async function renderLearnerHomeView() {
       `;
       gradingEntry.querySelector("#openPendingGradingBtn")?.addEventListener("click", () => {
         openPendingGradingFn?.(pendingSubmission);
+      });
+    }
+
+    //+_+// Phase F7: 활성 학습자의 복습 필요 문제(ReviewItem) 큐를 홈에 표시한다.
+    let reviewEntry = dom.learnerHomeView.querySelector("#activeReviewQueueEntry");
+    const activeReviewItems = await getActiveReviewItems({ learnerId: learner.id });
+    if (!activeReviewItems || activeReviewItems.length === 0) {
+      reviewEntry?.remove();
+    } else {
+      if (!reviewEntry) {
+        reviewEntry = document.createElement("section");
+        reviewEntry.id = "activeReviewQueueEntry";
+        reviewEntry.className = "review-queue-home-entry";
+        dom.learnerHomeView.querySelector(".subject-section")?.before(reviewEntry);
+      }
+      const retryingCount = activeReviewItems.filter((i) => i.state === "retrying").length;
+      const pendingCount = activeReviewItems.filter((i) => i.state === "review_pending").length;
+      const unresolvedCount = activeReviewItems.filter((i) => i.state === "unresolved").length;
+
+      let desc = `복습 필요 ${unresolvedCount}개`;
+      if (retryingCount > 0) desc += ` · 다시 푸는 중 ${retryingCount}개`;
+      if (pendingCount > 0) desc += ` · 보호자 확인 대기 ${pendingCount}개`;
+
+      reviewEntry.innerHTML = `
+        <div>
+          <p class="eyebrow">오답 함께 보기</p>
+          <h2>함께 복습할 오답이 ${activeReviewItems.length}개 있어요</h2>
+          <p>${desc}</p>
+        </div>
+        <button type="button" class="primary-action review-open-btn" id="openReviewQueueBtn">오답 함께 보기</button>
+      `;
+      reviewEntry.querySelector("#openReviewQueueBtn")?.addEventListener("click", () => {
+        openReviewQueueFn?.(activeReviewItems);
       });
     }
   }

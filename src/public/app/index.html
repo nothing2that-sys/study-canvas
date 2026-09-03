@@ -18,7 +18,7 @@
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-180.png">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
-    <link rel="stylesheet" href="./css/app.css?v=20260903T002815540Z-08e37a1">
+    <link rel="stylesheet" href="./css/app.css?v=20260903T074603967Z-eaf42df">
   </head>
   <body>
     <div class="app-shell">
@@ -810,6 +810,30 @@
       </div>
     </dialog>
 
-    <script type="module" src="./js/app.js?v=20260903T002815540Z-08e37a1"></script>
+    <!-- 🌟 Phase F7: 오답 함께 보기 및 재풀이 모달 -->
+    <dialog id="reviewDetailModal" class="confirm-dialog review-detail-dialog">
+      <div class="dialog-card review-detail-card">
+        <div class="detail-modal-header">
+          <div>
+            <span class="detail-modal-tag" id="reviewModalTag">오답 함께 보기</span>
+            <h3 id="reviewModalTitle">오답 함께 보기</h3>
+          </div>
+          <button type="button" class="detail-modal-close" id="reviewModalCloseBtn" aria-label="닫기">✕</button>
+        </div>
+        <div class="review-status-bar" id="reviewModalStatusBar">
+          <span class="status-badge" id="reviewModalStateBadge">복습 필요</span>
+          <span class="reason-badge" id="reviewModalReasonBadge">오답</span>
+          <span class="retry-count-badge" id="reviewModalRetryCountBadge" hidden>재풀이 1회 시도</span>
+        </div>
+        <div class="review-problem-body" id="reviewModalProblemBody">
+          <!-- 문제, 원본 답안, 원본 필기 캔버스, 정답, 단계별 해설이 동적으로 렌더링됩니다 -->
+        </div>
+        <div class="dialog-actions review-dialog-actions" id="reviewModalActions">
+          <!-- 상태별 동적 버튼 -->
+        </div>
+      </div>
+    </dialog>
+
+    <script type="module" src="./js/app.js?v=20260903T074603967Z-eaf42df"></script>
   </body>
 </html>

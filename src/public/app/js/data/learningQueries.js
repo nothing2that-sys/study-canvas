@@ -18,7 +18,14 @@ import {
   getAllSubmissions as storageGetAllSubmissions,
   getProgressAggregate as storageGetProgressAggregate,
   getAllProgressAggregates as storageGetAllProgressAggregates,
-  getProgressAggregateByLevel as storageGetProgressAggregateByLevel
+  getProgressAggregateByLevel as storageGetProgressAggregateByLevel,
+  getReviewItem as storageGetReviewItem,
+  getAllReviewItems as storageGetAllReviewItems,
+  getActiveReviewItems as storageGetActiveReviewItems,
+  getResolvedReviewItems as storageGetResolvedReviewItems,
+  getReviewItemsByState as storageGetReviewItemsByState,
+  getReviewItemsByLevel as storageGetReviewItemsByLevel,
+  getReviewItemBySourceAttemptId as storageGetReviewItemBySourceAttemptId
 } from "../storage.js";
 
 //+_+// 최근 완료 세션 목록 조회
@@ -119,4 +126,44 @@ export async function getProgressAggregateByLevel(learnerId, levelId, options = 
 export async function getProgressAggregates(options = {}) {
   return await storageGetAllProgressAggregates(options);
 }
+
+//+_+// ============================================================================
+//+_+// Phase F7: 오답 함께 보기 & 재풀이 (ReviewItem) Query 계층 API
+//+_+// ============================================================================
+
+//+_+// Phase F7: ReviewItem 단건 조회 (learnerId 격리)
+export async function getReviewItem(id, options = {}) {
+  return await storageGetReviewItem(id, options);
+}
+
+//+_+// Phase F7: ReviewItem 전체 목록 조회 (learnerId 격리 및 필터)
+export async function getAllReviewItems(filter = {}, options = {}) {
+  return await storageGetAllReviewItems(filter, options);
+}
+
+//+_+// Phase F7: 활성 복습 항목 목록 조회 (unresolved, retrying, review_pending)
+export async function getActiveReviewItems(options = {}) {
+  return await storageGetActiveReviewItems(options);
+}
+
+//+_+// Phase F7: 해결 완료된 복습 항목 목록 조회 (resolved)
+export async function getResolvedReviewItems(options = {}) {
+  return await storageGetResolvedReviewItems(options);
+}
+
+//+_+// Phase F7: 특정 상태의 복습 항목 목록 조회
+export async function getReviewItemsByState(state, options = {}) {
+  return await storageGetReviewItemsByState(state, options);
+}
+
+//+_+// Phase F7: 특정 레벨의 복습 항목 목록 조회
+export async function getReviewItemsByLevel(learnerId, levelId, options = {}) {
+  return await storageGetReviewItemsByLevel(learnerId, levelId, options);
+}
+
+//+_+// Phase F7: 원본 Attempt ID 기준 ReviewItem 조회
+export async function getReviewItemBySourceAttemptId(sourceAttemptId, options = {}) {
+  return await storageGetReviewItemBySourceAttemptId(sourceAttemptId, options);
+}
+
 

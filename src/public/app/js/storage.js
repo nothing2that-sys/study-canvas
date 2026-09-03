@@ -1,5 +1,6 @@
 import { normalizeDraft } from "./draftEngine.js";
 import { getGradingProgress, normalizeGradeDecision, createGradeDecision } from "./parentGrading.js";
+import { createSession } from "./sessionEngine.js";
 
 /**
  * Math Canvas Pro - IndexedDB 로컬 영구 스토리지 관리자 (Phase F1: 스키마 버전 및 학습자 프로필)
@@ -11,7 +12,8 @@ import { getGradingProgress, normalizeGradeDecision, createGradeDecision } from 
  */
 
 const DB_NAME = "math_canvas_pro_db";
-const DB_VERSION = 5;
+//+_+// Phase F7: DB_VERSION 6으로 승격 및 reviewItems Store 추가
+export const DB_VERSION = 6;
 
 //+_+// 기존 레거시 데이터 및 미지정 데이터용 기본 학습자 식별자
 export const DEFAULT_LEGACY_LEARNER_ID = "legacy_default_learner";
@@ -243,6 +245,25 @@ export function getDB() {
           progressAggStore.createIndex("learnerId", "learnerId", { unique: false });
         }
       }
+
+      //+_+// 10. reviewItems store (Phase F7: 오답 함께 보기 + 재풀이 라이프사이클)
+      if (!db.objectStoreNames.contains("reviewItems")) {
+        const reviewStore = db.createObjectStore("reviewItems", { keyPath: "id" });
+        reviewStore.createIndex("learnerId", "learnerId", { unique: false });
+        reviewStore.createIndex("state", "state", { unique: false });
+        reviewStore.createIndex("subjectId", "subjectId", { unique: false });
+        reviewStore.createIndex("levelId", "levelId", { unique: false });
+        reviewStore.createIndex("sourceAttemptId", "sourceAttemptId", { unique: false });
+        reviewStore.createIndex("nextReviewAt", "nextReviewAt", { unique: false });
+        reviewStore.createIndex("sourceSessionId", "sourceSessionId", { unique: false });
+        reviewStore.createIndex("sourceSubmissionId", "sourceSubmissionId", { unique: false });
+        reviewStore.createIndex("questionId", "questionId", { unique: false });
+      } else {
+        const reviewStore = request.transaction.objectStore("reviewItems");
+        if (!reviewStore.indexNames.contains("learnerId")) {
+          reviewStore.createIndex("learnerId", "learnerId", { unique: false });
+        }
+      }
     };
 
     request.onsuccess = (event) => {
@@ -270,7 +291,8 @@ let memoryStore = {
   strokes: new Map(),
   draftSessions: new Map(),
   submissions: new Map(),
-  progressAggregates: new Map()
+  progressAggregates: new Map(),
+  reviewItems: new Map()
 };
 
 function createMemoryFallbackDB() {
@@ -284,7 +306,8 @@ function createMemoryFallbackDB() {
     strokes: memoryStore.strokes,
     draftSessions: memoryStore.draftSessions,
     submissions: memoryStore.submissions,
-    progressAggregates: memoryStore.progressAggregates
+    progressAggregates: memoryStore.progressAggregates,
+    reviewItems: memoryStore.reviewItems
   };
 }
 
@@ -1340,13 +1363,16 @@ export async function clearAllData(options = {}) {
       for (const [key, agg] of db.progressAggregates.entries()) {
         if ((agg.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.progressAggregates.delete(key);
       }
+      for (const [key, rev] of db.reviewItems.entries()) {
+        if ((rev.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.reviewItems.delete(key);
+      }
       const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
       db.draftSessions.delete(draftKey);
       return true;
     }
 
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates"], "readwrite");
+      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems"], "readwrite");
       // sessions
       const sessionStore = tx.objectStore("sessions");
       sessionStore.openCursor().onsuccess = (e) => {
@@ -1417,6 +1443,16 @@ export async function clearAllData(options = {}) {
         }
       };
 
+      // reviewItems
+      const reviewStore = tx.objectStore("reviewItems");
+      reviewStore.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if ((cursor.value.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) cursor.delete();
+          cursor.continue();
+        }
+      };
+
       tx.oncomplete = () => resolve(true);
       tx.onerror = (e) => reject(e.target.error);
     });
@@ -1435,11 +1471,12 @@ export async function clearAllData(options = {}) {
     db.draftSessions.clear();
     db.submissions.clear();
     db.progressAggregates.clear();
+    db.reviewItems.clear();
     return true;
   }
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(["learnerProfiles", "sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates"], "readwrite");
+    const tx = db.transaction(["learnerProfiles", "sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems"], "readwrite");
     tx.objectStore("learnerProfiles").clear();
     tx.objectStore("sessions").clear();
     tx.objectStore("attempts").clear();
@@ -1449,6 +1486,7 @@ export async function clearAllData(options = {}) {
     tx.objectStore("draftSessions").clear();
     tx.objectStore("submissions").clear();
     tx.objectStore("progressAggregates").clear();
+    tx.objectStore("reviewItems").clear();
     tx.oncomplete = () => resolve(true);
     tx.onerror = (e) => reject(e.target.error);
   });
@@ -2255,6 +2293,7 @@ export async function finalizeSubmissionGrading(id, options = {}) {
     const backupAttempts = new Map(db.attempts);
     const backupMistakes = new Map(db.mistakes);
     const backupProgressAggregates = new Map(db.progressAggregates);
+    const backupReviewItems = new Map(db.reviewItems);
 
     try {
       db.submissions.set(id, finalizedSubmission);
@@ -2304,10 +2343,39 @@ export async function finalizeSubmissionGrading(id, options = {}) {
             wrongCount: prev.wrongCount + 1,
             lastWrongAt: now
           });
+
+          //+_+// Phase F7: WRONG 또는 RETRY 문제에 대해 unresolved ReviewItem 생성 (멱등성 보장)
+          const revId = buildReviewItemId(rawExisting.learnerId, attemptId);
+          if (!db.reviewItems.has(revId)) {
+            db.reviewItems.set(revId, {
+              id: revId,
+              learnerId: rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID,
+              subjectId: rawExisting.subjectId || "math",
+              courseId: rawExisting.courseId || rawExisting.config?.courseId || "arithmetic",
+              unitId: rawExisting.unitId || r.operation || "mul",
+              levelId: r.macroLevelId || r.level,
+              sourceAttemptId: attemptId,
+              sourceSessionId: sessionId,
+              sourceSubmissionId: id,
+              questionId: r.questionId,
+              state: "unresolved",
+              retryAttemptIds: [],
+              reasonCode: r.decision,
+              nextReviewAt: null,
+              resolvedAt: null,
+              resolvedBy: null,
+              createdAt: now,
+              updatedAt: now
+            });
+          }
         } else {
           db.mistakes.delete(mistakeCompoundKey);
         }
       });
+
+      if (typeof finalizeFailureInjector === "function") {
+        finalizeFailureInjector({ isMemory: true, phase: "during_review_items" });
+      }
 
       if (typeof finalizeFailureInjector === "function") {
         finalizeFailureInjector({ isMemory: true, phase: "during_aggregates" });
@@ -2333,23 +2401,27 @@ export async function finalizeSubmissionGrading(id, options = {}) {
       db.attempts = backupAttempts;
       db.mistakes = backupMistakes;
       db.progressAggregates = backupProgressAggregates;
+      db.reviewItems = backupReviewItems;
       memoryStore.submissions = backupSubmissions;
       memoryStore.sessions = backupSessions;
       memoryStore.attempts = backupAttempts;
       memoryStore.mistakes = backupMistakes;
       memoryStore.progressAggregates = backupProgressAggregates;
+      memoryStore.reviewItems = backupReviewItems;
       throw err;
     }
   }
 
   return new Promise((resolve, reject) => {
+    let tx;
     try {
-      const tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates"], "readwrite");
+      tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates", "reviewItems"], "readwrite");
       const subStore = tx.objectStore("submissions");
       const sessStore = tx.objectStore("sessions");
       const attStore = tx.objectStore("attempts");
       const misStore = tx.objectStore("mistakes");
       const progStore = tx.objectStore("progressAggregates");
+      const revStore = tx.objectStore("reviewItems");
 
       if (typeof finalizeFailureInjector === "function") {
         finalizeFailureInjector({ tx, phase: "before_write" });
@@ -2405,10 +2477,42 @@ export async function finalizeSubmissionGrading(id, options = {}) {
               lastWrongAt: now
             });
           };
+
+          //+_+// Phase F7: reviewItems Store에 unresolved 상태로 영구 저장 (멱등성 보장)
+          const revId = buildReviewItemId(rawExisting.learnerId, attemptId);
+          const getRevReq = revStore.get(revId);
+          getRevReq.onsuccess = () => {
+            if (!getRevReq.result) {
+              revStore.put({
+                id: revId,
+                learnerId: rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID,
+                subjectId: rawExisting.subjectId || "math",
+                courseId: rawExisting.courseId || rawExisting.config?.courseId || "arithmetic",
+                unitId: rawExisting.unitId || r.operation || "mul",
+                levelId: r.macroLevelId || r.level,
+                sourceAttemptId: attemptId,
+                sourceSessionId: sessionId,
+                sourceSubmissionId: id,
+                questionId: r.questionId,
+                state: "unresolved",
+                retryAttemptIds: [],
+                reasonCode: r.decision,
+                nextReviewAt: null,
+                resolvedAt: null,
+                resolvedBy: null,
+                createdAt: now,
+                updatedAt: now
+              });
+            }
+          };
         } else {
           misStore.delete(mistakeCompoundKey);
         }
       });
+
+      if (typeof finalizeFailureInjector === "function") {
+        finalizeFailureInjector({ tx, phase: "during_review_items" });
+      }
 
       // ProgressAggregate를 동일 트랜잭션 내부에서 일괄 교체
       const req = progStore.openCursor();
@@ -2449,6 +2553,9 @@ export async function finalizeSubmissionGrading(id, options = {}) {
       tx.onerror = (e) => reject(tx.error || e.target?.error || new Error("Finalize transaction failed"));
       tx.onabort = (e) => reject(tx.error || e.target?.error || new Error("Finalize transaction aborted"));
     } catch (err) {
+      if (tx) {
+        try { tx.abort(); } catch (_) {}
+      }
       reject(err);
     }
   });
@@ -2536,6 +2643,7 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
     const backupAttempts = new Map(db.attempts);
     const backupMistakes = new Map(db.mistakes);
     const backupProgressAggregates = new Map(db.progressAggregates);
+    const backupReviewItems = new Map(db.reviewItems);
 
     try {
       db.submissions.set(submissionId, revisedSubmission);
@@ -2572,8 +2680,10 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
       }
 
       // attempts 갱신
+      let targetSourceAttemptId = null;
       for (const [attId, att] of db.attempts.entries()) {
         if (att.sessionId === sessionId && att.questionId === questionId) {
+          targetSourceAttemptId = attId;
           db.attempts.set(attId, {
             ...att,
             decision: normalizedDecision,
@@ -2583,6 +2693,55 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
             comment: finalComment,
             revisedAt: now
           });
+        }
+      }
+
+      //+_+// Phase F7: ReviewItem reconciliation in memory mode
+      const revId = targetSourceAttemptId ? buildReviewItemId(rawExisting.learnerId, targetSourceAttemptId) : null;
+      if (isMistake) {
+        if (revId && db.reviewItems.has(revId)) {
+          const rev = db.reviewItems.get(revId);
+          db.reviewItems.set(revId, {
+            ...rev,
+            reasonCode: normalizedDecision,
+            updatedAt: now
+          });
+        } else if (revId && targetSourceAttemptId) {
+          db.reviewItems.set(revId, {
+            id: revId,
+            learnerId: rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID,
+            subjectId: rawExisting.subjectId || "math",
+            courseId: rawExisting.courseId || rawExisting.config?.courseId || "arithmetic",
+            unitId: rawExisting.unitId || question.operation || "mul",
+            levelId: question.macroLevelId || question.level,
+            sourceAttemptId: targetSourceAttemptId,
+            sourceSessionId: sessionId,
+            sourceSubmissionId: submissionId,
+            questionId,
+            state: "unresolved",
+            retryAttemptIds: [],
+            reasonCode: normalizedDecision,
+            nextReviewAt: null,
+            resolvedAt: null,
+            resolvedBy: null,
+            createdAt: now,
+            updatedAt: now
+          });
+        }
+      } else {
+        if (revId && db.reviewItems.has(revId)) {
+          const rev = db.reviewItems.get(revId);
+          if ((rev.retryAttemptIds?.length || 0) === 0) {
+            db.reviewItems.delete(revId);
+          } else {
+            db.reviewItems.set(revId, {
+              ...rev,
+              state: "resolved",
+              resolvedAt: now,
+              resolvedBy: "guardian_revision",
+              updatedAt: now
+            });
+          }
         }
       }
 
@@ -2630,23 +2789,27 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
       db.attempts = backupAttempts;
       db.mistakes = backupMistakes;
       db.progressAggregates = backupProgressAggregates;
+      db.reviewItems = backupReviewItems;
       memoryStore.submissions = backupSubmissions;
       memoryStore.sessions = backupSessions;
       memoryStore.attempts = backupAttempts;
       memoryStore.mistakes = backupMistakes;
       memoryStore.progressAggregates = backupProgressAggregates;
+      memoryStore.reviewItems = backupReviewItems;
       throw err;
     }
   }
 
   return new Promise((resolve, reject) => {
+    let tx;
     try {
-      const tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates"], "readwrite");
+      tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates", "reviewItems"], "readwrite");
       const subStore = tx.objectStore("submissions");
       const sessStore = tx.objectStore("sessions");
       const attStore = tx.objectStore("attempts");
       const misStore = tx.objectStore("mistakes");
       const progStore = tx.objectStore("progressAggregates");
+      const revStore = tx.objectStore("reviewItems");
 
       if (typeof reviseFailureInjector === "function") {
         reviseFailureInjector({ tx, phase: "before_write" });
@@ -2688,7 +2851,7 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
         }
       };
 
-      // attempt 갱신
+      // attempt 갱신 및 reviewItem reconciliation
       attStore.openCursor().onsuccess = (e) => {
         const cursor = e.target.result;
         if (cursor) {
@@ -2702,6 +2865,58 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
               comment: finalComment,
               revisedAt: now
             });
+
+            //+_+// Phase F7: reviewItem reconciliation in IndexedDB
+            const sourceAttemptId = cursor.value.id;
+            const revId = buildReviewItemId(rawExisting.learnerId, sourceAttemptId);
+            const getRevReq = revStore.get(revId);
+            getRevReq.onsuccess = () => {
+              const existingRev = getRevReq.result;
+              if (isMistake) {
+                if (existingRev) {
+                  revStore.put({
+                    ...existingRev,
+                    reasonCode: normalizedDecision,
+                    updatedAt: now
+                  });
+                } else {
+                  revStore.put({
+                    id: revId,
+                    learnerId: rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID,
+                    subjectId: rawExisting.subjectId || "math",
+                    courseId: rawExisting.courseId || rawExisting.config?.courseId || "arithmetic",
+                    unitId: rawExisting.unitId || question.operation || "mul",
+                    levelId: question.macroLevelId || question.level,
+                    sourceAttemptId,
+                    sourceSessionId: sessionId,
+                    sourceSubmissionId: submissionId,
+                    questionId,
+                    state: "unresolved",
+                    retryAttemptIds: [],
+                    reasonCode: normalizedDecision,
+                    nextReviewAt: null,
+                    resolvedAt: null,
+                    resolvedBy: null,
+                    createdAt: now,
+                    updatedAt: now
+                  });
+                }
+              } else {
+                if (existingRev) {
+                  if ((existingRev.retryAttemptIds?.length || 0) === 0) {
+                    revStore.delete(revId);
+                  } else {
+                    revStore.put({
+                      ...existingRev,
+                      state: "resolved",
+                      resolvedAt: now,
+                      resolvedBy: "guardian_revision",
+                      updatedAt: now
+                    });
+                  }
+                }
+              }
+            };
           }
           cursor.continue();
         }
@@ -2764,7 +2979,404 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
 
       tx.onerror = (e) => reject(tx.error || e.target?.error || new Error("Revision transaction failed"));
     } catch (err) {
+      if (tx) {
+        try { tx.abort(); } catch (_) {}
+      }
       reject(err);
     }
   });
 }
+
+//+_+// ============================================================================
+//+_+// Phase F7: 오답 함께 보기 & 재풀이 (ReviewItem) 도메인 API 및 상태 전이
+//+_+// ============================================================================
+
+//+_+// Phase F7: ReviewItem ID 결정론적 생성기
+export function buildReviewItemId(learnerId, sourceAttemptId) {
+  const normLearnerId = learnerId || DEFAULT_LEGACY_LEARNER_ID;
+  return `rev_${normLearnerId}_${sourceAttemptId}`;
+}
+
+let retryFailureInjector = null;
+export function _setRetryFailureInjectorForTesting(fn) {
+  retryFailureInjector = fn;
+}
+
+//+_+// Phase F7: ReviewItem 단건 저장
+export async function saveReviewItem(item) {
+  if (!item || !item.id) throw new Error("저장할 ReviewItem 데이터와 id가 필요합니다.");
+  const db = await getDB();
+  const now = Date.now();
+  const normalizedItem = {
+    ...item,
+    learnerId: item.learnerId || DEFAULT_LEGACY_LEARNER_ID,
+    retryAttemptIds: Array.isArray(item.retryAttemptIds) ? [...item.retryAttemptIds] : [],
+    updatedAt: item.updatedAt || now
+  };
+
+  if (db.isMemory) {
+    db.reviewItems.set(normalizedItem.id, normalizedItem);
+    return normalizedItem;
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction("reviewItems", "readwrite");
+      const store = tx.objectStore("reviewItems");
+      store.put(normalizedItem);
+      tx.oncomplete = () => resolve(normalizedItem);
+      tx.onerror = (e) => reject(tx.error || e.target?.error || new Error("ReviewItem 저장 실패"));
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+//+_+// Phase F7: ReviewItem 단건 조회 (학습자 격리 적용)
+export async function getReviewItem(id, options = {}) {
+  if (!id) return null;
+  const db = await getDB();
+  let item = null;
+
+  if (db.isMemory) {
+    item = db.reviewItems.get(id) || null;
+  } else {
+    item = await new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction("reviewItems", "readonly");
+        const store = tx.objectStore("reviewItems");
+        const req = store.get(id);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = (e) => reject(tx.error || e.target?.error || new Error("ReviewItem 조회 실패"));
+      } catch (_) {
+        resolve(null);
+      }
+    });
+  }
+
+  if (!item) return null;
+
+  if (!options.allLearners) {
+    const targetLearnerId = options.learnerId || getCurrentLearnerId();
+    if (targetLearnerId && (item.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+      return null;
+    }
+  }
+
+  return item;
+}
+
+//+_+// Phase F7: ReviewItem 목록 조회 (학습자 격리 및 필터링)
+export async function getAllReviewItems(filter = {}, options = {}) {
+  const db = await getDB();
+  let all = [];
+
+  if (db.isMemory) {
+    all = Array.from(db.reviewItems.values());
+  } else {
+    all = await new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction("reviewItems", "readonly");
+        const store = tx.objectStore("reviewItems");
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = (e) => reject(tx.error || e.target?.error || new Error("ReviewItems 조회 실패"));
+      } catch (_) {
+        resolve([]);
+      }
+    });
+  }
+
+  // 학습자 격리 필터
+  const isAllLearners = filter.allLearners || options.allLearners;
+  if (!isAllLearners) {
+    const targetLearnerId = filter.learnerId || options.learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
+    all = all.filter((item) => (item.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId);
+  }
+
+  // 상태 필터
+  if (filter.state) {
+    all = all.filter((item) => item.state === filter.state);
+  }
+
+  // 과목/레벨 필터
+  if (filter.subjectId) {
+    all = all.filter((item) => item.subjectId === filter.subjectId);
+  }
+  if (filter.levelId) {
+    all = all.filter((item) => item.levelId === filter.levelId);
+  }
+  if (filter.questionId) {
+    all = all.filter((item) => item.questionId === filter.questionId);
+  }
+
+  return all.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
+}
+
+//+_+// Phase F7: 활성 복습 큐 조회 (unresolved, retrying, review_pending)
+export async function getActiveReviewItems(options = {}) {
+  const all = await getAllReviewItems({}, options);
+  return all.filter((item) => item.state !== "resolved");
+}
+
+//+_+// Phase F7: 해결 완료된 복습 항목 조회
+export async function getResolvedReviewItems(options = {}) {
+  const all = await getAllReviewItems({ state: "resolved" }, options);
+  return all;
+}
+
+//+_+// Phase F7: 특정 상태의 복습 항목 조회
+export async function getReviewItemsByState(state, options = {}) {
+  return await getAllReviewItems({ state }, options);
+}
+
+//+_+// Phase F7: 특정 레벨의 복습 항목 조회
+export async function getReviewItemsByLevel(learnerId, levelId, options = {}) {
+  return await getAllReviewItems({ learnerId, levelId }, options);
+}
+
+//+_+// Phase F7: 원본 Attempt ID로 ReviewItem 조회
+export async function getReviewItemBySourceAttemptId(sourceAttemptId, options = {}) {
+  if (!sourceAttemptId) return null;
+  const all = await getAllReviewItems({ allLearners: true }, options);
+  const found = all.find((item) => item.sourceAttemptId === sourceAttemptId);
+  if (!found) return null;
+
+  if (!options.allLearners) {
+    const targetLearnerId = options.learnerId || getCurrentLearnerId();
+    if (targetLearnerId && (found.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+      return null;
+    }
+  }
+  return found;
+}
+
+//+_+// Phase F7: 바로 다시 풀기 (신규 Retry Attempt 및 1문제 단독 세션 생성, ReviewItem retrying 전이 원자적 수행)
+export async function startReviewRetry(reviewItemId, options = {}) {
+  if (!reviewItemId) throw new Error("재풀이를 시작할 reviewItem ID가 필요합니다.");
+  const item = await getReviewItem(reviewItemId, { allLearners: true });
+  if (!item) {
+    throw new Error(`ReviewItem(${reviewItemId})을 찾을 수 없습니다.`);
+  }
+
+  // 학습자 소유권 및 권한 검사
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId());
+  if (targetLearnerId && (item.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    throw new Error("해당 복습 항목에 대한 접근 또는 수정 권한이 없습니다.");
+  }
+
+  // 상태 검사: unresolved 또는 review_pending에서만 retrying으로 전이 가능
+  if (item.state !== "unresolved" && item.state !== "review_pending") {
+    throw new Error(`재풀이를 시작할 수 없는 상태입니다: ${item.state}`);
+  }
+
+  // 원본 문제 로드 (SubmissionSnapshot에서 가져옴)
+  const rawSub = await getSubmission(item.sourceSubmissionId, { allLearners: true });
+  const origQuestion = rawSub?.questions?.find((q) => q.id === item.questionId);
+  if (!origQuestion) {
+    throw new Error("재풀이할 원본 문제를 찾을 수 없습니다.");
+  }
+
+  const now = Date.now();
+  const retryOrdinal = (item.retryAttemptIds?.length || 0) + 1;
+  const retryAttemptId = `att_retry_${item.id}_${retryOrdinal}_${now}`;
+  const retrySessionId = `sess_retry_${item.id}_${retryOrdinal}_${now}`;
+
+  const retryQuestion = {
+    ...origQuestion,
+    answer: undefined,
+    strokes: [],
+    studentStrokes: [],
+    gradingStrokes: [],
+    sourceAttemptId: item.sourceAttemptId,
+    reviewItemId: item.id
+  };
+
+  const retrySession = createSession({
+    id: retrySessionId,
+    sessionId: retrySessionId,
+    learnerId: item.learnerId,
+    operation: origQuestion.operation,
+    macroLevelId: origQuestion.macroLevelId || origQuestion.level,
+    pageSize: 1,
+    sessionKind: "REVIEW_RETRY",
+    reviewItemId: item.id,
+    sourceAttemptId: item.sourceAttemptId
+  }, [retryQuestion]);
+
+  const retryAttempt = {
+    id: retryAttemptId,
+    sessionId: retrySessionId,
+    learnerId: item.learnerId,
+    questionId: origQuestion.id,
+    questionKey: origQuestion.questionKey || origQuestion.key || `${origQuestion.operation}:${origQuestion.operandA}:${origQuestion.operandB}`,
+    operation: origQuestion.operation,
+    macroLevelId: origQuestion.macroLevelId || origQuestion.level,
+    stageId: origQuestion.stageId || origQuestion.macroLevelId || origQuestion.level,
+    operandA: origQuestion.operandA,
+    operandB: origQuestion.operandB,
+    answer: undefined,
+    expectedAnswer: origQuestion.expectedAnswer !== undefined ? origQuestion.expectedAnswer : origQuestion.answer,
+    attemptKind: "RETRY",
+    retryOrdinal,
+    sourceAttemptId: item.sourceAttemptId,
+    reviewItemId: item.id,
+    responseState: "active",
+    gradingState: "not_graded",
+    startedAt: now
+  };
+
+  const updatedReviewItem = {
+    ...item,
+    state: "retrying",
+    retryAttemptIds: [...(item.retryAttemptIds || []), retryAttemptId],
+    updatedAt: now
+  };
+
+  const db = await getDB();
+
+  if (db.isMemory) {
+    if (typeof retryFailureInjector === "function") {
+      retryFailureInjector({ isMemory: true, phase: "before_write" });
+    }
+    const backupAttempts = new Map(db.attempts);
+    const backupReviewItems = new Map(db.reviewItems);
+
+    try {
+      if (typeof retryFailureInjector === "function") {
+        retryFailureInjector({ isMemory: true, phase: "during_attempt_write" });
+      }
+      db.attempts.set(retryAttemptId, retryAttempt);
+
+      if (typeof retryFailureInjector === "function") {
+        retryFailureInjector({ isMemory: true, phase: "during_review_item_write" });
+      }
+      db.reviewItems.set(item.id, updatedReviewItem);
+
+      return {
+        reviewItem: updatedReviewItem,
+        retryAttempt,
+        retrySession
+      };
+    } catch (err) {
+      db.attempts = backupAttempts;
+      db.reviewItems = backupReviewItems;
+      memoryStore.attempts = backupAttempts;
+      memoryStore.reviewItems = backupReviewItems;
+      throw err;
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    try {
+      const tx = db.transaction(["attempts", "reviewItems"], "readwrite");
+      const attStore = tx.objectStore("attempts");
+      const revStore = tx.objectStore("reviewItems");
+
+      if (typeof retryFailureInjector === "function") {
+        retryFailureInjector({ tx, phase: "during_attempt_write" });
+      }
+      attStore.put(retryAttempt);
+
+      if (typeof retryFailureInjector === "function") {
+        retryFailureInjector({ tx, phase: "during_review_item_write" });
+      }
+      revStore.put(updatedReviewItem);
+
+      tx.oncomplete = () => {
+        resolve({
+          reviewItem: updatedReviewItem,
+          retryAttempt,
+          retrySession
+        });
+      };
+      tx.onerror = (e) => reject(tx.error || e.target?.error || new Error("Retry transaction failed"));
+      tx.onabort = (e) => reject(tx.error || e.target?.error || new Error("Retry transaction aborted"));
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+//+_+// Phase F7: 나중에 복습 (Attempt 미생성, ReviewItem 상태를 unresolved로 유지)
+export async function deferReviewItem(reviewItemId, options = {}) {
+  if (!reviewItemId) throw new Error("reviewItem ID가 필요합니다.");
+  const item = await getReviewItem(reviewItemId, { allLearners: true });
+  if (!item) throw new Error(`ReviewItem(${reviewItemId})을 찾을 수 없습니다.`);
+
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId());
+  if (targetLearnerId && (item.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    throw new Error("해당 복습 항목에 대한 접근 또는 수정 권한이 없습니다.");
+  }
+
+  const updated = {
+    ...item,
+    state: "unresolved",
+    updatedAt: Date.now()
+  };
+  return await saveReviewItem(updated);
+}
+
+//+_+// Phase F7: 재풀이 제출 시 ReviewItem 상태를 review_pending으로 전이
+export async function markReviewItemReviewPending(reviewItemId, retrySubmissionId, options = {}) {
+  if (!reviewItemId) throw new Error("reviewItem ID가 필요합니다.");
+  const item = await getReviewItem(reviewItemId, { allLearners: true });
+  if (!item) throw new Error(`ReviewItem(${reviewItemId})을 찾을 수 없습니다.`);
+
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId());
+  if (targetLearnerId && (item.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    throw new Error("해당 복습 항목에 대한 접근 또는 수정 권한이 없습니다.");
+  }
+
+  const updated = {
+    ...item,
+    state: "review_pending",
+    latestSubmissionId: retrySubmissionId || item.latestSubmissionId,
+    updatedAt: Date.now()
+  };
+  return await saveReviewItem(updated);
+}
+
+//+_+// Phase F7: 보호자 확인 - "이제 이해했어요" (review_pending -> resolved 전이)
+export async function resolveReviewItem(reviewItemId, options = {}) {
+  if (!reviewItemId) throw new Error("reviewItem ID가 필요합니다.");
+  const item = await getReviewItem(reviewItemId, { allLearners: true });
+  if (!item) throw new Error(`ReviewItem(${reviewItemId})을 찾을 수 없습니다.`);
+
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId());
+  if (targetLearnerId && (item.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    throw new Error("해당 복습 항목에 대한 접근 또는 수정 권한이 없습니다.");
+  }
+
+  if (item.state !== "review_pending") {
+    throw new Error("보호자 확인 대기(review_pending) 상태에서만 해결(resolved) 처리할 수 있습니다.");
+  }
+
+  const updated = {
+    ...item,
+    state: "resolved",
+    resolvedAt: Date.now(),
+    resolvedBy: options.resolvedBy || "guardian",
+    updatedAt: Date.now()
+  };
+  return await saveReviewItem(updated);
+}
+
+//+_+// Phase F7: 보호자 확인 - "다시 풀기" (review_pending -> retrying 재전이 및 새 Attempt 생성)
+export async function retryReviewItemAgain(reviewItemId, options = {}) {
+  if (!reviewItemId) throw new Error("reviewItem ID가 필요합니다.");
+  const item = await getReviewItem(reviewItemId, { allLearners: true });
+  if (!item) throw new Error(`ReviewItem(${reviewItemId})을 찾을 수 없습니다.`);
+
+  const targetLearnerId = options.allLearners ? null : (options.learnerId || getCurrentLearnerId());
+  if (targetLearnerId && (item.learnerId || DEFAULT_LEGACY_LEARNER_ID) !== targetLearnerId) {
+    throw new Error("해당 복습 항목에 대한 접근 또는 수정 권한이 없습니다.");
+  }
+
+  if (item.state !== "review_pending") {
+    throw new Error("보호자 확인 대기(review_pending) 상태에서만 다시 풀기를 선택할 수 있습니다.");
+  }
+
+  return await startReviewRetry(reviewItemId, options);
+}
+

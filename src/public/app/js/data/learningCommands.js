@@ -15,7 +15,12 @@ import {
   startSubmissionGradingTransition,
   finalizeSubmissionGrading as storageFinalizeSubmissionGrading,
   reviseFinalizedGradeDecision as storageReviseFinalizedGradeDecision,
-  rebuildProgressAggregatesForLearner as storageRebuildProgressAggregatesForLearner
+  rebuildProgressAggregatesForLearner as storageRebuildProgressAggregatesForLearner,
+  startReviewRetry as storageStartReviewRetry,
+  deferReviewItem as storageDeferReviewItem,
+  markReviewItemReviewPending as storageMarkReviewItemReviewPending,
+  resolveReviewItem as storageResolveReviewItem,
+  retryReviewItemAgain as storageRetryReviewItemAgain
 } from "../storage.js";
 
 //+_+// 완료된 학습 세션 레코드 저장 (최종 채점 완료 후 sessions/attempts/mistakes 반영)
@@ -108,6 +113,16 @@ export async function submitLearningSession(options = {}) {
     }
   }
 
+  //+_+// Phase F7: 재풀이 세션인 경우 ReviewItem을 review_pending 상태로 전이
+  const targetReviewItemId = options.reviewItemId || session?.reviewItemId;
+  if (targetReviewItemId && savedSubmission) {
+    try {
+      await storageMarkReviewItemReviewPending(targetReviewItemId, savedSubmission.id, options);
+    } catch (pendingErr) {
+      console.warn("ReviewItem review_pending update failed:", pendingErr);
+    }
+  }
+
   return {
     ...savedSubmission,
     draftCleaned,
@@ -164,4 +179,33 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
 //+_+// Phase F6: 학습자의 모든 확정 세션으로부터 ProgressAggregate를 결정론적으로 다시 계산하는 Command
 export async function rebuildProgressAggregates(learnerId, options = {}) {
   return await storageRebuildProgressAggregatesForLearner(learnerId, options);
+}
+
+//+_+// ============================================================================
+//+_+// Phase F7: 오답 함께 보기 & 재풀이 (ReviewItem) Command 계층 API
+//+_+// ============================================================================
+
+//+_+// Phase F7: 바로 다시 풀기 (신규 Retry Attempt 및 단독 세션 생성, ReviewItem retrying 전이)
+export async function startReviewRetry(reviewItemId, options = {}) {
+  return await storageStartReviewRetry(reviewItemId, options);
+}
+
+//+_+// Phase F7: 나중에 복습 (Attempt 미생성, ReviewItem unresolved 유지)
+export async function deferReviewItem(reviewItemId, options = {}) {
+  return await storageDeferReviewItem(reviewItemId, options);
+}
+
+//+_+// Phase F7: 재풀이 제출 시 review_pending 전이
+export async function markReviewItemReviewPending(reviewItemId, retrySubmissionId, options = {}) {
+  return await storageMarkReviewItemReviewPending(reviewItemId, retrySubmissionId, options);
+}
+
+//+_+// Phase F7: 보호자 확인 - "이제 이해했어요" (review_pending -> resolved 전이)
+export async function resolveReviewItem(reviewItemId, options = {}) {
+  return await storageResolveReviewItem(reviewItemId, options);
+}
+
+//+_+// Phase F7: 보호자 확인 - "다시 풀기" (review_pending -> retrying 재전이)
+export async function retryReviewItemAgain(reviewItemId, options = {}) {
+  return await storageRetryReviewItemAgain(reviewItemId, options);
 }
