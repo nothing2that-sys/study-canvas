@@ -4123,3 +4123,242 @@ body.theme-midnight .active-learner-pill {
   display: flex;
   justify-content: center;
 }
+
+/*+_+// ============================================================================ */
+/*+_+// Phase F8: 통합 학습자 홈 및 진도 대시보드 (Action Cards, Stats, Recent Sessions) */
+/*+_+// ============================================================================ */
+
+.action-cards-section {
+  max-width: 960px;
+  margin: 0 auto 24px;
+  padding: 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.action-card {
+  background: var(--paper);
+  border: 2px solid rgba(23, 63, 53, 0.14);
+  border-radius: 20px;
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.action-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+}
+
+.action-card-copy h2 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 4px 0;
+}
+
+.action-card-copy p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.parent-grading-home-entry {
+  background: #fffbeb;
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.review-queue-home-entry {
+  background: #fef2f2;
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.in-progress-home-entry {
+  background: #eff6ff;
+  border-color: rgba(59, 130, 246, 0.35);
+}
+
+.overall-stats-section {
+  max-width: 960px;
+  margin: 0 auto 28px;
+  padding: 0 16px;
+}
+
+.overall-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.stat-card {
+  background: var(--paper);
+  border: 1px solid rgba(23, 63, 53, 0.12);
+  border-radius: 18px;
+  padding: 18px 20px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.stat-card .stat-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.stat-card .stat-value {
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: var(--ink);
+  display: block;
+  margin-top: 6px;
+}
+
+.subject-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(23, 63, 53, 0.15);
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+
+.subject-stats-row strong {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.recent-sessions-section {
+  max-width: 960px;
+  margin: 0 auto 48px;
+  padding: 0 16px;
+}
+
+.recent-sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.session-history-item {
+  background: var(--paper);
+  border: 1px solid rgba(23, 63, 53, 0.14);
+  border-radius: 16px;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.session-history-item:hover, .session-history-item:focus-visible {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(23, 63, 53, 0.08);
+  outline: none;
+}
+
+.session-history-main strong {
+  display: block;
+  font-size: 1.05rem;
+  color: var(--ink);
+}
+
+.session-history-main small {
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.detail-link-text {
+  color: var(--accent);
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+.session-history-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.session-acc-badge {
+  font-size: 0.85rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 9999px;
+}
+
+.session-acc-badge.high {
+  background: rgba(34, 197, 94, 0.15);
+  color: #15803d;
+}
+
+.session-acc-badge.low {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+.session-time-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.review-status-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 9999px;
+}
+
+.review-status-pill.unresolved {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.review-status-pill.retrying {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.review-status-pill.pending {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.empty-sessions-note {
+  text-align: center;
+  padding: 32px 16px;
+  background: rgba(23, 63, 53, 0.03);
+  border-radius: 16px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+@media (max-width: 640px) {
+  .action-card {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .action-card button {
+    width: 100%;
+  }
+  .session-history-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}
+

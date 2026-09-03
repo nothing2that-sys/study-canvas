@@ -22,14 +22,17 @@ import {
   getLearnerById
 } from "./learnerQueries.js";
 
-import { getLearnerHomeSummary, getAllSubmissions, getActiveReviewItems } from "../data/learningQueries.js";
+import { getLearnerDashboard, getLearnerHomeSummary, getAllSubmissions, getActiveReviewItems } from "../data/learningQueries.js";
 import { getAllSubjects, getSubject } from "../platform/subjectRegistry.js";
 import { navigate, ROUTES } from "../platform/appRouter.js";
+import { formatTime } from "../timer.js";
 
 let dom = {};
 let isSessionActiveFn = null;
 let openPendingGradingFn = null;
 let openReviewQueueFn = null;
+let restoreDraftFn = null;
+let showSessionDetailFn = null;
 
 export function setOpenPendingGradingHandler(fn) {
   openPendingGradingFn = fn;
@@ -37,6 +40,14 @@ export function setOpenPendingGradingHandler(fn) {
 
 export function setOpenReviewQueueHandler(fn) {
   openReviewQueueFn = fn;
+}
+
+export function setRestoreDraftHandler(fn) {
+  restoreDraftFn = fn;
+}
+
+export function setShowSessionDetailHandler(fn) {
+  showSessionDetailFn = fn;
 }
 
 const DEFAULT_AVATARS = ["🌱", "🚀", "⭐", "🦊", "🐳", "🐰", "🦖", "🦁"];
@@ -76,6 +87,12 @@ export function initLearnerView(options = {}) {
   if (options.onOpenReviewQueue) {
     openReviewQueueFn = options.onOpenReviewQueue;
   }
+  if (options.onRestoreDraftSession) {
+    restoreDraftFn = options.onRestoreDraftSession;
+  }
+  if (options.onShowSessionDetail) {
+    showSessionDetailFn = options.onShowSessionDetail;
+  }
 
   dom = {
     //+_+// 학습자 선택 화면 요소 - 현재 index.html ID를 우선하고 이전 ID는 호환 fallback으로 유지
@@ -86,11 +103,15 @@ export function initLearnerView(options = {}) {
     archivedLearnersContainer: queryFirst(doc, "#archivedLearnersSection", "#archivedLearnersContainer"),
     archivedLearnersList: doc.querySelector("#archivedLearnersList"),
 
-    //+_+// 통합 학습자 홈 요소
+    //+_+// 통합 학습자 홈 요소 (Phase F8 Read Model 기반)
     learnerHomeView: doc.querySelector("#learnerHomeView"),
     homeLearnerAvatar: doc.querySelector("#homeLearnerAvatar"),
     homeLearnerGreeting: queryFirst(doc, "#learnerGreetingName", "#homeLearnerGreeting"),
+    homeActionCardsSection: doc.querySelector("#homeActionCardsSection"),
+    homeOverallStatsSection: doc.querySelector("#homeOverallStatsSection"),
     subjectCardsGrid: queryFirst(doc, "#homeSubjectGrid", "#subjectCardsGrid"),
+    recentSessionsSection: doc.querySelector("#homeRecentSessionsSection"),
+    recentSessionsList: queryFirst(doc, "#homeRecentSessionsList", "#recentSessionsList"),
     recentLearningStats: doc.querySelector("#recentLearningStats"),
 
     //+_+// 과목 홈 요소
@@ -288,7 +309,7 @@ export async function renderArchivedLearners() {
   });
 }
 
-//+_+// 통합 학습자 홈 (#learnerHomeView) 렌더링
+//+_+// Phase F8: 통합 학습자 홈 (#learnerHomeView) 렌더링
 export async function renderLearnerHomeView() {
   const learner = await getActiveLearner();
   if (!learner) return;
@@ -300,127 +321,245 @@ export async function renderLearnerHomeView() {
       : `${learner.name}님, 환영합니다!`;
   }
 
-  //+_+// Phase F5: 활성 학습자의 보호자 채점 대기 또는 진행 중 Submission을 홈에 표시한다.
-  if (dom.learnerHomeView) {
-    let gradingEntry = dom.learnerHomeView.querySelector("#pendingParentGradingEntry");
-    const submissions = await getAllSubmissions({ learnerId: learner.id });
-    const pendingSubmission = submissions.find((submission) => (
-      submission.status === "PARENT_GRADING_PENDING" || submission.status === "GRADING_ACTIVE"
-    ));
-    if (!pendingSubmission) {
-      gradingEntry?.remove();
-    } else {
-      if (!gradingEntry) {
-        gradingEntry = document.createElement("section");
-        gradingEntry.id = "pendingParentGradingEntry";
-        gradingEntry.className = "parent-grading-home-entry";
-        dom.learnerHomeView.querySelector(".subject-section")?.before(gradingEntry);
-      }
-      const progress = pendingSubmission.gradingProgress || {};
-      gradingEntry.innerHTML = `
-        <div>
+  // Phase F8 단일 Read Model 쿼리
+  const dashboard = await getLearnerDashboard(learner.id);
+  if (!dashboard) return;
+
+  // 1. Action Cards 렌더링 (#homeActionCardsSection)
+  // 우선순위: 1) 채점 대기/진행 중, 2) 복습 필요, 3) 이어서 풀기
+  const actionSection = dom.homeActionCardsSection || dom.learnerHomeView?.querySelector("#homeActionCardsSection");
+  if (actionSection) {
+    actionSection.innerHTML = "";
+    const { pendingGrading = [], reviewRequired = [], inProgress = [] } = dashboard.actionCards;
+
+    // 1) 보호자 채점 대기/진행 중
+    if (pendingGrading.length > 0) {
+      const topPending = pendingGrading[0];
+      const entry = document.createElement("section");
+      entry.id = "pendingParentGradingEntry";
+      entry.className = "parent-grading-home-entry action-card";
+      entry.setAttribute("role", "region");
+      entry.setAttribute("aria-label", "보호자 채점");
+      entry.innerHTML = `
+        <div class="action-card-copy">
           <p class="eyebrow">보호자 채점</p>
-          <h2>${pendingSubmission.status === "GRADING_ACTIVE" ? "진행 중인 채점을 이어가세요" : "채점을 기다리는 풀이가 있어요"}</h2>
-          <p>${progress.graded || 0} / ${progress.total || pendingSubmission.questions?.length || 0} 문제 채점 완료</p>
+          <h2>${escapeHtml(topPending.title)}</h2>
+          <p>${topPending.gradedQuestions} / ${topPending.totalQuestions} 문제 채점 완료</p>
         </div>
-        <button type="button" class="primary-action" id="openPendingGradingBtn">${pendingSubmission.status === "GRADING_ACTIVE" ? "채점 이어하기" : "보호자 채점 열기"}</button>
+        <button type="button" class="primary-action" id="openPendingGradingBtn" aria-label="${escapeHtml(topPending.actionLabel)}">
+          ${escapeHtml(topPending.actionLabel)}
+        </button>
       `;
-      gradingEntry.querySelector("#openPendingGradingBtn")?.addEventListener("click", () => {
-        openPendingGradingFn?.(pendingSubmission);
+      entry.querySelector("#openPendingGradingBtn")?.addEventListener("click", () => {
+        openPendingGradingFn?.(topPending.rawSubmission);
       });
+      actionSection.appendChild(entry);
     }
 
-    //+_+// Phase F7: 활성 학습자의 복습 필요 문제(ReviewItem) 큐를 홈에 표시한다.
-    let reviewEntry = dom.learnerHomeView.querySelector("#activeReviewQueueEntry");
-    const activeReviewItems = await getActiveReviewItems({ learnerId: learner.id });
-    if (!activeReviewItems || activeReviewItems.length === 0) {
-      reviewEntry?.remove();
-    } else {
-      if (!reviewEntry) {
-        reviewEntry = document.createElement("section");
-        reviewEntry.id = "activeReviewQueueEntry";
-        reviewEntry.className = "review-queue-home-entry";
-        dom.learnerHomeView.querySelector(".subject-section")?.before(reviewEntry);
-      }
-      const retryingCount = activeReviewItems.filter((i) => i.state === "retrying").length;
-      const pendingCount = activeReviewItems.filter((i) => i.state === "review_pending").length;
-      const unresolvedCount = activeReviewItems.filter((i) => i.state === "unresolved").length;
+    // 2) 복습 필요
+    if (reviewRequired.length > 0) {
+      const retryingCount = reviewRequired.filter((i) => i.state === "retrying").length;
+      const pendingCount = reviewRequired.filter((i) => i.state === "review_pending").length;
+      const unresolvedCount = reviewRequired.filter((i) => i.state === "unresolved").length;
 
       let desc = `복습 필요 ${unresolvedCount}개`;
       if (retryingCount > 0) desc += ` · 다시 푸는 중 ${retryingCount}개`;
       if (pendingCount > 0) desc += ` · 보호자 확인 대기 ${pendingCount}개`;
 
-      reviewEntry.innerHTML = `
-        <div>
+      const entry = document.createElement("section");
+      entry.id = "activeReviewQueueEntry";
+      entry.className = "review-queue-home-entry action-card";
+      entry.setAttribute("role", "region");
+      entry.setAttribute("aria-label", "오답 함께 보기");
+      entry.innerHTML = `
+        <div class="action-card-copy">
           <p class="eyebrow">오답 함께 보기</p>
-          <h2>함께 복습할 오답이 ${activeReviewItems.length}개 있어요</h2>
+          <h2>함께 복습할 오답이 ${reviewRequired.length}개 있어요</h2>
           <p>${desc}</p>
         </div>
-        <button type="button" class="primary-action review-open-btn" id="openReviewQueueBtn">오답 함께 보기</button>
+        <button type="button" class="primary-action review-open-btn" id="openReviewQueueBtn" aria-label="오답 함께 보기">
+          오답 함께 보기
+        </button>
       `;
-      reviewEntry.querySelector("#openReviewQueueBtn")?.addEventListener("click", () => {
-        openReviewQueueFn?.(activeReviewItems);
+      entry.querySelector("#openReviewQueueBtn")?.addEventListener("click", () => {
+        openReviewQueueFn?.(reviewRequired);
       });
+      actionSection.appendChild(entry);
     }
+
+    // 3) 이어서 풀기
+    if (inProgress.length > 0) {
+      const topDraft = inProgress[0];
+      const entry = document.createElement("section");
+      entry.id = "inProgressSessionEntry";
+      entry.className = "in-progress-home-entry action-card";
+      entry.setAttribute("role", "region");
+      entry.setAttribute("aria-label", "풀이 이어서 하기");
+      entry.innerHTML = `
+        <div class="action-card-copy">
+          <p class="eyebrow">풀이 중인 학습</p>
+          <h2>${escapeHtml(topDraft.levelName || "연산 학습")} 풀이를 이어하세요</h2>
+          <p>진행: ${topDraft.solvedQuestions} / ${topDraft.totalQuestions} 문제 작성</p>
+        </div>
+        <button type="button" class="primary-action resume-draft-btn" id="resumeDraftBtn" aria-label="이어서 풀기">
+          이어서 풀기
+        </button>
+      `;
+      entry.querySelector("#resumeDraftBtn")?.addEventListener("click", () => {
+        if (restoreDraftFn) {
+          restoreDraftFn(topDraft.rawDraft);
+        } else {
+          navigate(ROUTES.MATH_PRACTICE);
+        }
+      });
+      actionSection.appendChild(entry);
+    }
+
+    actionSection.hidden = (pendingGrading.length === 0 && reviewRequired.length === 0 && inProgress.length === 0);
   }
 
-  //+_+// 과목 목록 렌더링
-  if (dom.subjectCardsGrid) {
-    const subjects = getAllSubjects();
-    dom.subjectCardsGrid.innerHTML = "";
-
-    subjects.forEach((subj) => {
-      const card = document.createElement("div");
-      card.className = `subject-card ${subj.enabled ? "enabled" : "disabled"}`;
-      card.setAttribute("role", subj.enabled ? "button" : "region");
-      if (subj.enabled) card.setAttribute("tabindex", "0");
-
-      card.innerHTML = `
-        <div class="subject-card-icon">${escapeHtml(subj.icon || "📚")}</div>
-        <div class="subject-card-content">
-          <div class="subject-card-title">${escapeHtml(subj.title)}</div>
-          <div class="subject-card-desc">${escapeHtml(subj.description)}</div>
+  // 2. 전체 요약 통계 렌더링 (#homeOverallStatsSection)
+  const statsSection = dom.homeOverallStatsSection || dom.learnerHomeView?.querySelector("#homeOverallStatsSection");
+  if (statsSection) {
+    const { gradedAttemptCount = 0, accuracy = 0, sessionCount = 0 } = dashboard.overall || {};
+    const hasData = gradedAttemptCount > 0;
+    statsSection.innerHTML = `
+      <div class="overall-stats-grid">
+        <div class="stat-card">
+          <span class="stat-label">확정 문제 수</span>
+          <strong class="stat-value">${hasData ? `${gradedAttemptCount}개` : "-"}</strong>
         </div>
-        <div class="subject-card-status">
-          ${subj.enabled ? '<span class="status-badge active">학습하기</span>' : '<span class="status-badge coming-soon">준비 중</span>'}
+        <div class="stat-card">
+          <span class="stat-label">확정 정답률</span>
+          <strong class="stat-value">${hasData ? `${Math.round(accuracy)}%` : "-"}</strong>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">완료한 학습</span>
+          <strong class="stat-value">${sessionCount > 0 ? `${sessionCount}회` : "-"}</strong>
+        </div>
+      </div>
+    `;
+  }
+
+  // 3. 과목별 진도 렌더링 (#homeSubjectGrid)
+  const subjectGrid = dom.subjectCardsGrid || dom.learnerHomeView?.querySelector("#homeSubjectGrid");
+  if (subjectGrid) {
+    subjectGrid.innerHTML = "";
+    (dashboard.subjects || []).forEach((subj) => {
+      const card = document.createElement("div");
+      const isActive = subj.status === "active";
+      card.className = `subject-card ${isActive ? "subject-active enabled" : "subject-coming-soon disabled"}`;
+      card.setAttribute("role", isActive ? "button" : "region");
+      if (isActive) {
+        card.setAttribute("tabindex", "0");
+        card.setAttribute("aria-label", `${subj.title} 학습하기`);
+      }
+
+      let contentHtml = `
+        <div class="subject-card-header">
+          <span class="subject-icon">${escapeHtml(subj.icon || "📚")}</span>
+          <span class="subject-badge ${isActive ? "badge-active" : "badge-coming-soon"}">${isActive ? "학습 가능" : "준비 중"}</span>
+        </div>
+        <div class="subject-card-content">
+          <h3 class="subject-title">${escapeHtml(subj.title)}</h3>
+          <p class="subject-desc">${escapeHtml(subj.description || "")}</p>
+      `;
+
+      if (isActive && subj.stats) {
+        const accText = subj.stats.gradedAttemptCount > 0 ? `${Math.round(subj.stats.accuracy)}%` : "-";
+        const progressRate = subj.progress?.progressRate ?? 0;
+        contentHtml += `
+          <div class="subject-stats-row">
+            <span>문제: <strong>${subj.stats.gradedAttemptCount}개</strong></span>
+            <span>정답률: <strong>${accText}</strong></span>
+            <span>진행률: <strong>${progressRate}%</strong></span>
+          </div>
+        `;
+      }
+
+      contentHtml += `</div>
+        <div class="subject-card-footer">
+          ${isActive ? '<button type="button" class="btn-start-subject primary-action">수학 학습하기</button>' : '<span class="coming-soon-label">준비 중</span>'}
         </div>
       `;
 
-      if (subj.enabled) {
-        card.onclick = () => {
-          navigate(subj.entryRoute);
+      card.innerHTML = contentHtml;
+
+      if (isActive) {
+        const goMath = () => navigate(subj.entryRoute || ROUTES.MATH_HOME);
+        card.onclick = goMath;
+        card.onkeydown = (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            goMath();
+          }
         };
       }
 
-      dom.subjectCardsGrid.appendChild(card);
+      subjectGrid.appendChild(card);
     });
   }
 
-  //+_+// 최근 학습 요약 통계 렌더링
-  if (dom.recentLearningStats) {
-    try {
-      const summary = await getLearnerHomeSummary(learner.id);
-      dom.recentLearningStats.innerHTML = `
-        <div class="stats-summary-card">
-          <div class="stat-item">
-            <span class="stat-label">완료한 학습</span>
-            <span class="stat-value">${summary.recentSessionsCount}회</span>
+  // 4. 최근 세션 목록 렌더링 (#homeRecentSessionsList)
+  const recentList = dom.recentSessionsList || dom.learnerHomeView?.querySelector("#homeRecentSessionsList");
+  if (recentList) {
+    const recent = dashboard.recentSessions || [];
+    if (recent.length === 0) {
+      recentList.innerHTML = `<div class="empty-sessions-note">아직 완료된 학습 기록이 없습니다. 문제를 풀고 실력을 확인해 보세요!</div>`;
+    } else {
+      recentList.innerHTML = recent.map((s, idx) => {
+        const dateStr = s.completedAt
+          ? new Date(s.completedAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+          : "-";
+        const op = s.operation === "div" ? "나눗셈" : "곱셈";
+        const accClass = s.accuracyRate >= 80 ? "high" : "low";
+
+        let reviewBadgeHtml = "";
+        if (s.reviewState === "unresolved") {
+          reviewBadgeHtml = `<span class="review-status-pill unresolved">복습 필요</span>`;
+        } else if (s.reviewState === "retrying") {
+          reviewBadgeHtml = `<span class="review-status-pill retrying">다시 푸는 중</span>`;
+        } else if (s.reviewState === "review_pending") {
+          reviewBadgeHtml = `<span class="review-status-pill pending">확인 대기</span>`;
+        }
+
+        return `
+          <div class="session-history-item" data-session-idx="${idx}" role="button" tabindex="0" aria-label="${dateStr} ${op} ${s.totalQuestions}문제 상세 결과 보기">
+            <div class="session-history-main">
+              <strong>${op} ${s.totalQuestions}문제 <small class="detail-link-text">🔍 상세보기</small></strong>
+              <small>${dateStr} ${reviewBadgeHtml}</small>
+            </div>
+            <div class="session-history-stats">
+              <span class="session-acc-badge ${accClass}">${s.accuracyRate}% 정답</span>
+              <span class="session-time-text">${formatTime(s.totalSolveTimeMs, "korean")}</span>
+            </div>
           </div>
-          <div class="stat-item">
-            <span class="stat-label">평균 정답률</span>
-            <span class="stat-value">${summary.stats?.accuracyRate || 0}%</span>
-          </div>
-          <div class="stat-item">
-            <span class="stat-label">연속 학습</span>
-            <span class="stat-value">${summary.currentStreak}일 🔥</span>
-          </div>
-        </div>
-      `;
-    } catch (statsErr) {
-      dom.recentLearningStats.innerHTML = "";
+        `;
+      }).join("");
+
+      recentList.querySelectorAll(".session-history-item").forEach((item) => {
+        const idx = Number(item.getAttribute("data-session-idx"));
+        const session = recent[idx];
+        if (!session) return;
+
+        const openDetail = () => {
+          if (showSessionDetailFn) {
+            showSessionDetailFn(session.rawSession || session);
+          }
+        };
+
+        item.onclick = openDetail;
+        item.onkeydown = (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openDetail();
+          }
+        };
+      });
     }
   }
 }
+
 
 //+_+// 수학 과목 홈 (#subjectHomeView) 렌더링
 export async function renderSubjectHomeView() {

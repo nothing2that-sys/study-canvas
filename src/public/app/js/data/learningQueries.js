@@ -25,8 +25,13 @@ import {
   getResolvedReviewItems as storageGetResolvedReviewItems,
   getReviewItemsByState as storageGetReviewItemsByState,
   getReviewItemsByLevel as storageGetReviewItemsByLevel,
-  getReviewItemBySourceAttemptId as storageGetReviewItemBySourceAttemptId
+  getReviewItemBySourceAttemptId as storageGetReviewItemBySourceAttemptId,
+  getCurrentLearnerId,
+  DEFAULT_LEGACY_LEARNER_ID
 } from "../storage.js";
+import { evaluateStartupDraftResumePolicy } from "../submissionLifecycle.js";
+import { getAllSubjects } from "../platform/subjectRegistry.js";
+
 
 //+_+// 최근 완료 세션 목록 조회
 export async function getRecentSessions(limit = 10, filter = {}) {
@@ -73,24 +78,28 @@ export async function getSessionsByDate(dateKey, filter = {}) {
   return await storageGetSessionsByDate(dateKey, filter);
 }
 
-//+_+// 학습자 홈 요약 정보 조회 (Streak, 총 문제 수, 최근 세션 등)
+//+_+// 학습자 홈 요약 정보 조회 (Streak, 총 문제 수, 최근 세션 등 - F8 getLearnerDashboard 기반 통합)
 export async function getLearnerHomeSummary(learnerId) {
   const filter = learnerId ? { learnerId } : {};
-  const [streakInfo, stats, recentSessions] = await Promise.all([
-    getCurrentStreak(filter),
-    getLearningStats(filter),
-    getRecentSessions(3, filter)
+  const [streakInfo, dashboard] = await Promise.all([
+    getCurrentStreak(filter).catch(() => ({ currentStreak: 0, todayActive: false })),
+    getLearnerDashboard(learnerId)
   ]);
 
   return {
     learnerId,
     currentStreak: streakInfo.currentStreak || 0,
     todayActive: Boolean(streakInfo.todayActive),
-    totalProblems: stats.totalProblems || 0,
-    overallAccuracy: stats.overallAccuracy || 0,
-    recentSessionsCount: recentSessions.length
+    totalProblems: dashboard.overall.gradedAttemptCount,
+    overallAccuracy: Math.round(dashboard.overall.accuracy),
+    recentSessionsCount: dashboard.recentSessions.length,
+    stats: {
+      totalQuestions: dashboard.overall.gradedAttemptCount,
+      accuracyRate: Math.round(dashboard.overall.accuracy)
+    }
   };
 }
+
 
 //+_+// Phase F4: 특정 제출 Snapshot 조회 (ID 기준, active learnerId 기본 격리)
 export async function getSubmission(id, options = {}) {
@@ -165,5 +174,250 @@ export async function getReviewItemsByLevel(learnerId, levelId, options = {}) {
 export async function getReviewItemBySourceAttemptId(sourceAttemptId, options = {}) {
   return await storageGetReviewItemBySourceAttemptId(sourceAttemptId, options);
 }
+
+//+_+// ============================================================================
+//+_+// Phase F8: 학습자 홈 및 진도 대시보드 통합 Read Model (SSOT Query)
+//+_+// ============================================================================
+
+//+_+// Phase F8: 학습자 통합 대시보드 조회 (순수 읽기 전용, 결정론적, 격리)
+export async function getLearnerDashboard(learnerId, options = {}) {
+  const targetLearnerId = (typeof learnerId === "string" && learnerId)
+    ? learnerId
+    : (getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID);
+
+  // 병렬로 기존 Read Query 호출 (DB Write 없는 순수 읽기)
+  const [
+    draft,
+    allSubmissions,
+    activeReviewItems,
+    aggregates,
+    recentSessions,
+    curriculumProgressData
+  ] = await Promise.all([
+    getDraft({ learnerId: targetLearnerId }).catch(() => null),
+    getAllSubmissions({ learnerId: targetLearnerId }).catch(() => []),
+    getActiveReviewItems({ learnerId: targetLearnerId }).catch(() => []),
+    getProgressAggregates({ learnerId: targetLearnerId }).catch(() => []),
+    getRecentSessions(options.recentLimit || 5, { learnerId: targetLearnerId }).catch(() => []),
+    getCurriculumProgress({ learnerId: targetLearnerId }).catch(() => ({ mul: [], div: [] }))
+  ]);
+
+  // 1. Action Card: 풀이 중 (inProgress)
+  const inProgressCards = [];
+  if (draft && draft.questions && draft.questions.length > 0) {
+    const draftOwner = draft.learnerId || DEFAULT_LEGACY_LEARNER_ID;
+    if (draftOwner === targetLearnerId) {
+      const submissionForDraft = draft.sessionId
+        ? allSubmissions.find((s) => s.sessionId === draft.sessionId || s.id === draft.sessionId)
+        : null;
+      const policy = evaluateStartupDraftResumePolicy({ draft, submission: submissionForDraft });
+
+      const isPracticeActive = (draft.sessionState === "PRACTICE_ACTIVE" || !draft.sessionState) &&
+        draft.sessionType !== "grading" &&
+        draft.sessionState !== "GRADING_ACTIVE";
+
+      if (policy.canResumePractice && isPracticeActive && (!submissionForDraft || submissionForDraft.status === "PRACTICE_ACTIVE")) {
+        inProgressCards.push({
+          sessionId: draft.sessionId,
+          subjectId: draft.subjectId || "math",
+          courseId: draft.config?.courseId || "arithmetic",
+          levelId: draft.config?.difficulty || draft.config?.level || "Lv.2",
+          levelName: draft.config?.levelName || "2자리 입문",
+          totalQuestions: draft.questions.length,
+          solvedQuestions: Object.keys(draft.studentStrokesMap || {}).length,
+          savedAt: draft.updatedAt || draft.createdAt || Date.now(),
+          rawDraft: draft
+        });
+      }
+    }
+  }
+
+  // 2. Action Card: 채점 대기 (pendingGrading)
+  // PARENT_GRADING_PENDING, GRADING_ACTIVE만 포함 (GRADED, SESSION_COMPLETE 제외)
+  const pendingGradingCards = (allSubmissions || [])
+    .filter((sub) => {
+      const subOwner = sub.learnerId || DEFAULT_LEGACY_LEARNER_ID;
+      return subOwner === targetLearnerId &&
+        (sub.status === "PARENT_GRADING_PENDING" || sub.status === "GRADING_ACTIVE");
+    })
+    .sort((a, b) => (b.submittedAt || b.createdAt || 0) - (a.submittedAt || a.createdAt || 0))
+    .map((sub) => {
+      const progress = sub.gradingProgress || {};
+      const graded = progress.graded || 0;
+      const total = progress.total || sub.questions?.length || 0;
+      const isGradingActive = sub.status === "GRADING_ACTIVE";
+      return {
+        submissionId: sub.id,
+        sessionId: sub.sessionId,
+        status: sub.status,
+        subjectId: sub.subjectId || "math",
+        courseId: sub.courseId || "arithmetic",
+        totalQuestions: total,
+        gradedQuestions: graded,
+        title: isGradingActive ? "진행 중인 채점을 이어가세요" : "채점을 기다리는 풀이가 있어요",
+        actionLabel: isGradingActive ? "채점 이어하기" : "보호자 채점 열기",
+        submittedAt: sub.submittedAt || sub.createdAt || 0,
+        rawSubmission: sub
+      };
+    });
+
+  // 3. Action Card: 복습 필요 (reviewRequired)
+  const activeReviews = (activeReviewItems || [])
+    .filter((item) => {
+      const itemOwner = item.learnerId || DEFAULT_LEGACY_LEARNER_ID;
+      return itemOwner === targetLearnerId &&
+        (item.state === "unresolved" || item.state === "retrying" || item.state === "review_pending");
+    })
+    .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  // 4. Overall 통계: F6 ProgressAggregate SSOT 기반 가중치 정답률 계산
+  const targetAggregates = (aggregates || []).filter((a) => {
+    const aggOwner = a.learnerId || DEFAULT_LEGACY_LEARNER_ID;
+    return aggOwner === targetLearnerId;
+  });
+
+  let gradedAttemptCount = 0;
+  let correctCount = 0;
+  let incorrectCount = 0;
+  let retryRequestedCount = 0;
+  let totalSolveTimeMs = 0;
+
+  targetAggregates.forEach((agg) => {
+    gradedAttemptCount += Number(agg.gradedAttemptCount) || 0;
+    correctCount += Number(agg.correctCount) || 0;
+    incorrectCount += Number(agg.incorrectCount) || 0;
+    retryRequestedCount += Number(agg.retryRequestedCount) || 0;
+    totalSolveTimeMs += Number(agg.totalSolveTimeMs) || 0;
+  });
+
+  const accuracy = gradedAttemptCount > 0 ? (correctCount / gradedAttemptCount) * 100 : 0;
+  const averageSolveTimeMs = gradedAttemptCount > 0 ? Math.round(totalSolveTimeMs / gradedAttemptCount) : 0;
+
+  const completedSubs = (allSubmissions || []).filter((s) => {
+    const subOwner = s.learnerId || DEFAULT_LEGACY_LEARNER_ID;
+    return subOwner === targetLearnerId && (s.status === "GRADED" || s.status === "SESSION_COMPLETE");
+  });
+  const sessionCount = completedSubs.length > 0 ? completedSubs.length : recentSessions.length;
+
+  const overall = {
+    gradedAttemptCount,
+    correctCount,
+    incorrectCount,
+    retryRequestedCount,
+    accuracy,
+    totalSolveTimeMs,
+    averageSolveTimeMs,
+    sessionCount
+  };
+
+  // 5. 과목별 진도: Subject Registry 기준 렌더링
+  const registrySubjects = getAllSubjects();
+  const mulLevels = curriculumProgressData?.mul || [];
+  const divLevels = curriculumProgressData?.div || [];
+  const allCurriculumLevels = [...mulLevels, ...divLevels];
+  const totalLevels = allCurriculumLevels.length || 12;
+  const masteredLevels = allCurriculumLevels.filter((l) => l.status === "mastered").length;
+  const learningLevels = allCurriculumLevels.filter((l) => l.status === "learning").length;
+  const unstartedLevels = allCurriculumLevels.filter((l) => l.status === "unstarted").length;
+  const progressRate = totalLevels > 0 ? Math.round((masteredLevels / totalLevels) * 100) : 0;
+
+  const mathAggs = targetAggregates.filter((a) => (a.subjectId || "math") === "math");
+  let mathGraded = 0;
+  let mathCorrect = 0;
+  let mathIncorrect = 0;
+  let mathRetry = 0;
+  let mathTime = 0;
+
+  mathAggs.forEach((a) => {
+    mathGraded += Number(a.gradedAttemptCount) || 0;
+    mathCorrect += Number(a.correctCount) || 0;
+    mathIncorrect += Number(a.incorrectCount) || 0;
+    mathRetry += Number(a.retryRequestedCount) || 0;
+    mathTime += Number(a.totalSolveTimeMs) || 0;
+  });
+
+  const mathAccuracy = mathGraded > 0 ? (mathCorrect / mathGraded) * 100 : 0;
+  const mathAvgTime = mathGraded > 0 ? Math.round(mathTime / mathGraded) : 0;
+
+  const subjects = registrySubjects.map((subj) => {
+    if (subj.status === "active" && subj.id === "math") {
+      return {
+        subjectId: subj.id,
+        title: subj.title,
+        icon: subj.icon,
+        status: subj.status,
+        enabled: subj.enabled,
+        stats: {
+          gradedAttemptCount: mathGraded,
+          correctCount: mathCorrect,
+          incorrectCount: mathIncorrect,
+          retryRequestedCount: mathRetry,
+          accuracy: mathAccuracy,
+          totalSolveTimeMs: mathTime,
+          averageSolveTimeMs: mathAvgTime,
+          sessionCount
+        },
+        progress: {
+          totalLevels,
+          masteredLevels,
+          learningLevels,
+          unstartedLevels,
+          progressRate,
+          curriculum: curriculumProgressData
+        }
+      };
+    }
+    return {
+      subjectId: subj.id,
+      title: subj.title,
+      icon: subj.icon,
+      status: subj.status,
+      enabled: subj.enabled,
+      stats: null,
+      progress: null
+    };
+  });
+
+  // 6. 최근 세션 목록
+  const reviewBySession = new Map();
+  activeReviews.forEach((r) => {
+    if (r.sourceSessionId) reviewBySession.set(r.sourceSessionId, r.state);
+  });
+
+  const formattedRecentSessions = (recentSessions || [])
+    .slice(0, options.recentLimit || 5)
+    .map((s) => ({
+      sessionId: s.id || s.sessionId,
+      completedAt: s.completedAt,
+      subjectId: s.subjectId || "math",
+      operation: s.operation,
+      level: s.level || s.difficulty,
+      totalQuestions: s.totalQuestions || (s.results ? s.results.length : 0),
+      correctCount: s.correctCount || 0,
+      wrongCount: s.wrongCount || 0,
+      accuracyRate: s.accuracyRate !== undefined ? s.accuracyRate : 0,
+      totalSolveTimeMs: s.totalSolveTimeMs || 0,
+      averageSolveTimeMs: s.averageSolveTimeMs || 0,
+      reviewState: reviewBySession.get(s.id || s.sessionId) || null,
+      results: s.results || [],
+      rawSession: s
+    }));
+
+  return {
+    learnerId: targetLearnerId,
+    actionCards: {
+      inProgress: inProgressCards,
+      pendingGrading: pendingGradingCards,
+      reviewRequired: activeReviews
+    },
+    overall,
+    subjects,
+    recentSessions: formattedRecentSessions
+  };
+}
+
+//+_+// Phase F8: getLearnerHomeDashboard alias
+export const getLearnerHomeDashboard = getLearnerDashboard;
+
 
 
