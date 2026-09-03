@@ -1826,6 +1826,11 @@ export function _setFinalizeFailureInjectorForTesting(fn) {
   finalizeFailureInjector = fn;
 }
 
+let reviseFailureInjector = null;
+export function _setReviseFailureInjectorForTesting(fn) {
+  reviseFailureInjector = fn;
+}
+
 export async function saveProgressAggregate(aggregateData, options = {}) {
   if (!aggregateData) throw new Error("저장할 progressAggregate 데이터가 필요합니다.");
   const db = await getDB();
@@ -2522,68 +2527,166 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
     : `${rawExisting.learnerId}:${qKey}`;
 
   if (db.isMemory) {
-    db.submissions.set(submissionId, revisedSubmission);
+    if (typeof reviseFailureInjector === "function") {
+      reviseFailureInjector({ isMemory: true, phase: "before_write" });
+    }
 
-    // attempts 갱신
-    for (const [attId, att] of db.attempts.entries()) {
-      if (att.sessionId === sessionId && att.questionId === questionId) {
-        db.attempts.set(attId, {
-          ...att,
-          decision: normalizedDecision,
-          gradeOutcome: normalizedDecision,
-          isCorrect: normalizedDecision === "CORRECT",
-          retryRequested: normalizedDecision === "RETRY",
-          comment: finalComment,
-          revisedAt: now
+    const backupSubmissions = new Map(db.submissions);
+    const backupSessions = new Map(db.sessions);
+    const backupAttempts = new Map(db.attempts);
+    const backupMistakes = new Map(db.mistakes);
+    const backupProgressAggregates = new Map(db.progressAggregates);
+
+    try {
+      db.submissions.set(submissionId, revisedSubmission);
+
+      // sessions 갱신 (F6-R3: Session 결과 및 기존 통계 API 동기화)
+      const existingSession = db.sessions.get(sessionId);
+      if (existingSession && Array.isArray(existingSession.results)) {
+        const updatedResults = existingSession.results.map((r) => {
+          if (r.questionId === questionId) {
+            return {
+              ...r,
+              decision: normalizedDecision,
+              gradeOutcome: normalizedDecision,
+              isCorrect: normalizedDecision === "CORRECT",
+              retryRequested: normalizedDecision === "RETRY",
+              comment: finalComment,
+              revisedAt: now
+            };
+          }
+          return r;
+        });
+        const correctCount = updatedResults.filter((r) => r.isCorrect).length;
+        const wrongCount = updatedResults.length - correctCount;
+        const accuracyRate = updatedResults.length > 0 ? Math.round((correctCount / updatedResults.length) * 100) : 0;
+        db.sessions.set(sessionId, {
+          ...existingSession,
+          results: updatedResults,
+          correctCount,
+          wrongCount,
+          accuracyRate,
+          accuracy: accuracyRate,
+          updatedAt: now
         });
       }
-    }
 
-    // mistakes 갱신 (F6-R2: 재채점 시 wrongCount 중복 증가 방지)
-    if (isMistake) {
-      const prev = db.mistakes.get(mistakeCompoundKey) || { wrongCount: 0 };
-      // 기존에도 오답이었던 경우(WRONG->WRONG, WRONG->RETRY, RETRY->WRONG)는 wrongCount 유지
-      const wrongCount = wasMistake ? Math.max(1, prev.wrongCount || 1) : ((prev.wrongCount || 0) + 1);
-      db.mistakes.set(mistakeCompoundKey, {
-        ...question,
-        key: mistakeCompoundKey,
-        id: mistakeCompoundKey,
-        compoundKey: mistakeCompoundKey,
-        questionKey: qKey,
-        learnerId: rawExisting.learnerId,
-        wrongCount,
-        lastWrongAt: now
-      });
-    } else {
-      // CORRECT로 변경된 경우 오답 큐에서 제거
-      db.mistakes.delete(mistakeCompoundKey);
-    }
-
-    // progressAggregates 갱신
-    for (const [key, agg] of db.progressAggregates.entries()) {
-      if ((agg.learnerId || DEFAULT_LEGACY_LEARNER_ID) === rawExisting.learnerId) {
-        db.progressAggregates.delete(key);
+      // attempts 갱신
+      for (const [attId, att] of db.attempts.entries()) {
+        if (att.sessionId === sessionId && att.questionId === questionId) {
+          db.attempts.set(attId, {
+            ...att,
+            decision: normalizedDecision,
+            gradeOutcome: normalizedDecision,
+            isCorrect: normalizedDecision === "CORRECT",
+            retryRequested: normalizedDecision === "RETRY",
+            comment: finalComment,
+            revisedAt: now
+          });
+        }
       }
-    }
-    calculatedAggregates.forEach((agg) => {
-      db.progressAggregates.set(agg.id, agg);
-    });
 
-    return {
-      submission: revisedSubmission,
-      aggregates: calculatedAggregates
-    };
+      // mistakes 갱신 (F6-R2: 재채점 시 wrongCount 중복 증가 방지)
+      if (isMistake) {
+        const prev = db.mistakes.get(mistakeCompoundKey) || { wrongCount: 0 };
+        // 기존에도 오답이었던 경우(WRONG->WRONG, WRONG->RETRY, RETRY->WRONG)는 wrongCount 유지
+        const wrongCount = wasMistake ? Math.max(1, prev.wrongCount || 1) : ((prev.wrongCount || 0) + 1);
+        db.mistakes.set(mistakeCompoundKey, {
+          ...question,
+          key: mistakeCompoundKey,
+          id: mistakeCompoundKey,
+          compoundKey: mistakeCompoundKey,
+          questionKey: qKey,
+          learnerId: rawExisting.learnerId,
+          wrongCount,
+          lastWrongAt: now
+        });
+      } else {
+        // CORRECT로 변경된 경우 오답 큐에서 제거
+        db.mistakes.delete(mistakeCompoundKey);
+      }
+
+      if (typeof reviseFailureInjector === "function") {
+        reviseFailureInjector({ isMemory: true, phase: "during_aggregates" });
+      }
+
+      // progressAggregates 갱신
+      for (const [key, agg] of db.progressAggregates.entries()) {
+        if ((agg.learnerId || DEFAULT_LEGACY_LEARNER_ID) === rawExisting.learnerId) {
+          db.progressAggregates.delete(key);
+        }
+      }
+      calculatedAggregates.forEach((agg) => {
+        db.progressAggregates.set(agg.id, agg);
+      });
+
+      return {
+        submission: revisedSubmission,
+        aggregates: calculatedAggregates
+      };
+    } catch (err) {
+      db.submissions = backupSubmissions;
+      db.sessions = backupSessions;
+      db.attempts = backupAttempts;
+      db.mistakes = backupMistakes;
+      db.progressAggregates = backupProgressAggregates;
+      memoryStore.submissions = backupSubmissions;
+      memoryStore.sessions = backupSessions;
+      memoryStore.attempts = backupAttempts;
+      memoryStore.mistakes = backupMistakes;
+      memoryStore.progressAggregates = backupProgressAggregates;
+      throw err;
+    }
   }
 
   return new Promise((resolve, reject) => {
     try {
-      const tx = db.transaction(["submissions", "attempts", "mistakes", "progressAggregates"], "readwrite");
+      const tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates"], "readwrite");
       const subStore = tx.objectStore("submissions");
+      const sessStore = tx.objectStore("sessions");
       const attStore = tx.objectStore("attempts");
       const misStore = tx.objectStore("mistakes");
       const progStore = tx.objectStore("progressAggregates");
 
+      if (typeof reviseFailureInjector === "function") {
+        reviseFailureInjector({ tx, phase: "before_write" });
+      }
+
       subStore.put(revisedSubmission);
+
+      // sessions 갱신
+      const sessReq = sessStore.get(sessionId);
+      sessReq.onsuccess = () => {
+        const existingSession = sessReq.result;
+        if (existingSession && Array.isArray(existingSession.results)) {
+          const updatedResults = existingSession.results.map((r) => {
+            if (r.questionId === questionId) {
+              return {
+                ...r,
+                decision: normalizedDecision,
+                gradeOutcome: normalizedDecision,
+                isCorrect: normalizedDecision === "CORRECT",
+                retryRequested: normalizedDecision === "RETRY",
+                comment: finalComment,
+                revisedAt: now
+              };
+            }
+            return r;
+          });
+          const correctCount = updatedResults.filter((r) => r.isCorrect).length;
+          const wrongCount = updatedResults.length - correctCount;
+          const accuracyRate = updatedResults.length > 0 ? Math.round((correctCount / updatedResults.length) * 100) : 0;
+          sessStore.put({
+            ...existingSession,
+            results: updatedResults,
+            correctCount,
+            wrongCount,
+            accuracyRate,
+            accuracy: accuracyRate,
+            updatedAt: now
+          });
+        }
+      };
 
       // attempt 갱신
       attStore.openCursor().onsuccess = (e) => {
@@ -2634,9 +2737,17 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
           }
           cursor.continue();
         } else {
-          calculatedAggregates.forEach((agg) => {
-            progStore.put(agg);
-          });
+          try {
+            if (typeof reviseFailureInjector === "function") {
+              reviseFailureInjector({ tx, phase: "during_aggregates" });
+            }
+            calculatedAggregates.forEach((agg) => {
+              progStore.put(agg);
+            });
+          } catch (injectErr) {
+            try { tx.abort(); } catch (_) {}
+            reject(injectErr);
+          }
         }
       };
       req.onerror = (e) => {
