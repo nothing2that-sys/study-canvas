@@ -33,35 +33,36 @@ import { getAllSubjects } from "../platform/subjectRegistry.js";
 export const DEFAULT_NEW_LEARNING_PROBLEM_COUNT = 20;
 
 /**
- * //+_+// Phase F9 Rework: 문제에 대해 학생 답안이 유효하게 입력되었는지 여부 확인 (SSOT)
- * - question.userAnswer, studentAnswer, enteredAnswer
- * - draft.userAnswers, answers, studentAnswers
- * - 숫자 0은 유효 답안
- * - null, undefined, 공백 문자열("")은 미답변
+ * //+_+// Phase F9 Rework 2: 문제에 대해 학생 답안이 유효하게 입력되었는지 여부 확인 (SSOT)
+ * - question.answer 및 question.expectedAnswer는 정답 메타데이터이므로 학생 답안 판단에서 완전 제거
+ * - draft.userAnswers, draft.studentAnswers, draft.answers (우선 검사)
+ * - question.userAnswer, question.studentAnswer, question.enteredAnswer
+ * - 숫자 0 및 문자열 "0"은 유효한 학생 답안으로 인정
+ * - null, undefined, 공백 문자열("")은 미답변으로 판정
  * - studentStrokesMap 필기 여부는 답안 완료 판정에 사용하지 않음
  */
 export function isQuestionAnswered(q, draft = null) {
   let val = undefined;
-  if (q && typeof q === "object") {
+  const qId = q?.id;
+
+  // 1. draft 레벨의 학생 입력 맵 우선 확인 (draft.userAnswers, draft.studentAnswers, draft.answers)
+  if (draft && typeof draft === "object" && qId !== undefined) {
+    if (draft.userAnswers && typeof draft.userAnswers === "object" && draft.userAnswers[qId] !== undefined) {
+      val = draft.userAnswers[qId];
+    } else if (draft.studentAnswers && typeof draft.studentAnswers === "object" && draft.studentAnswers[qId] !== undefined) {
+      val = draft.studentAnswers[qId];
+    } else if (draft.answers && typeof draft.answers === "object" && draft.answers[qId] !== undefined) {
+      val = draft.answers[qId];
+    }
+  }
+
+  // 2. 개별 문제 객체 레벨의 학생 입력 필드 확인 (question.userAnswer, studentAnswer, enteredAnswer)
+  if (val === undefined && q && typeof q === "object") {
     if (q.userAnswer !== undefined) val = q.userAnswer;
     else if (q.studentAnswer !== undefined) val = q.studentAnswer;
     else if (q.enteredAnswer !== undefined) val = q.enteredAnswer;
-    else if (q.answer !== undefined && q.answer !== null && q.expectedAnswer !== undefined) {
-      val = q.answer;
-    }
   }
-  if (val === undefined && draft && typeof draft === "object") {
-    const qId = q?.id;
-    if (qId !== undefined) {
-      if (draft.userAnswers && typeof draft.userAnswers === "object" && draft.userAnswers[qId] !== undefined) {
-        val = draft.userAnswers[qId];
-      } else if (draft.answers && typeof draft.answers === "object" && draft.answers[qId] !== undefined) {
-        val = draft.answers[qId];
-      } else if (draft.studentAnswers && typeof draft.studentAnswers === "object" && draft.studentAnswers[qId] !== undefined) {
-        val = draft.studentAnswers[qId];
-      }
-    }
-  }
+
   if (val === null || val === undefined) return false;
   return String(val).trim() !== "";
 }
@@ -280,13 +281,13 @@ export function buildLearningRecommendations({
         draft.sessionState !== "GRADING_ACTIVE";
 
       if (isPracticeActive) {
-        //+_+// Phase F9 Rework: retrying ReviewItem과 연계된 세션인지 명시적 relation key로만 Dedup (fallback 제거)
+        //+_+// Phase F9 Rework 2: retrying ReviewItem과 연계된 세션인지 완전 일치(exact equality)로만 Dedup (부분 일치/substring collision 완전 방지)
         const matchingRetryingReview = retryingReviews.find((r) =>
           (draft.reviewItemId && draft.reviewItemId === r.id) ||
           (draft.config?.reviewItemId && draft.config.reviewItemId === r.id) ||
           (Array.isArray(draft.questions) && draft.questions.some((q) => q.reviewItemId === r.id)) ||
           (r.sourceSessionId && r.sourceSessionId === draft.sessionId) ||
-          (Array.isArray(r.retryAttemptIds) && r.retryAttemptIds.some((aid) => (draft.sessionId || "").includes(aid)))
+          (Array.isArray(r.retryAttemptIds) && r.retryAttemptIds.some((aid) => aid === draft.sessionId || (draft.retryAttemptId && aid === draft.retryAttemptId)))
         ) || null;
 
         //+_+// Phase F9 Rework: 실제 학생 답안 작성 완료 여부 기준 remaining 계산 (strokes 미사용, 0 허용)
