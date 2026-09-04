@@ -31,6 +31,8 @@ import {
 } from "../storage.js";
 import { evaluateStartupDraftResumePolicy } from "../submissionLifecycle.js";
 import { getAllSubjects } from "../platform/subjectRegistry.js";
+//+_+// Phase F9: 추천 엔진 빌더 import
+import { buildLearningRecommendations } from "../recommendations/recommendationEngine.js";
 
 
 //+_+// 최근 완료 세션 목록 조회
@@ -403,6 +405,19 @@ export async function getLearnerDashboard(learnerId, options = {}) {
       rawSession: s
     }));
 
+  //+_+// Phase F9: 추천 후보 산출 (순수 함수 연동, DB write 0건)
+  const recommendations = buildLearningRecommendations({
+    learnerId: targetLearnerId,
+    draft,
+    submissions: allSubmissions,
+    reviewItems: activeReviewItems,
+    aggregates,
+    recentSessions,
+    curriculumProgress: curriculumProgressData,
+    now: options.now,
+    limit: options.recommendationLimit || 5
+  });
+
   return {
     learnerId: targetLearnerId,
     actionCards: {
@@ -412,12 +427,49 @@ export async function getLearnerDashboard(learnerId, options = {}) {
     },
     overall,
     subjects,
-    recentSessions: formattedRecentSessions
+    recentSessions: formattedRecentSessions,
+    recommendations
   };
 }
 
 //+_+// Phase F8: getLearnerHomeDashboard alias
 export const getLearnerHomeDashboard = getLearnerDashboard;
+
+//+_+// Phase F9: 학습자 맞춤 추천 후보 조회 (순수 읽기 전용, 결정론적, 격리)
+export async function getLearningRecommendations(learnerId, options = {}) {
+  const targetLearnerId = (typeof learnerId === "string" && learnerId)
+    ? learnerId
+    : (getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID);
+
+  const [
+    draft,
+    allSubmissions,
+    activeReviewItems,
+    aggregates,
+    recentSessions,
+    curriculumProgressData
+  ] = await Promise.all([
+    getDraft({ learnerId: targetLearnerId }).catch(() => null),
+    getAllSubmissions({ learnerId: targetLearnerId }).catch(() => []),
+    getActiveReviewItems({ learnerId: targetLearnerId }).catch(() => []),
+    getProgressAggregates({ learnerId: targetLearnerId }).catch(() => []),
+    getRecentSessions(options.recentLimit || 5, { learnerId: targetLearnerId }).catch(() => []),
+    getCurriculumProgress({ learnerId: targetLearnerId }).catch(() => ({ mul: [], div: [] }))
+  ]);
+
+  return buildLearningRecommendations({
+    learnerId: targetLearnerId,
+    draft,
+    submissions: allSubmissions,
+    reviewItems: activeReviewItems,
+    aggregates,
+    recentSessions,
+    curriculumProgress: curriculumProgressData,
+    now: options.now,
+    limit: options.limit || 5
+  });
+}
+
 
 
 

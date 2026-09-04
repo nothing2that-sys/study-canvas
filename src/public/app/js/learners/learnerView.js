@@ -22,7 +22,7 @@ import {
   getLearnerById
 } from "./learnerQueries.js";
 
-import { getLearnerDashboard, getLearnerHomeSummary, getAllSubmissions, getActiveReviewItems } from "../data/learningQueries.js";
+import { getLearnerDashboard, getLearnerHomeSummary, getAllSubmissions, getActiveReviewItems, getLearningRecommendations } from "../data/learningQueries.js";
 import { getAllSubjects, getSubject } from "../platform/subjectRegistry.js";
 import { navigate, ROUTES } from "../platform/appRouter.js";
 import { formatTime } from "../timer.js";
@@ -108,6 +108,8 @@ export function initLearnerView(options = {}) {
     homeLearnerAvatar: doc.querySelector("#homeLearnerAvatar"),
     homeLearnerGreeting: queryFirst(doc, "#learnerGreetingName", "#homeLearnerGreeting"),
     homeActionCardsSection: doc.querySelector("#homeActionCardsSection"),
+    //+_+// Phase F9: 오늘의 추천 섹션 요소
+    homeRecommendationSection: doc.querySelector("#homeRecommendationSection"),
     homeOverallStatsSection: doc.querySelector("#homeOverallStatsSection"),
     subjectCardsGrid: queryFirst(doc, "#homeSubjectGrid", "#subjectCardsGrid"),
     recentSessionsSection: doc.querySelector("#homeRecentSessionsSection"),
@@ -416,6 +418,124 @@ export async function renderLearnerHomeView() {
     }
 
     actionSection.hidden = (pendingGrading.length === 0 && reviewRequired.length === 0 && inProgress.length === 0);
+  }
+
+  //+_+// Phase F9: 오늘의 추천 렌더링 (#homeRecommendationSection)
+  const recSection = dom.homeRecommendationSection || dom.learnerHomeView?.querySelector("#homeRecommendationSection");
+  if (recSection) {
+    const recData = dashboard.recommendations || await getLearningRecommendations(learner.id);
+    const topRec = recData?.topRecommendation;
+    const candidates = recData?.candidates || [];
+
+    if (!topRec) {
+      recSection.innerHTML = `
+        <div class="recommendation-empty-card" role="region" aria-label="오늘의 추천">
+          <div class="recommendation-header">
+            <span class="eyebrow">오늘의 추천</span>
+          </div>
+          <h2 class="recommendation-title">모든 주요 할 일을 완료했어요!</h2>
+          <p class="recommendation-desc">새로운 학습을 시작하거나 아래 과목을 선택해 자유롭게 공부해 보세요.</p>
+        </div>
+      `;
+    } else {
+      let actorBadgeClass = "actor-learner";
+      let actorBadgeText = "아이 할 일";
+      if (topRec.actor === "guardian") {
+        actorBadgeClass = "actor-guardian";
+        actorBadgeText = "보호자 할 일";
+      } else if (topRec.actor === "family") {
+        actorBadgeClass = "actor-family";
+        actorBadgeText = "함께 할 일";
+      }
+
+      let workloadHtml = "";
+      if (topRec.estimatedProblemCount !== null && topRec.estimatedProblemCount !== undefined) {
+        workloadHtml += `<span class="workload-pill">${topRec.estimatedProblemCount}문제</span>`;
+      }
+      if (topRec.estimatedDurationMs !== null && topRec.estimatedDurationMs !== undefined && topRec.estimatedDurationMs > 0) {
+        workloadHtml += `<span class="workload-pill">${formatTime(topRec.estimatedDurationMs, "korean")}</span>`;
+      }
+
+      const alternatives = candidates.slice(1, 3);
+      let alternativesHtml = "";
+      if (alternatives.length > 0) {
+        alternativesHtml = `
+          <div class="rec-alternatives-container">
+            <span class="rec-alternatives-label">다른 추천:</span>
+            <div class="rec-alternatives-chips">
+              ${alternatives.map((alt, altIdx) => `
+                <button type="button" class="rec-alt-chip" data-alt-idx="${altIdx}" aria-label="${escapeHtml(alt.reasonText)}">
+                  <span class="alt-chip-tier">Tier ${alt.priorityTier}</span>
+                  <span class="alt-chip-reason">${escapeHtml(alt.reasonText)}</span>
+                  <span class="alt-chip-action">${escapeHtml(alt.action.label)} →</span>
+                </button>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      recSection.innerHTML = `
+        <div class="recommendation-card" role="region" aria-label="오늘의 추천">
+          <div class="recommendation-header">
+            <div class="recommendation-badge-group">
+              <span class="eyebrow">오늘의 추천</span>
+              <span class="rec-actor-badge ${actorBadgeClass}">${actorBadgeText}</span>
+              ${workloadHtml}
+            </div>
+          </div>
+          <div class="recommendation-body">
+            <h2 class="recommendation-title">${escapeHtml(topRec.reasonText)}</h2>
+            <p class="recommendation-desc">우선순위가 가장 높은 학습 활동을 바로 진행할 수 있어요.</p>
+          </div>
+          <div class="recommendation-footer">
+            <button type="button" class="primary-action rec-main-action-btn" id="topRecActionBtn" aria-label="${escapeHtml(topRec.action.label)}">
+              ${escapeHtml(topRec.action.label)}
+            </button>
+          </div>
+          ${alternativesHtml}
+        </div>
+      `;
+
+      const executeAction = (actionCandidate) => {
+        if (!actionCandidate || !actionCandidate.action) return;
+        const kind = actionCandidate.action.kind;
+        if (kind === "OPEN_GRADING") {
+          openPendingGradingFn?.(actionCandidate.rawItem || { id: actionCandidate.action.targetId });
+        } else if (kind === "OPEN_REVIEW") {
+          openReviewQueueFn?.(actionCandidate.rawItem ? [actionCandidate.rawItem] : [{ id: actionCandidate.action.targetId }]);
+        } else if (kind === "RESUME_SESSION") {
+          if (restoreDraftFn && actionCandidate.rawItem) {
+            restoreDraftFn(actionCandidate.rawItem);
+          } else {
+            navigate(ROUTES.MATH_PRACTICE);
+          }
+        } else if (kind === "OPEN_LEARNING_SETUP") {
+          navigate(ROUTES.MATH_HOME);
+        } else if (kind === "OPEN_SUBJECT") {
+          navigate(ROUTES.MATH_HOME);
+        }
+      };
+
+      const topBtn = recSection.querySelector("#topRecActionBtn");
+      if (topBtn) {
+        topBtn.onclick = () => executeAction(topRec);
+      }
+
+      recSection.querySelectorAll(".rec-alt-chip").forEach((chip) => {
+        const altIdx = Number(chip.getAttribute("data-alt-idx"));
+        const altItem = alternatives[altIdx];
+        if (altItem) {
+          chip.onclick = () => executeAction(altItem);
+          chip.onkeydown = (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              executeAction(altItem);
+            }
+          };
+        }
+      });
+    }
   }
 
   // 2. 전체 요약 통계 렌더링 (#homeOverallStatsSection)

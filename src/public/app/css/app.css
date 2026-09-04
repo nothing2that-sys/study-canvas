@@ -4362,3 +4362,189 @@ body.theme-midnight .active-learner-pill {
   }
 }
 
+/*+_+// Phase F9: 오늘의 추천 (Recommendation Engine) UI 스타일 */
+.recommendation-section {
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+.recommendation-card {
+  background: linear-gradient(135deg, rgba(23, 63, 53, 0.05) 0%, rgba(38, 166, 154, 0.08) 100%), #ffffff;
+  border: 2px solid rgba(23, 63, 53, 0.15);
+  border-radius: 20px;
+  padding: 22px 24px;
+  box-shadow: 0 8px 24px rgba(23, 63, 53, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.recommendation-card:hover {
+  box-shadow: 0 12px 30px rgba(23, 63, 53, 0.09);
+}
+
+.recommendation-empty-card {
+  background: #ffffff;
+  border: 2px dashed rgba(23, 63, 53, 0.18);
+  border-radius: 20px;
+  padding: 24px;
+  text-align: center;
+}
+
+.recommendation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.recommendation-badge-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rec-actor-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 12px;
+  letter-spacing: -0.01em;
+}
+
+.rec-actor-badge.actor-guardian {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
+.rec-actor-badge.actor-learner {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.rec-actor-badge.actor-family {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.workload-pill {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 12px;
+  background: rgba(23, 63, 53, 0.08);
+  color: var(--ink);
+}
+
+.recommendation-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.recommendation-desc {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.recommendation-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: 4px;
+}
+
+.rec-main-action-btn {
+  min-height: 44px;
+  padding: 0 24px;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+.rec-alternatives-container {
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(23, 63, 53, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rec-alternatives-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.rec-alternatives-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rec-alt-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(23, 63, 53, 0.05);
+  border: 1px solid rgba(23, 63, 53, 0.14);
+  border-radius: 12px;
+  font-size: 0.82rem;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.rec-alt-chip:hover, .rec-alt-chip:focus-visible {
+  background: rgba(23, 63, 53, 0.1);
+  border-color: var(--green);
+  outline: none;
+}
+
+.alt-chip-tier {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(23, 63, 53, 0.1);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+
+.alt-chip-action {
+  font-weight: 700;
+  color: var(--green);
+}
+
+@media (max-width: 640px) {
+  .recommendation-card {
+    padding: 18px 16px;
+  }
+  .recommendation-title {
+    font-size: 1.15rem;
+  }
+  .rec-main-action-btn {
+    width: 100%;
+  }
+  .rec-alt-chip {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+
