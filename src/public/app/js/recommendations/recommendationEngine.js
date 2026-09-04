@@ -29,6 +29,43 @@ import { getAllSubjects } from "../platform/subjectRegistry.js";
  * @property {any} [rawItem] - 원본 도메인 객체 (선택적)
  */
 
+//+_+// Phase F9 Rework: 기존 앱의 기본 학습 설정 계약(countPreset = "20") SSOT 일치
+export const DEFAULT_NEW_LEARNING_PROBLEM_COUNT = 20;
+
+/**
+ * //+_+// Phase F9 Rework: 문제에 대해 학생 답안이 유효하게 입력되었는지 여부 확인 (SSOT)
+ * - question.userAnswer, studentAnswer, enteredAnswer
+ * - draft.userAnswers, answers, studentAnswers
+ * - 숫자 0은 유효 답안
+ * - null, undefined, 공백 문자열("")은 미답변
+ * - studentStrokesMap 필기 여부는 답안 완료 판정에 사용하지 않음
+ */
+export function isQuestionAnswered(q, draft = null) {
+  let val = undefined;
+  if (q && typeof q === "object") {
+    if (q.userAnswer !== undefined) val = q.userAnswer;
+    else if (q.studentAnswer !== undefined) val = q.studentAnswer;
+    else if (q.enteredAnswer !== undefined) val = q.enteredAnswer;
+    else if (q.answer !== undefined && q.answer !== null && q.expectedAnswer !== undefined) {
+      val = q.answer;
+    }
+  }
+  if (val === undefined && draft && typeof draft === "object") {
+    const qId = q?.id;
+    if (qId !== undefined) {
+      if (draft.userAnswers && typeof draft.userAnswers === "object" && draft.userAnswers[qId] !== undefined) {
+        val = draft.userAnswers[qId];
+      } else if (draft.answers && typeof draft.answers === "object" && draft.answers[qId] !== undefined) {
+        val = draft.answers[qId];
+      } else if (draft.studentAnswers && typeof draft.studentAnswers === "object" && draft.studentAnswers[qId] !== undefined) {
+        val = draft.studentAnswers[qId];
+      }
+    }
+  }
+  if (val === null || val === undefined) return false;
+  return String(val).trim() !== "";
+}
+
 /**
  * 통합 추천 후보 목록 생성 및 정렬 (순수 함수)
  * @param {Object} params
@@ -243,15 +280,19 @@ export function buildLearningRecommendations({
         draft.sessionState !== "GRADING_ACTIVE";
 
       if (isPracticeActive) {
-        // retrying ReviewItem과 연계된 세션인지 확인하여 1개 후보로 Dedup
+        //+_+// Phase F9 Rework: retrying ReviewItem과 연계된 세션인지 명시적 relation key로만 Dedup (fallback 제거)
         const matchingRetryingReview = retryingReviews.find((r) =>
-          r.sourceSessionId === draft.sessionId ||
+          (draft.reviewItemId && draft.reviewItemId === r.id) ||
+          (draft.config?.reviewItemId && draft.config.reviewItemId === r.id) ||
+          (Array.isArray(draft.questions) && draft.questions.some((q) => q.reviewItemId === r.id)) ||
+          (r.sourceSessionId && r.sourceSessionId === draft.sessionId) ||
           (Array.isArray(r.retryAttemptIds) && r.retryAttemptIds.some((aid) => (draft.sessionId || "").includes(aid)))
-        ) || (retryingReviews.length > 0 ? retryingReviews[0] : null);
+        ) || null;
 
+        //+_+// Phase F9 Rework: 실제 학생 답안 작성 완료 여부 기준 remaining 계산 (strokes 미사용, 0 허용)
         const totalQ = draft.questions.length;
-        const solvedQ = Object.keys(draft.studentStrokesMap || {}).length;
-        const remainingQ = Math.max(1, totalQ - solvedQ);
+        const answeredQ = draft.questions.filter((q) => isQuestionAnswered(q, draft)).length;
+        const remainingQ = Math.max(0, totalQ - answeredQ);
         const estDuration = averageSolveTimeMs !== null ? Math.round(averageSolveTimeMs * remainingQ) : null;
 
         if (matchingRetryingReview) {
@@ -353,7 +394,8 @@ export function buildLearningRecommendations({
     allLevels[0] ||
     { id: "M1", levelId: "M1", title: "구구단 2·3·4·5단", operation: "mul" };
 
-  const defaultNewLearningCount = 10;
+  //+_+// Phase F9 Rework: 기존 기본 학습 설정 계약(countPreset = "20") SSOT 일치
+  const defaultNewLearningCount = DEFAULT_NEW_LEARNING_PROBLEM_COUNT;
   const newLearningEstDuration = averageSolveTimeMs !== null
     ? Math.round(averageSolveTimeMs * defaultNewLearningCount)
     : null;
