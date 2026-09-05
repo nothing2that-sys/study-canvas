@@ -32,39 +32,12 @@ import { getAllSubjects } from "../platform/subjectRegistry.js";
 //+_+// Phase F9 Rework: 기존 앱의 기본 학습 설정 계약(countPreset = "20") SSOT 일치
 export const DEFAULT_NEW_LEARNING_PROBLEM_COUNT = 20;
 
-/**
- * //+_+// Phase F9 Rework 2: 문제에 대해 학생 답안이 유효하게 입력되었는지 여부 확인 (SSOT)
- * - question.answer 및 question.expectedAnswer는 정답 메타데이터이므로 학생 답안 판단에서 완전 제거
- * - draft.userAnswers, draft.studentAnswers, draft.answers (우선 검사)
- * - question.userAnswer, question.studentAnswer, question.enteredAnswer
- * - 숫자 0 및 문자열 "0"은 유효한 학생 답안으로 인정
- * - null, undefined, 공백 문자열("")은 미답변으로 판정
- * - studentStrokesMap 필기 여부는 답안 완료 판정에 사용하지 않음
- */
-export function isQuestionAnswered(q, draft = null) {
-  let val = undefined;
-  const qId = q?.id;
-
-  // 1. draft 레벨의 학생 입력 맵 우선 확인 (draft.userAnswers, draft.studentAnswers, draft.answers)
-  if (draft && typeof draft === "object" && qId !== undefined) {
-    if (draft.userAnswers && typeof draft.userAnswers === "object" && draft.userAnswers[qId] !== undefined) {
-      val = draft.userAnswers[qId];
-    } else if (draft.studentAnswers && typeof draft.studentAnswers === "object" && draft.studentAnswers[qId] !== undefined) {
-      val = draft.studentAnswers[qId];
-    } else if (draft.answers && typeof draft.answers === "object" && draft.answers[qId] !== undefined) {
-      val = draft.answers[qId];
-    }
-  }
-
-  // 2. 개별 문제 객체 레벨의 학생 입력 필드 확인 (question.userAnswer, studentAnswer, enteredAnswer)
-  if (val === undefined && q && typeof q === "object") {
-    if (q.userAnswer !== undefined) val = q.userAnswer;
-    else if (q.studentAnswer !== undefined) val = q.studentAnswer;
-    else if (q.enteredAnswer !== undefined) val = q.enteredAnswer;
-  }
-
-  if (val === null || val === undefined) return false;
-  return String(val).trim() !== "";
+//+_+// Phase F9 Rework 3: 현재 canvas-only Draft에는 저장되는 typed Student Answer가 없음
+//+_+// question.answer 및 question.expectedAnswer는 정답 메타데이터이므로 학생 답안 판단에서 제외
+//+_+// top-level answer map과 question-level typed-answer 후보는 실제 입력·저장 계약이 아니므로 제외
+//+_+// studentStrokesMap은 풀이 흔적이며 답안 완료 판정에 사용하지 않음
+export function isQuestionAnswered() {
+  return false;
 }
 
 /**
@@ -281,20 +254,16 @@ export function buildLearningRecommendations({
         draft.sessionState !== "GRADING_ACTIVE";
 
       if (isPracticeActive) {
-        //+_+// Phase F9 Rework 2: retrying ReviewItem과 연계된 세션인지 완전 일치(exact equality)로만 Dedup (부분 일치/substring collision 완전 방지)
+        //+_+// Phase F9 Rework 3: normalizeDraft round-trip 뒤에도 남는 명시적 relation만 사용
         const matchingRetryingReview = retryingReviews.find((r) =>
-          (draft.reviewItemId && draft.reviewItemId === r.id) ||
           (draft.config?.reviewItemId && draft.config.reviewItemId === r.id) ||
           (Array.isArray(draft.questions) && draft.questions.some((q) => q.reviewItemId === r.id)) ||
-          (r.sourceSessionId && r.sourceSessionId === draft.sessionId) ||
-          (Array.isArray(r.retryAttemptIds) && r.retryAttemptIds.some((aid) => aid === draft.sessionId || (draft.retryAttemptId && aid === draft.retryAttemptId)))
+          (r.sourceSessionId && r.sourceSessionId === draft.sessionId)
         ) || null;
 
-        //+_+// Phase F9 Rework: 실제 학생 답안 작성 완료 여부 기준 remaining 계산 (strokes 미사용, 0 허용)
-        const totalQ = draft.questions.length;
-        const answeredQ = draft.questions.filter((q) => isQuestionAnswered(q, draft)).length;
-        const remainingQ = Math.max(0, totalQ - answeredQ);
-        const estDuration = averageSolveTimeMs !== null ? Math.round(averageSolveTimeMs * remainingQ) : null;
+        //+_+// Phase F9 Rework 3: canvas-only Draft는 문항 완료 상태를 영속하지 않으므로 거짓 잔여 수치를 만들지 않음
+        const remainingQ = null;
+        const estDuration = null;
 
         if (matchingRetryingReview) {
           handledReviewItemIds.add(matchingRetryingReview.id);
