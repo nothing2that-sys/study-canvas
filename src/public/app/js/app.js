@@ -3130,7 +3130,7 @@ async function renderAdaptiveRecommendCard() {
 
 //+_+// 미완료 Draft 복원 실행 헬퍼
 function restoreSessionFromDraft(draft) {
-  if (!draft || !draft.questions || draft.questions.length === 0) return;
+  if (!draft || !draft.questions || draft.questions.length === 0) return false;
 
   lastSessionConfig = draft.config;
   currentDraftCreatedAt = draft.createdAt || Date.now();
@@ -3192,6 +3192,7 @@ function restoreSessionFromDraft(draft) {
   });
 
   updateToolDockUI();
+  return true;
 }
 
 //+_+// Phase F5: Draft가 없어도 Submission의 불변 학생 payload와 가변 grading payload로 채점 흐름을 복원한다.
@@ -3266,7 +3267,12 @@ async function checkDraftResumeOnStartup() {
       if (resumeBtn) {
         resumeBtn.onclick = () => {
           draftModal.close();
-          restoreSessionFromDraft(draft);
+          const restored = restoreSessionFromDraft(draft);
+          if (restored && currentSession?.state === SessionState.PRACTICE_ACTIVE) {
+            navigate(ROUTES.MATH_PRACTICE);
+          } else if (restored && currentSession?.state === SessionState.GRADING_ACTIVE) {
+            navigate(ROUTES.MATH_GRADING);
+          }
         };
       }
 
@@ -3372,7 +3378,12 @@ if (typeof document !== "undefined") {
       openReviewDetailModal(items, 0);
     },
     onRestoreDraftSession: (draft) => {
-      restoreSessionFromDraft(draft);
+      const restored = restoreSessionFromDraft(draft);
+      if (restored && currentSession?.state === SessionState.PRACTICE_ACTIVE) {
+        navigate(ROUTES.MATH_PRACTICE);
+      } else if (restored && currentSession?.state === SessionState.GRADING_ACTIVE) {
+        navigate(ROUTES.MATH_GRADING);
+      }
     },
     onShowSessionDetail: (session) => {
       showSessionDetail(session);
