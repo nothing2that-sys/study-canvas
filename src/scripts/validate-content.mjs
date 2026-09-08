@@ -229,6 +229,107 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
         }
       }
     }
+
+    //+_+// Phase F11: Unit Catalog 검증
+    const unitCatalogRel = manifest.files?.unitCatalog;
+    if (unitCatalogRel) {
+      const unitCatalogPath = path.resolve(packageDir, unitCatalogRel);
+      const unitCatalog = readJsonFile(unitCatalogPath);
+      if (unitCatalog) {
+        if (unitCatalog.schemaVersion !== 1) {
+          recordError(`unit-catalog.json: schemaVersion은 1이어야 합니다 (${manifestPkgId}): ${unitCatalog.schemaVersion}`);
+        }
+        if (unitCatalog.packageId && unitCatalog.packageId !== manifestPkgId) {
+          recordError(`unit-catalog.json: packageId 불일치 (${manifestPkgId}: expected ${manifestPkgId}, got ${unitCatalog.packageId})`);
+        }
+        if (manifestPkgVer && unitCatalog.packageVersion && unitCatalog.packageVersion !== manifestPkgVer) {
+          recordError(`unit-catalog.json: packageVersion 불일치 (${manifestPkgId}: expected ${manifestPkgVer}, got ${unitCatalog.packageVersion})`);
+        }
+        if (!Number.isInteger(unitCatalog.catalogVersion) || unitCatalog.catalogVersion < 1) {
+          recordError(`unit-catalog.json: catalogVersion은 1 이상의 정수여야 합니다 (${manifestPkgId}): ${unitCatalog.catalogVersion}`);
+        }
+        if (!Array.isArray(unitCatalog.dimensions) || unitCatalog.dimensions.length === 0) {
+          recordError(`unit-catalog.json: dimensions는 비어있지 않은 배열이어야 합니다 (${manifestPkgId})`);
+        } else {
+          const seenDimensionIds = new Set();
+          const dimensionMap = new Map();
+
+          for (const dim of unitCatalog.dimensions) {
+            if (!dim.dimensionId || seenDimensionIds.has(dim.dimensionId)) {
+              recordError(`unit-catalog.json: dimensionId 누락 또는 중복 (${manifestPkgId}): ${dim.dimensionId}`);
+            }
+            seenDimensionIds.add(dim.dimensionId);
+
+            if (!Array.isArray(dim.units) || dim.units.length === 0) {
+              recordError(`unit-catalog.json: units는 비어있지 않은 배열이어야 합니다 (${dim.dimensionId})`);
+              continue;
+            }
+
+            const seenUnitIds = new Set();
+            let baseFactorOneCount = 0;
+            const dimUnits = new Map();
+
+            for (const u of dim.units) {
+              if (!u.unitId || seenUnitIds.has(u.unitId)) {
+                recordError(`unit-catalog.json: unitId 누락 또는 중복 (${dim.dimensionId}): ${u.unitId}`);
+              }
+              seenUnitIds.add(u.unitId);
+
+              if (!u.symbol || typeof u.symbol !== "string" || !u.symbol.trim()) {
+                recordError(`unit-catalog.json: symbol은 비어있지 않은 문자열이어야 합니다 (${u.unitId})`);
+              }
+              if (!Number.isInteger(u.baseFactor) || u.baseFactor <= 0) {
+                recordError(`unit-catalog.json: baseFactor는 양의 정수여야 합니다 (${u.unitId}: ${u.baseFactor})`);
+              } else if (u.baseFactor === 1) {
+                baseFactorOneCount += 1;
+              }
+              dimUnits.set(u.unitId, u);
+            }
+
+            if (baseFactorOneCount !== 1) {
+              recordError(`unit-catalog.json: dimension (${dim.dimensionId})에는 baseFactor=1인 기준 단위가 정확히 1개 존재해야 합니다 (현재: ${baseFactorOneCount})`);
+            }
+            dimensionMap.set(dim.dimensionId, dimUnits);
+          }
+
+          // generatorProfiles 검증
+          if (Array.isArray(unitCatalog.generatorProfiles)) {
+            for (const profile of unitCatalog.generatorProfiles) {
+              if (!profile.skillId || !registeredSkillIds.has(profile.skillId)) {
+                recordError(`unit-catalog.json: generatorProfile의 skillId가 curriculum에 존재하지 않습니다: ${profile.skillId}`);
+              }
+              if (!profile.dimensionId || !dimensionMap.has(profile.dimensionId)) {
+                recordError(`unit-catalog.json: generatorProfile의 dimensionId가 catalog에 존재하지 않습니다: ${profile.dimensionId}`);
+                continue;
+              }
+              if (profile.allowDecimals === true || profile.decimalPolicy) {
+                recordError(`unit-catalog.json: F11에서는 소수 변환 profile을 지원하지 않습니다 (${profile.skillId})`);
+              }
+              if (Array.isArray(profile.allowedPairs)) {
+                const seenPairs = new Set();
+                const currentDimUnits = dimensionMap.get(profile.dimensionId);
+                for (const pair of profile.allowedPairs) {
+                  if (!currentDimUnits.has(pair.sourceUnitId)) {
+                    recordError(`unit-catalog.json: pair의 sourceUnitId(${pair.sourceUnitId})가 dimension(${profile.dimensionId})에 존재하지 않습니다`);
+                  }
+                  if (!currentDimUnits.has(pair.targetUnitId)) {
+                    recordError(`unit-catalog.json: pair의 targetUnitId(${pair.targetUnitId})가 dimension(${profile.dimensionId})에 존재하지 않습니다`);
+                  }
+                  if (pair.sourceUnitId === pair.targetUnitId) {
+                    recordError(`unit-catalog.json: sourceUnitId와 targetUnitId는 같을 수 없습니다 (${pair.sourceUnitId})`);
+                  }
+                  const pairKey = `${pair.sourceUnitId}->${pair.targetUnitId}`;
+                  if (seenPairs.has(pairKey)) {
+                    recordError(`unit-catalog.json: 중복된 conversion pair입니다 (${pairKey})`);
+                  }
+                  seenPairs.add(pairKey);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 
   const valid = errors.length === 0;

@@ -32,7 +32,8 @@ import {
   getReviewItem,
   getAllReviewItems,
   getActiveReviewItems,
-  getReviewItemBySourceAttemptId
+  getReviewItemBySourceAttemptId,
+  getAllProgressAggregates
 } from "./data/learningQueries.js";
 import { getActiveLearner, getActiveLearnerId, getLearners } from "./learners/learnerQueries.js";
 import { selectLearner, createLearner, configureLearnerSessionGuard } from "./learners/learnerCommands.js";
@@ -68,6 +69,9 @@ import {
   restoreSessionStateFromDraft,
   evaluateStartupDraftResumePolicy
 } from "./submissionLifecycle.js";
+import { resolvePracticeRoute, resolveLandingRoute } from "./learningRouteResolver.js";
+import { loadPackage, loadPackageResource } from "./contentPackageLoader.js";
+import { generateUnitConversionActivities } from "./measurementUnitGenerator.js";
 
 // 앱 전역 인터랙션 가드 초기화
 const interactionGuard = setupInteractionGuard(typeof document !== "undefined" ? document : null);
@@ -336,7 +340,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260908T085842703Z-48e04ad",
+    appBuildId: "20260908T103414877Z-8feb4df",
     sessionId: currentSession.id,
     submissionId: currentSubmission?.id || `sub_${currentSession.id}`,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
@@ -427,7 +431,12 @@ function switchView(targetView, updateRoute = true) {
     if (updateRoute && getCurrentRoute() !== ROUTES.MATH_ARITHMETIC) navigate(ROUTES.MATH_ARITHMETIC);
   } else if (targetView === practiceView) {
     interactionGuard.setAppMode(AppMode.PRACTICE);
-    if (updateRoute && getCurrentRoute() !== ROUTES.MATH_PRACTICE) navigate(ROUTES.MATH_PRACTICE);
+    const targetPracticeRoute = resolvePracticeRoute({
+      subjectId: currentSession?.subjectId,
+      courseId: currentSession?.courseId,
+      moduleId: currentSession?.moduleId
+    });
+    if (updateRoute && getCurrentRoute() !== targetPracticeRoute) navigate(targetPracticeRoute);
   } else if (targetView === gradingView) {
     interactionGuard.setAppMode(AppMode.GRADING);
     if (updateRoute && getCurrentRoute() !== ROUTES.MATH_GRADING) navigate(ROUTES.MATH_GRADING);
@@ -1643,6 +1652,7 @@ function renderTextActivityStage(q, options = {}) {
       <div class="typed-input-area" style="margin-top: 0.5rem;">
         <label for="textInput_${escapeHtml(q.id)}" class="sr-only">답안 입력</label>
         <input type="text"
+               inputmode="numeric"
                class="typed-text-input"
                id="textInput_${escapeHtml(q.id)}"
                data-question-id="${escapeHtml(q.id)}"
@@ -3404,7 +3414,16 @@ async function checkDraftResumeOnStartup() {
           draftModal.close();
           const restored = restoreSessionFromDraft(draft);
           if (restored && currentSession?.state === SessionState.PRACTICE_ACTIVE) {
-            navigate(ROUTES.MATH_PRACTICE);
+            const targetPracticeRoute = resolvePracticeRoute({
+              subjectId: draft.subjectId,
+              courseId: draft.config?.courseId || draft.courseId,
+              moduleId: draft.config?.moduleId || draft.moduleId
+            });
+            if (targetPracticeRoute === ROUTES.MATH_MEASUREMENT_PRACTICE) {
+              navigate(ROUTES.MATH_MEASUREMENT_PRACTICE);
+            } else {
+              navigate(ROUTES.MATH_PRACTICE);
+            }
           } else if (restored && currentSession?.state === SessionState.GRADING_ACTIVE) {
             navigate(ROUTES.MATH_GRADING);
           }
@@ -3515,7 +3534,16 @@ if (typeof document !== "undefined") {
     onRestoreDraftSession: (draft) => {
       const restored = restoreSessionFromDraft(draft);
       if (restored && currentSession?.state === SessionState.PRACTICE_ACTIVE) {
-        navigate(ROUTES.MATH_PRACTICE);
+        const targetPracticeRoute = resolvePracticeRoute({
+          subjectId: draft.subjectId,
+          courseId: draft.config?.courseId || draft.courseId,
+          moduleId: draft.config?.moduleId || draft.moduleId
+        });
+        if (targetPracticeRoute === ROUTES.MATH_MEASUREMENT_PRACTICE) {
+          navigate(ROUTES.MATH_MEASUREMENT_PRACTICE);
+        } else {
+          navigate(ROUTES.MATH_PRACTICE);
+        }
       } else if (restored && currentSession?.state === SessionState.GRADING_ACTIVE) {
         navigate(ROUTES.MATH_GRADING);
       }
@@ -3532,6 +3560,8 @@ if (typeof document !== "undefined") {
       await renderLearnerHomeView();
     } else if (path === ROUTES.MATH_HOME) {
       await renderSubjectHomeView();
+    } else if (path === ROUTES.MATH_MEASUREMENT) {
+      await renderMeasurementLandingView();
     } else if (path === ROUTES.MATH_ARITHMETIC) {
       switchView(setupView, false);
       loadDashboardStats();
@@ -3563,7 +3593,9 @@ if (typeof document !== "undefined") {
         renderCurriculumRoadmap();
         renderStudyCalendar(currentCalYear, currentCalMonth);
         await checkDraftResumeOnStartup();
-      } else if (route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_GRADING) {
+      } else if (route === ROUTES.MATH_MEASUREMENT) {
+        await renderMeasurementLandingView();
+      } else if (route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.MATH_GRADING) {
         if (result.persistedDraft) {
           restoreSessionFromDraft(result.persistedDraft);
         } else if (route === ROUTES.MATH_GRADING && result.persistedSubmission) {
@@ -3580,4 +3612,117 @@ if (typeof document !== "undefined") {
   });
 
   setupServiceWorkerUpdates();
+}
+
+//+_+// Phase F11: Measurement Landing View 렌더링 및 세션 생성
+let currentMeasurementDimension = "length";
+
+export async function renderMeasurementLandingView() {
+  const container = document.querySelector("#measurementSkillsContainer");
+  const tabs = document.querySelectorAll("#measurementDimensionTabs .measurement-tab-btn");
+  if (!container) return;
+
+  let pkgData = null;
+  let unitCatalog = null;
+  try {
+    pkgData = await loadPackage("math-measurement-v1");
+    unitCatalog = await loadPackageResource("math-measurement-v1", "unitCatalog");
+  } catch (err) {
+    console.warn("[app] math-measurement-v1 로드 실패:", err);
+    container.innerHTML = `<p class="error-msg">단위 변환 패키지를 불러올 수 없습니다: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
+
+  tabs.forEach((tab) => {
+    tab.onclick = () => {
+      tabs.forEach((t) => {
+        t.classList.remove("active");
+        t.setAttribute("aria-selected", "false");
+      });
+      tab.classList.add("active");
+      tab.setAttribute("aria-selected", "true");
+      currentMeasurementDimension = tab.dataset.dimension || "length";
+      renderSkillsForDimension();
+    };
+  });
+
+  let aggregates = [];
+  try {
+    const activeLearnerId = getActiveLearnerId();
+    aggregates = await getAllProgressAggregates({ learnerId: activeLearnerId, subjectId: "math" });
+  } catch (_) {
+    aggregates = [];
+  }
+  const aggMap = new Map((aggregates || []).map((a) => [a.levelId, a]));
+
+  function renderSkillsForDimension() {
+    container.innerHTML = "";
+    const skills = (pkgData.curriculum?.skills || []).filter((s) => s.unitId === currentMeasurementDimension);
+
+    if (skills.length === 0) {
+      container.innerHTML = '<p class="empty-msg">해당 영역의 학습 스킬이 없습니다.</p>';
+      return;
+    }
+
+    skills.forEach((skill) => {
+      const agg = aggMap.get(skill.skillId);
+      const accuracyText = agg && agg.gradedAttemptCount > 0
+        ? `정답률 ${Math.round(agg.accuracy)}% (${agg.gradedAttemptCount}문제 풀이)`
+        : "학습 기록 없음";
+
+      const card = document.createElement("div");
+      card.className = "measurement-skill-card";
+      card.innerHTML = `
+        <div class="measurement-skill-header">
+          <div>
+            <h3 class="measurement-skill-title">${escapeHtml(skill.name || skill.title || skill.skillId)}</h3>
+            <p class="measurement-skill-desc">${escapeHtml(skill.description || "")}</p>
+          </div>
+        </div>
+        <div class="measurement-skill-meta">
+          <span>📊 ${accuracyText}</span>
+          <span>📝 20문제</span>
+        </div>
+        <button type="button" class="measurement-start-btn" id="startSkill_${escapeHtml(skill.skillId)}" aria-label="${escapeHtml(skill.name || skill.skillId)} 20문제 학습 시작">
+          학습 시작하기 (20문제) →
+        </button>
+      `;
+
+      card.querySelector(`#startSkill_${CSS.escape(skill.skillId)}`)?.addEventListener("click", () => {
+        startMeasurementPracticeSession(skill, unitCatalog, pkgData.manifest);
+      });
+
+      container.appendChild(card);
+    });
+  }
+
+  renderSkillsForDimension();
+}
+
+//+_+// Phase F11: Measurement 세션 시작
+export function startMeasurementPracticeSession(skill, unitCatalog, manifest) {
+  const seed = Date.now();
+  const activities = generateUnitConversionActivities({
+    skillId: skill.skillId,
+    count: 20,
+    seed,
+    unitCatalog,
+    packageMetadata: manifest
+  });
+
+  const sessionConfig = {
+    subjectId: "math",
+    courseId: "measurement",
+    moduleId: "measurement",
+    unitId: skill.unitId,
+    skillId: skill.skillId,
+    stageId: skill.skillId,
+    macroLevelId: skill.skillId,
+    difficulty: String(skill.difficulty || "1"),
+    problemCount: 20,
+    pageSize: 4,
+    mathFormat: "horizontal"
+  };
+
+  startSessionWithQuestions(activities, sessionConfig);
 }

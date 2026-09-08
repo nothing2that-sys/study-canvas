@@ -17,7 +17,10 @@ export const ROUTES = Object.freeze({
   MATH_ARITHMETIC: "/math/arithmetic",
   MATH_PRACTICE: "/math/arithmetic/practice",
   MATH_GRADING: "/math/arithmetic/grading",
-  MATH_RESULT: "/math/arithmetic/result"
+  MATH_RESULT: "/math/arithmetic/result",
+  //+_+// Phase F11: Measurement 모듈 라우트
+  MATH_MEASUREMENT: "/math/measurement",
+  MATH_MEASUREMENT_PRACTICE: "/math/measurement/practice"
 });
 
 //+_+// 활성 학습자가 필요한 보호된 라우트 목록
@@ -27,7 +30,9 @@ const PROTECTED_ROUTES = new Set([
   ROUTES.MATH_ARITHMETIC,
   ROUTES.MATH_PRACTICE,
   ROUTES.MATH_GRADING,
-  ROUTES.MATH_RESULT
+  ROUTES.MATH_RESULT,
+  ROUTES.MATH_MEASUREMENT,
+  ROUTES.MATH_MEASUREMENT_PRACTICE
 ]);
 
 let currentPath = ROUTES.ROOT;
@@ -68,7 +73,7 @@ export function resolveGuardedPath(targetPath) {
     const isPracticeActive = sessionCheckCallback("practice_active");
     const isGradingActive = sessionCheckCallback("grading_active");
 
-    if (isPracticeActive && normalized !== ROUTES.MATH_PRACTICE) {
+    if (isPracticeActive && normalized !== ROUTES.MATH_PRACTICE && normalized !== ROUTES.MATH_MEASUREMENT_PRACTICE) {
       return ROUTES.MATH_PRACTICE;
     }
     if (isGradingActive && normalized !== ROUTES.MATH_GRADING) {
@@ -90,6 +95,13 @@ export function resolveGuardedPath(targetPath) {
   if (normalized === ROUTES.MATH_PRACTICE) {
     if (sessionCheckCallback && !sessionCheckCallback("practice")) {
       return ROUTES.MATH_ARITHMETIC;
+    }
+  }
+
+  //+_+// Phase F11: Measurement 풀이 화면 직접 진입 가드
+  if (normalized === ROUTES.MATH_MEASUREMENT_PRACTICE) {
+    if (sessionCheckCallback && !sessionCheckCallback("practice")) {
+      return ROUTES.MATH_MEASUREMENT;
     }
   }
 

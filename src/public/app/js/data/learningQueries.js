@@ -138,6 +138,11 @@ export async function getProgressAggregates(options = {}) {
   return await storageGetAllProgressAggregates(options);
 }
 
+//+_+// Phase F11: 전체 ProgressAggregate 목록 조회 alias
+export async function getAllProgressAggregates(options = {}) {
+  return await storageGetAllProgressAggregates(options);
+}
+
 //+_+// ============================================================================
 //+_+// Phase F7: 오답 함께 보기 & 재풀이 (ReviewItem) Query 계층 API
 //+_+// ============================================================================

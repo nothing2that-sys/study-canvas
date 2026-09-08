@@ -36,6 +36,7 @@ export function initAppShell(options = {}) {
     learnerSelectView: doc.querySelector("#learnerSelectView"),
     learnerHomeView: doc.querySelector("#learnerHomeView"),
     subjectHomeView: doc.querySelector("#subjectHomeView"),
+    measurementLandingView: doc.querySelector("#measurementLandingView"),
     mathAppRoot: doc.querySelector("#mathAppRoot"),
     migrationErrorView: doc.querySelector("#migrationErrorView"),
 
@@ -103,7 +104,7 @@ export async function updateShellHeader(options = {}) {
 
   //+_+// 풀이 또는 채점 중인 경우 상단 셸 최소화 스타일 조정
   const route = getCurrentRoute();
-  const isPracticeMode = route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_GRADING;
+  const isPracticeMode = route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.MATH_GRADING;
   if (domElements.topbar) {
     if (isPracticeMode) {
       domElements.topbar.classList.add("topbar-compact");
@@ -119,6 +120,7 @@ export function renderRouteView(routePath) {
     domElements.learnerSelectView,
     domElements.learnerHomeView,
     domElements.subjectHomeView,
+    domElements.measurementLandingView,
     domElements.migrationErrorView,
     domElements.setupView,
     domElements.practiceView,
@@ -135,10 +137,10 @@ export function renderRouteView(routePath) {
 
   const isMathRoute = routePath.startsWith("/math");
   if (domElements.mathAppRoot) {
-    domElements.mathAppRoot.hidden = !isMathRoute;
+    domElements.mathAppRoot.hidden = !isMathRoute || routePath === ROUTES.MATH_MEASUREMENT;
   }
   if (domElements.platformRoot) {
-    domElements.platformRoot.hidden = isMathRoute && routePath !== ROUTES.MATH_HOME;
+    domElements.platformRoot.hidden = isMathRoute && routePath !== ROUTES.MATH_HOME && routePath !== ROUTES.MATH_MEASUREMENT;
   }
 
   switch (routePath) {
@@ -166,6 +168,14 @@ export function renderRouteView(routePath) {
       }
       break;
 
+    case ROUTES.MATH_MEASUREMENT:
+      if (domElements.platformRoot) domElements.platformRoot.hidden = false;
+      if (domElements.measurementLandingView) {
+        domElements.measurementLandingView.hidden = false;
+        domElements.measurementLandingView.classList.add("active-view");
+      }
+      break;
+
     case ROUTES.MATH_ARITHMETIC:
       if (domElements.mathAppRoot) domElements.mathAppRoot.hidden = false;
       if (domElements.setupView) {
@@ -175,6 +185,7 @@ export function renderRouteView(routePath) {
       break;
 
     case ROUTES.MATH_PRACTICE:
+    case ROUTES.MATH_MEASUREMENT_PRACTICE:
       if (domElements.mathAppRoot) domElements.mathAppRoot.hidden = false;
       if (domElements.practiceView) {
         domElements.practiceView.hidden = false;

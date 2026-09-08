@@ -2009,9 +2009,9 @@ export function calculateProgressAggregatesForLearner(targetLearnerId, finalized
       const decision = normalizeGradeDecision(grade?.decision ?? grade?.isCorrect);
       if (!decision) return;
 
-      const unitId = sub.unitId || sub.config?.operation || (q.operation === "div" ? "div" : "mul") || "default";
-      const levelId = q.level || q.macroLevelId || sub.config?.macroLevelId || (q.operation === "div" ? "D1" : "M1");
-      const macroLevelId = q.macroLevelId || q.level || (q.operation === "div" ? "D1" : "M1");
+      const unitId = sub.unitId || q.unitId || sub.config?.unitId || sub.config?.operation || (q.operation === "div" ? "div" : (q.operation === "mul" ? "mul" : "default"));
+      const levelId = q.skillId || q.level || q.macroLevelId || sub.config?.macroLevelId || (q.operation === "div" ? "D1" : (q.operation === "mul" ? "M1" : "general"));
+      const macroLevelId = q.macroLevelId || q.skillId || q.level || (q.operation === "div" ? "D1" : (q.operation === "mul" ? "M1" : "general"));
 
       const compoundKey = buildProgressAggregateKey(normLearnerId, subjectId, courseId, unitId, levelId);
 

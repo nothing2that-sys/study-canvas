@@ -24,6 +24,17 @@ export const SUBJECTS = Object.freeze([
         enabled: true,
         route: "/math/arithmetic"
       },
+      //+_+// Phase F11: Measurement 모듈 활성화
+      {
+        id: "measurement",
+        title: "단위 변환",
+        description: "길이·무게·들이 단위 변환 (mm, cm, m, km / g, kg / mL, L)",
+        badgeText: "학습 가능",
+        icon: "📏",
+        status: "active",
+        enabled: true,
+        route: "/math/measurement"
+      },
       {
         id: "fraction",
         title: "분수 연산",

@@ -26,6 +26,7 @@ import { getLearnerDashboard, getLearnerHomeSummary, getAllSubmissions, getActiv
 import { getAllSubjects, getSubject } from "../platform/subjectRegistry.js";
 import { navigate, ROUTES } from "../platform/appRouter.js";
 import { formatTime } from "../timer.js";
+import { resolvePracticeRoute, resolveLandingRoute } from "../learningRouteResolver.js";
 
 let dom = {};
 let isSessionActiveFn = null;
@@ -411,7 +412,12 @@ export async function renderLearnerHomeView() {
         if (restoreDraftFn) {
           restoreDraftFn(topDraft.rawDraft);
         } else {
-          navigate(ROUTES.MATH_PRACTICE);
+          const targetPracticeRoute = resolvePracticeRoute({
+            subjectId: topDraft.rawDraft?.subjectId,
+            courseId: topDraft.rawDraft?.config?.courseId || topDraft.rawDraft?.courseId,
+            moduleId: topDraft.rawDraft?.config?.moduleId || topDraft.rawDraft?.moduleId
+          });
+          navigate(targetPracticeRoute);
         }
       });
       actionSection.appendChild(entry);
@@ -508,10 +514,20 @@ export async function renderLearnerHomeView() {
           if (restoreDraftFn && actionCandidate.rawItem) {
             restoreDraftFn(actionCandidate.rawItem);
           } else {
-            navigate(ROUTES.MATH_PRACTICE);
+            const targetPracticeRoute = resolvePracticeRoute({
+              subjectId: actionCandidate.subjectId,
+              courseId: actionCandidate.courseId,
+              moduleId: actionCandidate.courseId
+            });
+            navigate(targetPracticeRoute);
           }
         } else if (kind === "OPEN_LEARNING_SETUP") {
-          navigate(ROUTES.MATH_HOME);
+          const targetLandingRoute = resolveLandingRoute({
+            subjectId: actionCandidate.subjectId,
+            courseId: actionCandidate.courseId,
+            moduleId: actionCandidate.courseId
+          });
+          navigate(targetLandingRoute);
         } else if (kind === "OPEN_SUBJECT") {
           navigate(ROUTES.MATH_HOME);
         }

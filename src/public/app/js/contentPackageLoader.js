@@ -325,3 +325,52 @@ export async function loadActivityById(packageId, activityId, baseDir = DEFAULT_
   }
   return activity;
 }
+
+//+_+// Phase F11: Generic Package Resource Loader (예: unitCatalog 등 추가 정적 파일 로드)
+export async function loadPackageResource(packageId, fileRole, baseDir = DEFAULT_CONTENT_BASE) {
+  if (!packageId || typeof packageId !== "string") {
+    throw new Error("유효한 packageId가 필요합니다.");
+  }
+  if (!fileRole || typeof fileRole !== "string") {
+    throw new Error("유효한 fileRole이 필요합니다.");
+  }
+
+  const registry = await loadContentRegistry(baseDir);
+  const pkgEntry = registry.packages.find((p) => p.packageId === packageId);
+  if (!pkgEntry) {
+    throw new Error(`Registry에 등록되지 않은 패키지입니다: ${packageId}`);
+  }
+
+  const manifest = await loadPackageManifest(pkgEntry.manifestPath, baseDir);
+  if (manifest.packageId !== pkgEntry.packageId) {
+    throw new Error(`manifest packageId(${manifest.packageId})가 registry packageId(${pkgEntry.packageId})와 불일치합니다.`);
+  }
+
+  const relFilePath = manifest.files?.[fileRole];
+  if (!relFilePath || typeof relFilePath !== "string") {
+    throw new Error(`manifest.files에 role(${fileRole})이 선언되지 않았거나 유효하지 않습니다.`);
+  }
+
+  // 외부 경로 또는 상위 디렉터리 임의 탈출 방지
+  if (relFilePath.includes("..")) {
+    throw new Error(`보안 위반: 파일 경로에 상위 디렉터리 접근(..)이 허용되지 않습니다: ${relFilePath}`);
+  }
+
+  const resourceUrl = joinPaths(manifest._manifestDir, relFilePath);
+  const resource = await fetchJsonResource(resourceUrl);
+
+  if (!resource || typeof resource !== "object") {
+    throw new TypeError(`유효하지 않은 resource 데이터입니다: ${fileRole}`);
+  }
+
+  // packageId / packageVersion 교차 검증 (선언된 경우)
+  if (resource.packageId && resource.packageId !== manifest.packageId) {
+    throw new Error(`리소스의 packageId(${resource.packageId})가 manifest packageId(${manifest.packageId})와 불일치합니다.`);
+  }
+  if (manifest.packageVersion && resource.packageVersion && resource.packageVersion !== manifest.packageVersion) {
+    throw new Error(`리소스의 packageVersion(${resource.packageVersion})가 manifest packageVersion(${manifest.packageVersion})와 불일치합니다.`);
+  }
+
+  return resource;
+}
+

@@ -18,7 +18,7 @@
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-180.png">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
-    <link rel="stylesheet" href="./css/app.css?v=20260908T085842703Z-48e04ad">
+    <link rel="stylesheet" href="./css/app.css?v=20260908T103414877Z-8feb4df">
   </head>
   <body>
     <div class="app-shell">
@@ -172,6 +172,25 @@
 
               <div class="module-grid" id="mathModuleGrid">
                 <!-- 수학 모듈 카드들이 렌더링됩니다 -->
+              </div>
+            </section>
+          <!-- 4. 단위 변환 랜딩 뷰 (/math/measurement) -->
+          <div id="measurementLandingView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="measurementLandingTitle">
+              <span class="platform-hero-tag">📏 단위 변환</span>
+              <h1 id="measurementLandingTitle">단위 변환 학습</h1>
+              <p class="platform-hero-sub">길이, 무게, 들이 단위를 이해하고 정수 단위 변환을 연습합니다.</p>
+            </section>
+
+            <section class="measurement-category-section" aria-label="단위 변환 영역 선택">
+              <div class="measurement-tabs" id="measurementDimensionTabs" role="tablist" aria-label="측정 단위 영역">
+                <button type="button" class="measurement-tab-btn active" role="tab" id="tabLength" aria-selected="true" data-dimension="length">길이 (mm, cm, m, km)</button>
+                <button type="button" class="measurement-tab-btn" role="tab" id="tabMass" aria-selected="false" data-dimension="mass">무게 (g, kg)</button>
+                <button type="button" class="measurement-tab-btn" role="tab" id="tabCapacity" aria-selected="false" data-dimension="capacity">들이 (mL, L)</button>
+              </div>
+
+              <div class="measurement-skills-container" id="measurementSkillsContainer">
+                <!-- 스킬 카드 목록이 동적으로 렌더링됩니다 -->
               </div>
             </section>
           </div>
@@ -863,6 +882,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./js/app.js?v=20260908T085842703Z-48e04ad"></script>
+    <script type="module" src="./js/app.js?v=20260908T103414877Z-8feb4df"></script>
   </body>
 </html>
