@@ -94,12 +94,65 @@ export function isResponseAnswered(record) {
   return false;
 }
 
-//+_+// Phase F4/F10A: 제출 이후 학생 응답 잠금(Answer Lock) 확인
-export function assertResponseNotLocked(submission, questionId) {
-  if (!submission) return true;
-  const status = submission.status;
-  if (status && status !== "PRACTICE_ACTIVE" && status !== "SUBMITTING") {
-    throw new Error(`제출 완료된 학습(${submission.id})의 학생 응답은 수정할 수 없습니다 (상태: ${status}).`);
+//+_+// Phase F4/F10A/Rework 1: 세션/제출 상태 기준 학생 응답 잠금(Answer Lock) 확인
+export function assertResponseNotLocked(sessionOrSubmission, questionId) {
+  if (!sessionOrSubmission) return true;
+
+  //+_+// Submission 객체인 경우 (status 필드 검사)
+  if (sessionOrSubmission.status) {
+    const status = sessionOrSubmission.status;
+    if (status !== "PRACTICE_ACTIVE" && status !== "SUBMITTING") {
+      throw new Error(`제출 완료된 학습(${sessionOrSubmission.id || ""})의 학생 응답은 수정할 수 없습니다 (상태: ${status}).`);
+    }
   }
+
+  //+_+// Session 객체인 경우 (isPracticeMutable 함수 또는 state 필드 검사)
+  if (typeof sessionOrSubmission.isPracticeMutable === "function") {
+    if (!sessionOrSubmission.isPracticeMutable()) {
+      throw new Error(`잠금된 학습 세션(${sessionOrSubmission.id || ""})의 학생 응답은 수정할 수 없습니다 (상태: ${sessionOrSubmission.state}).`);
+    }
+  } else if (sessionOrSubmission.state && sessionOrSubmission.state !== "PRACTICE_ACTIVE") {
+    throw new Error(`잠금된 학습 세션(${sessionOrSubmission.id || ""})의 학생 응답은 수정할 수 없습니다 (상태: ${sessionOrSubmission.state}).`);
+  }
+
   return true;
 }
+
+//+_+// Phase F10A Rework 1: Production Typed Response Mutation Guard (F10A-R1)
+//+_+// 반드시 session.isPracticeMutable() 계약을 통과한 경우에만 responseMap 변경 허용
+export function applyStudentResponseChange(session, responseMap, question, value, options = {}) {
+  if (!session) {
+    throw new Error("학생 응답을 변경하려면 활성 학습 세션이 필요합니다.");
+  }
+
+  const isMutable = typeof session.isPracticeMutable === "function"
+    ? session.isPracticeMutable()
+    : (session.state === "PRACTICE_ACTIVE");
+
+  if (!isMutable) {
+    const currentState = session.state || "UNKNOWN";
+    throw new Error(`현재 세션 상태(${currentState})에서는 학생 응답을 수정할 수 없습니다 (PRACTICE_ACTIVE 상태에서만 변경 가능).`);
+  }
+
+  //+_+// 추가 안전 방어: assertResponseNotLocked 검증
+  assertResponseNotLocked(session, question?.id || question);
+
+  const qId = String(question?.id || question || "").trim();
+  if (!qId) {
+    throw new Error("학생 응답을 적용할 question ID가 필요합니다.");
+  }
+
+  const responseType = question?.responseType ||
+    (question?.activityType === "SHORT_ANSWER" ? ResponseType.TEXT : (question?.activityType === "MULTIPLE_CHOICE" ? ResponseType.CHOICE : options.responseType || ResponseType.TEXT));
+
+  const record = createResponseRecord(qId, responseType, value, options);
+
+  if (responseMap instanceof Map) {
+    responseMap.set(record.questionId, record);
+  } else if (responseMap && typeof responseMap === "object") {
+    responseMap[record.questionId] = record;
+  }
+
+  return record;
+}
+

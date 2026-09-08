@@ -53,7 +53,7 @@ import { createVisualViewportController, getPreferredScrollBehavior } from "./vi
 import { setupModalManager } from "./modalEngine.js";
 import { GradeDecision, normalizeGradeDecision } from "./parentGrading.js";
 import { ResponseType, ActivityType } from "./learningActivity.js";
-import { createResponseRecord } from "./responseEngine.js";
+import { createResponseRecord, applyStudentResponseChange } from "./responseEngine.js";
 import {
   canMutatePractice,
   applyStudentStrokeChange,
@@ -1842,15 +1842,18 @@ function renderCurrentWorksheetPage() {
     }
   });
 
-  //+_+// Phase F10A: typed questions (TEXT/CHOICE) 이벤트 리스너 바인딩
+  //+_+// Phase F10A / Rework 1: typed questions (TEXT/CHOICE) 이벤트 리스너 바인딩 (Production Mutation Guard 경유)
   pageData.questions.forEach((q) => {
     if (q.responseType === "TEXT" || q.activityType === "SHORT_ANSWER") {
       const inputEl = document.querySelector(`#textInput_${q.id}`);
       if (inputEl) {
         inputEl.addEventListener("input", (e) => {
-          const record = createResponseRecord(q.id, "TEXT", e.target.value);
-          questionResponseRecordsMap.set(q.id, record);
-          triggerDraftSave();
+          try {
+            applyStudentResponseChange(currentSession, questionResponseRecordsMap, q, e.target.value);
+            triggerDraftSave();
+          } catch (err) {
+            console.warn("[app] 학생 응답 변경 거절 (Session Locked):", err);
+          }
         });
       }
     } else if (q.responseType === "CHOICE" || q.activityType === "MULTIPLE_CHOICE") {
@@ -1858,9 +1861,12 @@ function renderCurrentWorksheetPage() {
       radioEls.forEach((radio) => {
         radio.addEventListener("change", (e) => {
           if (e.target.checked) {
-            const record = createResponseRecord(q.id, "CHOICE", e.target.value);
-            questionResponseRecordsMap.set(q.id, record);
-            triggerDraftSave();
+            try {
+              applyStudentResponseChange(currentSession, questionResponseRecordsMap, q, e.target.value);
+              triggerDraftSave();
+            } catch (err) {
+              console.warn("[app] 학생 응답 변경 거절 (Session Locked):", err);
+            }
           }
         });
       });
