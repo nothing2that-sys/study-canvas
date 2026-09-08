@@ -31,9 +31,17 @@ export function createGradeDecision(question, decision, comment = "", existing =
     ? String(comment).trim()
     : String(existing?.comment || "");
 
+  //+_+// Phase F10A: 비연산 Fixture/신규 Skill 문제의 questionKey 안전 fallback
+  const questionKey = question.key ||
+    question.questionKey ||
+    (question.skillId ? `${question.subjectId || "math"}:${question.skillId}:${question.id}` : `${question.operation}:${question.operandA}:${question.operandB}`);
+
   return {
     questionId: question.id,
-    questionKey: question.key || `${question.operation}:${question.operandA}:${question.operandB}`,
+    questionKey,
+    subjectId: question.subjectId || "math",
+    moduleId: question.moduleId || (question.operation === "div" ? "div" : "mul"),
+    skillId: question.skillId || null,
     operation: question.operation,
     level: question.level,
     macroLevelId: question.macroLevelId || question.level,

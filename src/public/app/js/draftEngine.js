@@ -1,4 +1,7 @@
-export const DRAFT_SCHEMA_VERSION = 3;
+import { normalizeResponseRecordsMap } from "./responseEngine.js";
+
+//+_+// Phase F10A: DRAFT_SCHEMA_VERSION 4 승격 (typed responseRecords 지원)
+export const DRAFT_SCHEMA_VERSION = 4;
 
 export const DraftSaveStatus = Object.freeze({
   IDLE: "idle",
@@ -33,6 +36,9 @@ export function normalizeDraft(input) {
     }
   }
 
+  //+_+// Phase F10A: typed responseRecords 지원 (v3 Draft는 빈 객체로 정상 복원)
+  const responseRecords = normalizeResponseRecordsMap(input.responseRecords);
+
   let inputProfile = input.inputProfile;
   if (!inputProfile && input.pencilOnly !== undefined) {
     inputProfile = input.pencilOnly ? "IPAD_PEN_ONLY" : "DESKTOP_MOUSE_PEN";
@@ -64,6 +70,7 @@ export function normalizeDraft(input) {
     questions: cloneDraftSnapshot(input.questions),
     currentPageIndex,
     studentStrokesMap,
+    responseRecords,
     gradingStrokesMap,
     gradingResults,
     answersHidden: Boolean(input.answersHidden),

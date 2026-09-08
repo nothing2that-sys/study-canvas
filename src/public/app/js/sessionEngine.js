@@ -322,6 +322,9 @@ export function createSession(config = {}, questions = []) {
         expectedAnswer: q.answer !== undefined ? q.answer : q.expectedAnswer
       })),
       studentStrokesMap: studentStrokesMapObj,
+      responseSnapshots: options.responseSnapshots instanceof Map
+        ? Object.fromEntries(options.responseSnapshots.entries())
+        : (options.responseSnapshots || options.responseRecords || {}),
       gradingStrokesMap: {},
       gradingResults: {},
       gradingProgress: getGradingProgress(questions, {}),
@@ -336,7 +339,7 @@ export function createSession(config = {}, questions = []) {
       rows: config.rows || Math.ceil(pageSize / (config.cols || 2)),
       inputProfile: options.inputProfile || "DESKTOP_MOUSE_PEN",
       submittedAt: submittedAt || now,
-      schemaVersion: 4,
+      schemaVersion: options.schemaVersion !== undefined ? Number(options.schemaVersion) : 4,
       appBuildId: String(options.appBuildId || "unknown"),
       gradedAt: null,
       completedAt: null

@@ -52,6 +52,8 @@ import { createUpdateCoordinator, waitForServiceWorkerControllerChange } from ".
 import { createVisualViewportController, getPreferredScrollBehavior } from "./viewportEngine.js";
 import { setupModalManager } from "./modalEngine.js";
 import { GradeDecision, normalizeGradeDecision } from "./parentGrading.js";
+import { ResponseType, ActivityType } from "./learningActivity.js";
+import { createResponseRecord } from "./responseEngine.js";
 import {
   canMutatePractice,
   applyStudentStrokeChange,
@@ -300,6 +302,8 @@ let currentPenColor = "#173f35";
 let currentPenWidth = 2.5;
 let currentIsEraser = false;
 const questionStrokesMap = new Map(); // questionId -> strokes array
+//+_+// Phase F10A: typed responseRecords 저장용 맵 (questionId -> ResponseRecord)
+const questionResponseRecordsMap = new Map();
 const gradingStrokesMap = new Map();
 const gradingResultsMap = new Map();
 let activeCanvasInstances = new Map(); // questionId -> canvas instance
@@ -332,7 +336,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260907T022122994Z-6686292",
+    appBuildId: "20260908T001728612Z-99e18a3",
     sessionId: currentSession.id,
     submissionId: currentSubmission?.id || `sub_${currentSession.id}`,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
@@ -341,6 +345,7 @@ function captureDraftSnapshot() {
     questions: currentQuestions,
     currentPageIndex: currentSession.currentPageIndex,
     studentStrokesMap: mapToObject(questionStrokesMap),
+    responseRecords: mapToObject(questionResponseRecordsMap),
     gradingStrokesMap: mapToObject(gradingStrokesMap),
     gradingResults: collectGradingResults(),
     answersHidden: hideAnswersInGrading,
@@ -1611,7 +1616,92 @@ function renderHorizontalMathGrid(q, options = {}) {
   `;
 }
 
+//+_+// Phase F10A: TEXT 및 CHOICE 형태의 typed Activity 렌더러
+function renderTextActivityStage(q, options = {}) {
+  const isShowGuides = Boolean(options.showGuides);
+  const promptText = escapeHtml(q.prompt || q.question || "");
+  const expectedAns = escapeHtml(String(q.expectedAnswer !== undefined ? q.expectedAnswer : (q.answer !== undefined ? q.answer : "")));
+
+  if (isShowGuides) {
+    return `
+      <div class="typed-activity-stage typed-model-answer" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
+        <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
+        <div class="typed-expected-badge" style="background: #e6f4ea; color: #137333; padding: 0.5rem 0.75rem; border-radius: 6px; display: inline-block;">
+          🎯 기준 정답: <strong>${expectedAns}</strong>
+        </div>
+      </div>
+    `;
+  }
+
+  const savedRecord = questionResponseRecordsMap.get(q.id) || currentSubmission?.responseSnapshots?.[q.id];
+  const studentVal = escapeHtml(String(savedRecord?.value || ""));
+  const isLocked = Boolean(options.isLocked || (currentSession && currentSession.state !== SessionState.PRACTICE_ACTIVE && currentSession.state !== SessionState.SUBMITTING));
+
+  return `
+    <div class="typed-activity-stage" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
+      <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
+      <div class="typed-input-area" style="margin-top: 0.5rem;">
+        <label for="textInput_${escapeHtml(q.id)}" class="sr-only">답안 입력</label>
+        <input type="text"
+               class="typed-text-input"
+               id="textInput_${escapeHtml(q.id)}"
+               data-question-id="${escapeHtml(q.id)}"
+               value="${studentVal}"
+               placeholder="답을 입력하세요"
+               style="width: 100%; max-width: 320px; padding: 0.5rem 0.75rem; font-size: 1.1rem; border: 2px solid #ccc; border-radius: 6px;"
+               ${isLocked ? "disabled" : ""} />
+      </div>
+    </div>
+  `;
+}
+
+function renderChoiceActivityStage(q, options = {}) {
+  const isShowGuides = Boolean(options.showGuides);
+  const promptText = escapeHtml(q.prompt || q.question || "");
+  const expectedChoiceId = String(q.expectedAnswer !== undefined ? q.expectedAnswer : (q.answer !== undefined ? q.answer : ""));
+  const choices = Array.isArray(q.choices) ? q.choices : [];
+
+  const savedRecord = questionResponseRecordsMap.get(q.id) || currentSubmission?.responseSnapshots?.[q.id];
+  const studentChoiceId = String(savedRecord?.value || "");
+  const isLocked = Boolean(options.isLocked || (currentSession && currentSession.state !== SessionState.PRACTICE_ACTIVE && currentSession.state !== SessionState.SUBMITTING));
+
+  return `
+    <div class="typed-activity-stage" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
+      <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
+      <div class="typed-choices-list" role="radiogroup" aria-label="선택지" style="display: flex; flex-direction: column; gap: 0.5rem;">
+        ${choices.map((c) => {
+          const cId = escapeHtml(String(c.id));
+          const cLabel = escapeHtml(String(c.label || c.text || c.id));
+          const isExpected = isShowGuides && (String(c.id) === expectedChoiceId);
+          const isStudentSelected = !isShowGuides && (String(c.id) === studentChoiceId);
+          return `
+            <div class="typed-choice-item ${isExpected ? "expected-choice" : ""} ${isStudentSelected ? "selected-choice" : ""}"
+                 style="padding: 0.5rem; border-radius: 6px; ${isExpected ? "background: #e6f4ea; border: 2px solid #34a853;" : (isStudentSelected ? "background: #e8f0fe; border: 2px solid #1a73e8;" : "border: 1px solid #ddd;")}">
+              <label class="choice-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                <input type="radio"
+                       name="choice_${escapeHtml(q.id)}"
+                       value="${cId}"
+                       data-question-id="${escapeHtml(q.id)}"
+                       ${String(c.id) === (isShowGuides ? expectedChoiceId : studentChoiceId) ? "checked" : ""}
+                       ${isLocked || isShowGuides ? "disabled" : ""} />
+                <span>${cLabel}</span>
+              </label>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderProblemStageContent(q, options = {}) {
+  //+_+// Phase F10A: typed ResponseType 우선 분기
+  if (q.responseType === "TEXT" || q.activityType === "SHORT_ANSWER") {
+    return renderTextActivityStage(q, options);
+  }
+  if (q.responseType === "CHOICE" || q.activityType === "MULTIPLE_CHOICE") {
+    return renderChoiceActivityStage(q, options);
+  }
   const mathFormat = q.mathFormat || currentSession?.mathFormat || (currentResultSummary?.mathFormat) || (currentModalSession?.mathFormat) || "vertical";
   if (mathFormat === "horizontal") {
     return renderHorizontalMathGrid(q, options);
@@ -1628,6 +1718,7 @@ function startSessionWithQuestions(questions, config) {
   currentDraftCreatedAt = Date.now();
   currentQuestions = questions;
   questionStrokesMap.clear();
+  questionResponseRecordsMap.clear();
   gradingStrokesMap.clear();
   gradingResultsMap.clear();
   activeCanvasInstances.forEach((instance) => instance.destroy());
@@ -1748,6 +1839,31 @@ function renderCurrentWorksheetPage() {
       }
 
       activeCanvasInstances.set(q.id, canvasInstance);
+    }
+  });
+
+  //+_+// Phase F10A: typed questions (TEXT/CHOICE) 이벤트 리스너 바인딩
+  pageData.questions.forEach((q) => {
+    if (q.responseType === "TEXT" || q.activityType === "SHORT_ANSWER") {
+      const inputEl = document.querySelector(`#textInput_${q.id}`);
+      if (inputEl) {
+        inputEl.addEventListener("input", (e) => {
+          const record = createResponseRecord(q.id, "TEXT", e.target.value);
+          questionResponseRecordsMap.set(q.id, record);
+          triggerDraftSave();
+        });
+      }
+    } else if (q.responseType === "CHOICE" || q.activityType === "MULTIPLE_CHOICE") {
+      const radioEls = document.querySelectorAll(`input[name="choice_${q.id}"]`);
+      radioEls.forEach((radio) => {
+        radio.addEventListener("change", (e) => {
+          if (e.target.checked) {
+            const record = createResponseRecord(q.id, "CHOICE", e.target.value);
+            questionResponseRecordsMap.set(q.id, record);
+            triggerDraftSave();
+          }
+        });
+      });
     }
   });
 
@@ -2019,12 +2135,13 @@ async function handleSubmitPractice() {
     currentSubmission = await submitLearningSession({
       session: currentSession,
       learnerId: activeLId,
-      subjectId: "math",
-      moduleId: "arithmetic",
+      subjectId: currentSession.subjectId || "math",
+      moduleId: currentSession.moduleId || "arithmetic",
       inputProfile: currentInputProfile,
       totalSolveTimeMs: elapsedMs,
       perQuestionElapsedMs: currentSession.getQuestionSolveTimes?.() || {},
       studentStrokesMap: questionStrokesMap,
+      responseSnapshots: mapToObject(questionResponseRecordsMap),
       appBuildId: typeof BUILD_ID !== "undefined" ? BUILD_ID : "unknown"
     });
   } catch (err) {
@@ -2135,12 +2252,15 @@ function renderGradingView() {
     if (currentGradingQuestionId === q.id) card.setAttribute("aria-current", "step");
 
     const symbol = q.operation === "div" ? "÷" : "×";
-    const answerFormatted = q.answer.toLocaleString();
+    const answerFormatted = q.answer !== undefined && q.answer !== null
+      ? (typeof q.answer === "number" ? q.answer.toLocaleString() : String(q.answer))
+      : String(q.expectedAnswer || "");
     const commentValue = currentGrade?.comment || "";
+    const cardLevel = escapeHtml(String(q.level || q.skillId || "연습"));
     card.innerHTML = `
       <div class="card-header">
         <span class="card-order">${idx + 1}번 문제</span>
-        <span class="card-level">${q.level}</span>
+        <span class="card-level">${cardLevel}</span>
         <span class="grading-state-label">${isGraded ? (decision === GradeDecision.CORRECT ? "채점됨: 맞음" : decision === GradeDecision.WRONG ? "채점됨: 틀림" : "채점됨: 다시 풀기") : "미채점"}</span>
       </div>
 
@@ -2186,7 +2306,7 @@ function renderGradingView() {
 
       <details class="grading-explanation">
         <summary>오답 풀이 단계를 확인하기</summary>
-        <p>${Number(q.operandA).toLocaleString()} ${symbol} ${Number(q.operandB).toLocaleString()}의 정답은 <strong>${answerFormatted}</strong>입니다. 위 모범 풀이에서 자리 맞춤과 중간 계산을 순서대로 비교해 보세요.</p>
+        <p>${q.explanation ? escapeHtml(q.explanation) : (q.operandA !== undefined ? `${Number(q.operandA).toLocaleString()} ${symbol} ${Number(q.operandB).toLocaleString()}의 정답은 <strong>${answerFormatted}</strong>입니다. 위 모범 풀이에서 자리 맞춤과 중간 계산을 순서대로 비교해 보세요.` : `정답: <strong>${answerFormatted}</strong>`)}</p>
       </details>
 
       <!-- 채점자 퀵 코멘트 칩 및 메모 입력 -->
@@ -3138,12 +3258,19 @@ function restoreSessionFromDraft(draft) {
   currentSession = createSession({ ...draft.config, sessionId: draft.sessionId }, draft.questions);
   currentSubmission = { id: draft.submissionId || `sub_${draft.sessionId}`, learnerId: getActiveLearnerId() };
   questionStrokesMap.clear();
+  questionResponseRecordsMap.clear();
   gradingStrokesMap.clear();
   gradingResultsMap.clear();
 
   if (draft.studentStrokesMap) {
     Object.entries(draft.studentStrokesMap).forEach(([k, v]) => {
       questionStrokesMap.set(k, v);
+    });
+  }
+  //+_+// Phase F10A: typed responseRecords 복원
+  if (draft.responseRecords) {
+    Object.entries(draft.responseRecords).forEach(([k, v]) => {
+      questionResponseRecordsMap.set(k, v);
     });
   }
   if (draft.gradingStrokesMap) {
@@ -3203,9 +3330,11 @@ function restoreSessionFromSubmission(submission) {
   currentSubmission = submission;
   currentSession = createSession({ ...lastSessionConfig, sessionId: submission.sessionId }, submission.questions);
   questionStrokesMap.clear();
+  questionResponseRecordsMap.clear();
   gradingStrokesMap.clear();
   gradingResultsMap.clear();
   Object.entries(submission.studentStrokesMap || {}).forEach(([questionId, strokes]) => questionStrokesMap.set(questionId, strokes));
+  Object.entries(submission.responseSnapshots || {}).forEach(([questionId, rec]) => questionResponseRecordsMap.set(questionId, rec));
   Object.entries(submission.gradingStrokesMap || {}).forEach(([questionId, strokes]) => gradingStrokesMap.set(questionId, strokes));
   Object.entries(submission.gradingResults || {}).forEach(([questionId, grade]) => gradingResultsMap.set(questionId, grade));
 

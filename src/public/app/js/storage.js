@@ -749,6 +749,7 @@ export async function saveDraftSession(draft, options = {}) {
   const normalizedInput = {
     ...draft,
     studentStrokesMap: mapToObject(draft.studentStrokesMap || draft.strokesMap),
+    responseRecords: mapToObject(draft.responseRecords),
     gradingStrokesMap: mapToObject(draft.gradingStrokesMap),
     gradingResults: mapToObject(draft.gradingResults)
   };
@@ -1520,6 +1521,7 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
 
   const now = Date.now();
   const studentStrokesMapObj = deepClone(mapToObject(snapshotData.studentStrokesMap || snapshotData.strokesMap));
+  const responseSnapshotsObj = deepClone(mapToObject(snapshotData.responseSnapshots || snapshotData.responseRecords || {}));
   const gradingStrokesMapObj = deepClone(mapToObject(snapshotData.gradingStrokesMap));
   const gradingResultsObj = deepClone(mapToObject(snapshotData.gradingResults));
 
@@ -1534,6 +1536,7 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
     config: deepClone(snapshotData.config || {}),
     questions: Array.isArray(snapshotData.questions) ? deepClone(snapshotData.questions) : [],
     studentStrokesMap: studentStrokesMapObj,
+    responseSnapshots: responseSnapshotsObj,
     gradingStrokesMap: gradingStrokesMapObj,
     gradingResults: gradingResultsObj,
     gradingProgress: getGradingProgress(snapshotData.questions || [], gradingResultsObj),
@@ -1548,7 +1551,7 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
     rows: Math.max(1, Number(snapshotData.rows) || 2),
     inputProfile: snapshotData.inputProfile || "DESKTOP_MOUSE_PEN",
     submittedAt: Number(snapshotData.submittedAt) || now,
-    schemaVersion: 4,
+    schemaVersion: snapshotData.schemaVersion !== undefined ? Number(snapshotData.schemaVersion) : 4,
     appBuildId: String(snapshotData.appBuildId || "unknown"),
     gradedAt: snapshotData.gradedAt || null,
     completedAt: snapshotData.completedAt || null
@@ -2344,16 +2347,24 @@ export async function finalizeSubmissionGrading(id, options = {}) {
             lastWrongAt: now
           });
 
-          //+_+// Phase F7: WRONG 또는 RETRY 문제에 대해 unresolved ReviewItem 생성 (멱등성 보장)
+          //+_+// Phase F7/F10A: WRONG 또는 RETRY 문제에 대해 unresolved ReviewItem 생성 (멱등성 보장)
           const revId = buildReviewItemId(rawExisting.learnerId, attemptId);
           if (!db.reviewItems.has(revId)) {
+            const origQ = (rawExisting.questions || []).find((q) => q.id === r.questionId);
+            const itemSubjectId = origQ?.subjectId || rawExisting.subjectId || "math";
+            const itemCourseId = origQ?.courseId || rawExisting.courseId || rawExisting.config?.courseId || "arithmetic";
+            const itemUnitId = origQ?.moduleId || rawExisting.unitId || r.operation || "mul";
+            const itemLevelId = origQ?.skillId || r.macroLevelId || r.level || "general";
+            const itemSkillId = origQ?.skillId || r.skillId || null;
+
             db.reviewItems.set(revId, {
               id: revId,
               learnerId: rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID,
-              subjectId: rawExisting.subjectId || "math",
-              courseId: rawExisting.courseId || rawExisting.config?.courseId || "arithmetic",
-              unitId: rawExisting.unitId || r.operation || "mul",
-              levelId: r.macroLevelId || r.level,
+              subjectId: itemSubjectId,
+              courseId: itemCourseId,
+              unitId: itemUnitId,
+              levelId: itemLevelId,
+              skillId: itemSkillId,
               sourceAttemptId: attemptId,
               sourceSessionId: sessionId,
               sourceSubmissionId: id,
@@ -2478,18 +2489,26 @@ export async function finalizeSubmissionGrading(id, options = {}) {
             });
           };
 
-          //+_+// Phase F7: reviewItems Store에 unresolved 상태로 영구 저장 (멱등성 보장)
+          //+_+// Phase F7/F10A: reviewItems Store에 unresolved 상태로 영구 저장 (멱등성 보장)
           const revId = buildReviewItemId(rawExisting.learnerId, attemptId);
           const getRevReq = revStore.get(revId);
           getRevReq.onsuccess = () => {
             if (!getRevReq.result) {
+              const origQ = (rawExisting.questions || []).find((q) => q.id === r.questionId);
+              const itemSubjectId = origQ?.subjectId || rawExisting.subjectId || "math";
+              const itemCourseId = origQ?.courseId || rawExisting.courseId || rawExisting.config?.courseId || "arithmetic";
+              const itemUnitId = origQ?.moduleId || rawExisting.unitId || r.operation || "mul";
+              const itemLevelId = origQ?.skillId || r.macroLevelId || r.level || "general";
+              const itemSkillId = origQ?.skillId || r.skillId || null;
+
               revStore.put({
                 id: revId,
                 learnerId: rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID,
-                subjectId: rawExisting.subjectId || "math",
-                courseId: rawExisting.courseId || rawExisting.config?.courseId || "arithmetic",
-                unitId: rawExisting.unitId || r.operation || "mul",
-                levelId: r.macroLevelId || r.level,
+                subjectId: itemSubjectId,
+                courseId: itemCourseId,
+                unitId: itemUnitId,
+                levelId: itemLevelId,
+                skillId: itemSkillId,
                 sourceAttemptId: attemptId,
                 sourceSessionId: sessionId,
                 sourceSubmissionId: id,
@@ -3192,12 +3211,18 @@ export async function startReviewRetry(reviewItemId, options = {}) {
     reviewItemId: item.id
   };
 
+  const retryQuestionKey = origQuestion.questionKey ||
+    origQuestion.key ||
+    (origQuestion.skillId ? `${origQuestion.subjectId || item.subjectId || "math"}:${origQuestion.skillId}:${origQuestion.id}` : `${origQuestion.operation}:${origQuestion.operandA}:${origQuestion.operandB}`);
+
   const retrySession = createSession({
     id: retrySessionId,
     sessionId: retrySessionId,
     learnerId: item.learnerId,
-    operation: origQuestion.operation,
-    macroLevelId: origQuestion.macroLevelId || origQuestion.level,
+    subjectId: origQuestion.subjectId || item.subjectId || "math",
+    moduleId: origQuestion.moduleId || item.unitId || "arithmetic",
+    operation: origQuestion.operation || (origQuestion.subjectId === "math" ? "mul" : "general"),
+    macroLevelId: origQuestion.macroLevelId || origQuestion.level || origQuestion.skillId || "general",
     pageSize: 1,
     sessionKind: "REVIEW_RETRY",
     reviewItemId: item.id,
@@ -3209,7 +3234,10 @@ export async function startReviewRetry(reviewItemId, options = {}) {
     sessionId: retrySessionId,
     learnerId: item.learnerId,
     questionId: origQuestion.id,
-    questionKey: origQuestion.questionKey || origQuestion.key || `${origQuestion.operation}:${origQuestion.operandA}:${origQuestion.operandB}`,
+    questionKey: retryQuestionKey,
+    subjectId: origQuestion.subjectId || item.subjectId || "math",
+    moduleId: origQuestion.moduleId || item.unitId || "arithmetic",
+    skillId: origQuestion.skillId || item.skillId || null,
     operation: origQuestion.operation,
     macroLevelId: origQuestion.macroLevelId || origQuestion.level,
     stageId: origQuestion.stageId || origQuestion.macroLevelId || origQuestion.level,
@@ -3379,4 +3407,69 @@ export async function retryReviewItemAgain(reviewItemId, options = {}) {
 
   return await startReviewRetry(reviewItemId, options);
 }
+
+// ============================================================================
+// Phase F10A: 신규 Skill 단위 공통 진도 계산 (Feasibility Projection)
+// - 기존 M/D ProgressAggregate는 그대로 보존
+// - 신규 skillId 단위 학습 상태를 식별 및 집계
+// ============================================================================
+
+export function calculateSkillProgressForLearner(targetLearnerId, finalizedSubs = [], options = {}) {
+  const normLearnerId = targetLearnerId || DEFAULT_LEGACY_LEARNER_ID;
+  const skillMap = new Map();
+
+  finalizedSubs.forEach((sub) => {
+    const subLearner = sub.learnerId || DEFAULT_LEGACY_LEARNER_ID;
+    if (subLearner !== normLearnerId) return;
+
+    const subSubjectId = sub.subjectId || "math";
+    const questions = sub.questions || [];
+    const gradingResults = sub.gradingResults || {};
+    const practicedTime = Number(sub.completedAt || sub.submittedAt || sub.gradedAt) || 0;
+
+    questions.forEach((q) => {
+      const skillId = q.skillId;
+      if (!skillId) return;
+
+      const subjectId = q.subjectId || subSubjectId;
+      const compoundKey = `${normLearnerId}:${subjectId}:${skillId}`;
+
+      if (!skillMap.has(compoundKey)) {
+        skillMap.set(compoundKey, {
+          learnerId: normLearnerId,
+          subjectId,
+          skillId,
+          attemptCount: 0,
+          gradedCorrectCount: 0,
+          gradedIncorrectCount: 0,
+          lastPracticedAt: practicedTime
+        });
+      }
+
+      const item = skillMap.get(compoundKey);
+      item.attemptCount += 1;
+      if (practicedTime > item.lastPracticedAt) {
+        item.lastPracticedAt = practicedTime;
+      }
+
+      const grade = gradingResults[q.id] || q.grade;
+      const decision = normalizeGradeDecision(grade?.decision ?? grade?.isCorrect);
+      if (decision === "CORRECT") {
+        item.gradedCorrectCount += 1;
+      } else if (decision === "WRONG" || decision === "RETRY") {
+        item.gradedIncorrectCount += 1;
+      }
+    });
+  });
+
+  return Array.from(skillMap.values());
+}
+
+export async function getSkillProgressForLearner(learnerId, options = {}) {
+  const targetLearnerId = learnerId || getCurrentLearnerId() || DEFAULT_LEGACY_LEARNER_ID;
+  const allSubs = await getAllSubmissions({ learnerId: targetLearnerId, allLearners: !targetLearnerId });
+  const finalizedSubs = allSubs.filter((s) => s.status === "GRADED" || s.status === "SESSION_COMPLETE");
+  return calculateSkillProgressForLearner(targetLearnerId, finalizedSubs, options);
+}
+
 
