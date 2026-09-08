@@ -9,49 +9,56 @@ const defaultAppDir = path.join(__dirname, "..", "public", "app");
 export const BUILD_ID = resolveBuildId();
 
 /**
- * registry.json 및 관련 manifest를 파싱하여 precache 대상 콘텐츠 파일 목록을 동적 수집
+ * registry.json 및 관련 manifest를 파싱하여 precache 대상 콘텐츠 파일 목록을 동적 수집 (Generic & Fail-Closed)
  */
 export function collectContentPrecacheAssets({ contentDir = path.join(defaultAppDir, "content") } = {}) {
-  const assets = [];
   const registryPath = path.join(contentDir, "registry.json");
   if (!fs.existsSync(registryPath)) {
-    return assets;
+    return [];
   }
-  assets.push("./content/registry.json");
+  const assetSet = new Set();
+  assetSet.add("./content/registry.json");
 
-  try {
-    const registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
-    if (Array.isArray(registry.packages)) {
-      for (const pkg of registry.packages) {
-        if (!pkg.manifestPath) continue;
-        const relManifest = pkg.manifestPath.startsWith("./") ? pkg.manifestPath.slice(2) : pkg.manifestPath;
-        const manifestFullPath = path.resolve(contentDir, relManifest);
-        const manifestAssetPath = `./content/${relManifest.replace(/\\/g, "/")}`;
-        if (!assets.includes(manifestAssetPath)) {
-          assets.push(manifestAssetPath);
-        }
-        if (fs.existsSync(manifestFullPath)) {
-          const manifestDir = path.dirname(manifestFullPath);
-          const manifest = JSON.parse(fs.readFileSync(manifestFullPath, "utf8"));
-          if (manifest.files && typeof manifest.files === "object") {
-            for (const key of ["curriculum", "activities"]) {
-              const fileRel = manifest.files[key];
-              if (fileRel) {
-                const targetFull = path.resolve(manifestDir, fileRel);
-                const relToContent = path.relative(contentDir, targetFull).replace(/\\/g, "/");
-                const assetPath = `./content/${relToContent}`;
-                if (!assets.includes(assetPath)) {
-                  assets.push(assetPath);
-                }
-              }
-            }
+  const registry = JSON.parse(fs.readFileSync(registryPath, "utf8"));
+  if (!Array.isArray(registry.packages)) {
+    throw new Error(`[build] registry.json의 packages는 배열이어야 합니다: ${registryPath}`);
+  }
+
+  for (const pkg of registry.packages) {
+    if (!pkg.manifestPath) {
+      throw new Error(`[build] 패키지 항목에 manifestPath가 누락되었습니다: ${JSON.stringify(pkg)}`);
+    }
+    const relManifest = pkg.manifestPath.startsWith("./") ? pkg.manifestPath.slice(2) : pkg.manifestPath;
+    const manifestFullPath = path.resolve(contentDir, relManifest);
+    if (!fs.existsSync(manifestFullPath)) {
+      throw new Error(`[build] manifest 파일이 존재하지 않습니다: ${manifestFullPath}`);
+    }
+    const manifestAssetPath = `./content/${path.relative(contentDir, manifestFullPath).replace(/\\/g, "/")}`;
+    assetSet.add(manifestAssetPath);
+
+    const manifestDir = path.dirname(manifestFullPath);
+    const manifest = JSON.parse(fs.readFileSync(manifestFullPath, "utf8"));
+    if (manifest.files && typeof manifest.files === "object") {
+      for (const fileRel of Object.values(manifest.files)) {
+        if (typeof fileRel === "string" && fileRel.trim()) {
+          const targetFull = path.resolve(manifestDir, fileRel.trim());
+          if (!fs.existsSync(targetFull)) {
+            throw new Error(`[build] Precache 대상 파일이 존재하지 않습니다: ${targetFull} (manifest: ${manifestFullPath})`);
           }
+          const relToContent = path.relative(contentDir, targetFull).replace(/\\/g, "/");
+          const assetPath = `./content/${relToContent}`;
+          assetSet.add(assetPath);
         }
       }
     }
-  } catch (err) {
-    console.warn(`[build] Failed to collect content precache assets: ${err.message}`);
   }
+
+  const assets = Array.from(assetSet);
+  assets.sort((a, b) => {
+    if (a === "./content/registry.json") return -1;
+    if (b === "./content/registry.json") return 1;
+    return a.localeCompare(b);
+  });
   return assets;
 }
 

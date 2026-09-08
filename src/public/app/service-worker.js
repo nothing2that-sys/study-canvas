@@ -1,11 +1,11 @@
-const CACHE_NAME = "math-canvas-pro-v20260908T083650717Z-13c4aff";
+const CACHE_NAME = "math-canvas-pro-v20260908T085821544Z-59b6c0e";
 
 //+_+// PWA 오프라인 구동을 위한 필수 App Shell 자산 목록
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/app.css?v=20260908T083650717Z-13c4aff",
-  "./js/app.js?v=20260908T083650717Z-13c4aff",
+  "./css/app.css?v=20260908T085821544Z-59b6c0e",
+  "./js/app.js?v=20260908T085821544Z-59b6c0e",
   "./js/canvasEngine.js",
   "./js/sessionEngine.js",
   "./js/parentGrading.js",
@@ -42,9 +42,9 @@ const APP_SHELL = [
   "./js/contentPackageLoader.js",
   /* CONTENT_PACKAGES_PRECACHE_START */
   "./content/registry.json",
-  "./content/packages/foundation-smoke/manifest.json",
-  "./content/packages/foundation-smoke/curriculum.json",
   "./content/packages/foundation-smoke/activities.json",
+  "./content/packages/foundation-smoke/curriculum.json",
+  "./content/packages/foundation-smoke/manifest.json",
   /* CONTENT_PACKAGES_PRECACHE_END */
   "./manifest.webmanifest",
   "./build-manifest.json",
