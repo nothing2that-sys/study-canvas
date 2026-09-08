@@ -55,3 +55,22 @@ export function isMeasurementRoute(routePath) {
   if (!routePath) return false;
   return routePath === LEARNING_ROUTES.MEASUREMENT_LANDING || routePath === LEARNING_ROUTES.MEASUREMENT_PRACTICE;
 }
+
+//+_+// Phase F11 Rework 1: Production 세션/Draft 라우트 결정 및 네비게이션 Facade
+export function resolvePracticeRouteForSession(draftOrSession) {
+  if (!draftOrSession) return LEARNING_ROUTES.ARITHMETIC_PRACTICE;
+  const config = draftOrSession.config || {};
+  const subjectId = draftOrSession.subjectId || config.subjectId || "math";
+  const courseId = config.courseId || draftOrSession.courseId;
+  const moduleId = config.moduleId || draftOrSession.moduleId;
+
+  return resolvePracticeRoute({ subjectId, courseId, moduleId });
+}
+
+export function handleSessionPracticeNavigation(draftOrSession, navigateFn) {
+  const targetRoute = resolvePracticeRouteForSession(draftOrSession);
+  if (typeof navigateFn === "function") {
+    return navigateFn(targetRoute);
+  }
+  return targetRoute;
+}

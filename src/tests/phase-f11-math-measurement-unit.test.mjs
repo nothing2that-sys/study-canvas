@@ -28,7 +28,10 @@ import {
   calculateProgressAggregatesForLearner,
   startReviewRetry,
   resolveReviewItem,
-  getAllReviewItems
+  getAllReviewItems,
+  getReviewItem,
+  setCurrentLearnerId,
+  _resetActiveLearnerInMemoryForTesting
 } from "../public/app/js/storage.js";
 
 import {
@@ -50,7 +53,9 @@ import {
   resolvePracticeRoute,
   resolveLandingRoute,
   isMeasurementRoute,
-  LEARNING_ROUTES
+  LEARNING_ROUTES,
+  resolvePracticeRouteForSession,
+  handleSessionPracticeNavigation
 } from "../public/app/js/learningRouteResolver.js";
 
 import {
@@ -70,6 +75,8 @@ import {
   ROUTES,
   initRouter,
   resolveGuardedPath,
+  navigate,
+  getCurrentRoute,
   _resetRouterForTesting
 } from "../public/app/js/platform/appRouter.js";
 
@@ -466,6 +473,203 @@ test("Group E-3: SubjectRegistry에서 math 하위 measurement 모듈 활성화 
   assert.equal(measMod.route, "/math/measurement");
 });
 
+test("Group E-4 [R2-MEASUREMENT-START]: Measurement 세션 시작 시 /math/measurement/practice로 라우트 전환 검증", () => {
+  _resetRouterForTesting();
+  _resetActiveLearnerInMemoryForTesting();
+  setCurrentLearnerId("learner_e4");
+
+  initRouter({ initialPath: ROUTES.HOME });
+  assert.equal(getCurrentRoute(), ROUTES.HOME);
+
+  const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
+  const activities = generateUnitConversionActivities({
+    skillId: "MATH_UNIT_LENGTH_TO_SMALLER",
+    count: 2,
+    seed: 111,
+    unitCatalog: catalog
+  });
+
+  const session = createSession({
+    subjectId: "math",
+    courseId: "measurement",
+    moduleId: "measurement",
+    skillId: "MATH_UNIT_LENGTH_TO_SMALLER"
+  }, activities);
+
+  const targetRoute = resolvePracticeRouteForSession(session);
+  assert.equal(targetRoute, ROUTES.MATH_MEASUREMENT_PRACTICE);
+
+  navigate(targetRoute);
+  assert.equal(getCurrentRoute(), ROUTES.MATH_MEASUREMENT_PRACTICE);
+  assert.notEqual(getCurrentRoute(), ROUTES.MATH_PRACTICE, "Measurement 세션은 연산 라우트로 이동하면 안 됩니다.");
+});
+
+test("Group E-5 [R2-MEASUREMENT-HOME-RESUME]: 홈 화면에서 Measurement Draft 재개 시 /math/measurement/practice 전환 검증", async () => {
+  _resetRouterForTesting();
+  _resetActiveLearnerInMemoryForTesting();
+  setCurrentLearnerId("learner_e5");
+
+  initRouter({ initialPath: ROUTES.HOME });
+
+  const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
+  const activities = generateUnitConversionActivities({
+    skillId: "MATH_UNIT_MASS_TO_SMALLER",
+    count: 2,
+    seed: 222,
+    unitCatalog: catalog
+  });
+
+  const draft = {
+    sessionId: "sess_meas_resume_e5",
+    learnerId: "learner_e5",
+    subjectId: "math",
+    courseId: "measurement",
+    moduleId: "measurement",
+    sessionState: "PRACTICE_ACTIVE",
+    config: { courseId: "measurement", moduleId: "measurement", skillId: "MATH_UNIT_MASS_TO_SMALLER" },
+    questions: activities
+  };
+
+  const resolvedRoute = handleSessionPracticeNavigation(draft, navigate);
+  assert.equal(resolvedRoute, ROUTES.MATH_MEASUREMENT_PRACTICE);
+  assert.equal(getCurrentRoute(), ROUTES.MATH_MEASUREMENT_PRACTICE);
+  assert.notEqual(getCurrentRoute(), ROUTES.MATH_PRACTICE);
+});
+
+test("Group E-6 [R2-MEASUREMENT-RELOAD-RESTORE]: Measurement 풀이 중 새로고침/재진입 시 Measurement 라우트 유지 검증", () => {
+  _resetRouterForTesting();
+  _resetActiveLearnerInMemoryForTesting();
+  setCurrentLearnerId("learner_e6");
+
+  // 세션 체크 콜백에서 practice 활성 반환 모사
+  const activeSessionCheck = (mode) => (mode === "practice" || mode === "practice_active");
+
+  const restoredRoute = initRouter({
+    initialPath: ROUTES.MATH_MEASUREMENT_PRACTICE,
+    hasActiveSession: activeSessionCheck
+  });
+
+  assert.equal(restoredRoute, ROUTES.MATH_MEASUREMENT_PRACTICE);
+  assert.equal(getCurrentRoute(), ROUTES.MATH_MEASUREMENT_PRACTICE);
+});
+
+test("Group E-7 [R2-MEASUREMENT-RECOMMENDATION-RESUME]: Measurement 미완료 세션 추천 클릭 시 /math/measurement/practice 전환 검증", () => {
+  _resetRouterForTesting();
+  _resetActiveLearnerInMemoryForTesting();
+  setCurrentLearnerId("learner_e7");
+
+  initRouter({ initialPath: ROUTES.HOME });
+
+  const mockDraft = {
+    sessionId: "sess_meas_rec_e7",
+    learnerId: "learner_e7",
+    subjectId: "math",
+    courseId: "measurement",
+    moduleId: "measurement",
+    sessionState: "PRACTICE_ACTIVE",
+    config: { courseId: "measurement", skillId: "MATH_UNIT_LENGTH_TO_LARGER" },
+    questions: [{ id: "q1", prompt: "10 mm = ___ cm" }]
+  };
+
+  const recResult = buildLearningRecommendations({
+    learnerId: "learner_e7",
+    draft: mockDraft
+  });
+
+  assert.equal(recResult.topRecommendation.courseId, "measurement");
+  const targetRoute = resolvePracticeRoute({
+    subjectId: recResult.topRecommendation.subjectId,
+    courseId: recResult.topRecommendation.courseId
+  });
+  assert.equal(targetRoute, ROUTES.MATH_MEASUREMENT_PRACTICE);
+
+  navigate(targetRoute);
+  assert.equal(getCurrentRoute(), ROUTES.MATH_MEASUREMENT_PRACTICE);
+});
+
+test("Group E-8 [R2-MEASUREMENT-REVIEW-RETRY-RESUME]: Measurement 오답 재풀이 시작 시 /math/measurement/practice 전환 검증", async () => {
+  await clearAllData();
+  _resetRouterForTesting();
+  _resetActiveLearnerInMemoryForTesting();
+  setCurrentLearnerId("learner_e8");
+
+  initRouter({ initialPath: ROUTES.HOME });
+
+  const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
+  const activities = generateUnitConversionActivities({
+    skillId: "MATH_UNIT_CAPACITY_TO_SMALLER",
+    count: 1,
+    seed: 333,
+    unitCatalog: catalog
+  });
+
+  const session = createSession({
+    subjectId: "math",
+    courseId: "measurement",
+    moduleId: "measurement",
+    skillId: "MATH_UNIT_CAPACITY_TO_SMALLER",
+    learnerId: "learner_e8"
+  }, activities);
+  session.start();
+
+  const respMap = new Map();
+  applyStudentResponseChange(session, respMap, activities[0], "wrong_val");
+
+  const sub = await submitLearningSession({ session, responseRecordsMap: respMap, learnerId: "learner_e8" });
+  await startSubmissionGrading(sub.id, { learnerId: "learner_e8" });
+  await updateSubmissionGrading(sub.id, { [activities[0].id]: { decision: "WRONG" } }, new Map(), {
+    status: "GRADING_ACTIVE",
+    learnerId: "learner_e8"
+  });
+  await finalizeSubmissionGrading(sub.id, { learnerId: "learner_e8" });
+
+  const items = await getAllReviewItems({ learnerId: "learner_e8" });
+  assert.equal(items.length, 1);
+
+  const retryRes = await startReviewRetry(items[0].id, { learnerId: "learner_e8" });
+  assert.equal(retryRes.retrySession.courseId, "measurement");
+
+  const retryRoute = resolvePracticeRouteForSession(retryRes.retrySession);
+  assert.equal(retryRoute, ROUTES.MATH_MEASUREMENT_PRACTICE);
+
+  navigate(retryRoute);
+  assert.equal(getCurrentRoute(), ROUTES.MATH_MEASUREMENT_PRACTICE);
+});
+
+test("Group E-9 [R2-ARITHMETIC-ROUTE-REGRESSION]: Arithmetic 세션/Draft는 여전히 /math/arithmetic/practice로 이동하여 라우트 완전 격리 검증", () => {
+  _resetRouterForTesting();
+  _resetActiveLearnerInMemoryForTesting();
+  setCurrentLearnerId("learner_e9");
+
+  initRouter({ initialPath: ROUTES.HOME });
+
+  const arithSession = createSession({
+    subjectId: "math",
+    courseId: "arithmetic",
+    moduleId: "arithmetic",
+    level: "M2"
+  }, [{ id: "q_m2_1", prompt: "3 x 4 = ?" }]);
+
+  const arithRoute = resolvePracticeRouteForSession(arithSession);
+  assert.equal(arithRoute, ROUTES.MATH_PRACTICE);
+
+  navigate(arithRoute);
+  assert.equal(getCurrentRoute(), ROUTES.MATH_PRACTICE);
+  assert.notEqual(getCurrentRoute(), ROUTES.MATH_MEASUREMENT_PRACTICE, "연산 세션은 measurement 라우트로 이동하면 안 됩니다.");
+
+  // Draft 복원 테스트
+  const arithDraft = {
+    subjectId: "math",
+    courseId: "arithmetic",
+    moduleId: "arithmetic",
+    config: { courseId: "arithmetic" }
+  };
+  const draftRoute = handleSessionPracticeNavigation(arithDraft, navigate);
+  assert.equal(draftRoute, ROUTES.MATH_PRACTICE);
+  assert.equal(getCurrentRoute(), ROUTES.MATH_PRACTICE);
+});
+
+
 // ---------------------------------------------------------------------------
 // Group F: Response / Draft
 // ---------------------------------------------------------------------------
@@ -596,8 +800,11 @@ test("Group G-1: Submission 스냅샷은 불변이어야 하며 자동 채점 �
 // ---------------------------------------------------------------------------
 // Group H: Review / Retry Lifecycle
 // ---------------------------------------------------------------------------
-test("Group H-1: WRONG/RETRY 문제는 ReviewItem으로 전이되며 재풀이 시 원본 Submission은 deepEqual 불변이어야 한다", async () => {
+test("Group H-1 [R1-TYPED-RETRY-E2E]: Measurement 20-step Typed Retry Production Lifecycle 검증", async () => {
   await clearAllData();
+  _resetActiveLearnerInMemoryForTesting();
+  setCurrentLearnerId("learner_h1");
+
   const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
   const activities = generateUnitConversionActivities({
     skillId: "MATH_UNIT_CAPACITY_TO_SMALLER",
@@ -606,72 +813,166 @@ test("Group H-1: WRONG/RETRY 문제는 ReviewItem으로 전이되며 재풀이 �
     unitCatalog: catalog
   });
 
+  // Step 1: 원본 세션 생성 (measurement, 2문제)
   const session = createSession({
     subjectId: "math",
     courseId: "measurement",
+    moduleId: "measurement",
     skillId: "MATH_UNIT_CAPACITY_TO_SMALLER",
     learnerId: "learner_h1"
   }, activities);
+  assert.equal(session.courseId, "measurement");
+
+  // Step 2: 원본 세션 시작
   session.start();
+  assert.equal(session.state, SessionState.PRACTICE_ACTIVE);
 
+  // Step 3: 학생이 TEXT 응답 입력 (applyStudentResponseChange)
   const responseMap = new Map();
-  activities.forEach((q) => {
-    applyStudentResponseChange(session, responseMap, q, "1234"); // 임의 응답
-  });
+  applyStudentResponseChange(session, responseMap, activities[0], "1234");
+  applyStudentResponseChange(session, responseMap, activities[1], "5678");
+  assert.equal(responseMap.get(activities[0].id).value, "1234");
+  assert.equal(responseMap.get(activities[1].id).value, "5678");
 
+  // Step 4: 원본 Draft DB 저장 및 복원 라운드트립 검증
+  const originalDraftPayload = {
+    sessionId: session.id,
+    learnerId: "learner_h1",
+    subjectId: "math",
+    courseId: "measurement",
+    moduleId: "measurement",
+    sessionState: "PRACTICE_ACTIVE",
+    config: { courseId: "measurement", moduleId: "measurement", skillId: "MATH_UNIT_CAPACITY_TO_SMALLER" },
+    questions: activities,
+    responseRecords: responseMap
+  };
+  await saveDraftSession(originalDraftPayload);
+  const loadedOrigDraft = await getDraftSession({ learnerId: "learner_h1" });
+  assert.ok(loadedOrigDraft);
+  assert.equal(loadedOrigDraft.sessionId, session.id);
+  assert.equal(Object.keys(loadedOrigDraft.responseRecords).length, 2);
+  assert.equal(loadedOrigDraft.responseRecords[activities[0].id].value, "1234");
+
+  // Step 5: 원본 세션 제출 (submitLearningSession) -> Draft 자동 삭제
   const subSnapshot = await submitLearningSession({
     session,
     responseRecordsMap: responseMap,
     learnerId: "learner_h1"
   });
+  assert.ok(subSnapshot.id);
+  assert.equal(subSnapshot.status, "PARENT_GRADING_PENDING");
 
-  // Guardian 채점 시작
+  // Step 6: Guardian 채점 시작
   await startSubmissionGrading(subSnapshot.id, { learnerId: "learner_h1" });
 
-  // 보호자 채점: 1번 WRONG, 2번 RETRY
+  // Step 7: 보호자 채점 판정 갱신 (1번 WRONG, 2번 RETRY)
   const gradingResults = {
-    [activities[0].id]: { decision: "WRONG" },
-    [activities[1].id]: { decision: "RETRY" }
+    [activities[0].id]: { decision: "WRONG", comment: "오답" },
+    [activities[1].id]: { decision: "RETRY", comment: "다시 풀어보세요" }
   };
   await updateSubmissionGrading(subSnapshot.id, gradingResults, new Map(), {
     status: "GRADING_ACTIVE",
     learnerId: "learner_h1"
   });
-  const finalized = await finalizeSubmissionGrading(subSnapshot.id, { learnerId: "learner_h1" });
 
+  // Step 8: 보호자 채점 확정 (finalizeSubmissionGrading)
+  const finalized = await finalizeSubmissionGrading(subSnapshot.id, { learnerId: "learner_h1" });
+  assert.equal(finalized.submission.status, "GRADED");
+
+  // 원본 Submission 스냅샷 deepCopy (불변성 검증용)
   const originalSubmissionDeepCopy = JSON.parse(JSON.stringify(finalized.submission));
 
-  // ReviewItem 생성 확인
+  // Step 9: ReviewItem 생성 확인 (WRONG, RETRY 2개)
   const reviewItems = await getAllReviewItems({ learnerId: "learner_h1" });
   assert.equal(reviewItems.length, 2);
   const wrongItem = reviewItems.find((r) => r.reasonCode === "WRONG");
+  const retryItem = reviewItems.find((r) => r.reasonCode === "RETRY");
   assert.ok(wrongItem);
+  assert.ok(retryItem);
   assert.equal(wrongItem.skillId, "MATH_UNIT_CAPACITY_TO_SMALLER");
   assert.equal(wrongItem.courseId, "measurement");
+  assert.equal(wrongItem.state, "unresolved");
 
-  // 재풀이 시작 (startReviewRetry)
+  // Step 10: 재풀이 시작 (startReviewRetry)
   const retryResult = await startReviewRetry(wrongItem.id, { learnerId: "learner_h1" });
   assert.ok(retryResult);
-  assert.ok(retryResult.retrySession);
-  assert.equal(retryResult.retrySession.questions[0].courseId, "measurement");
-  assert.equal(retryResult.retrySession.questions[0].skillId, "MATH_UNIT_CAPACITY_TO_SMALLER");
-  assert.equal(retryResult.retrySession.questions[0].reviewItemId, wrongItem.id);
+  const retrySession = retryResult.retrySession;
+  assert.ok(retrySession);
 
-  // 원본 Submission 불변성 전수 검증
-  const postRetryOriginalSub = await getSubmission(subSnapshot.id, { learnerId: "learner_h1" });
-  assert.deepEqual(postRetryOriginalSub, originalSubmissionDeepCopy, "재풀이 후에도 원본 Submission은 deepEqual 불변이어야 합니다.");
+  // Step 11: 재풀이 세션 속성 검증 (courseId=measurement, reviewItemId 일치)
+  assert.equal(retrySession.courseId, "measurement");
+  assert.equal(retrySession.questions[0].courseId, "measurement");
+  assert.equal(retrySession.questions[0].skillId, "MATH_UNIT_CAPACITY_TO_SMALLER");
+  assert.equal(retrySession.questions[0].reviewItemId, wrongItem.id);
 
-  // 재풀이 제출 후 보호자 해결 (review_pending -> resolved)
-  retryResult.retrySession.start();
-  await submitLearningSession({
-    session: retryResult.retrySession,
+  // Step 12: 재풀이 세션 시작
+  retrySession.start();
+  assert.equal(retrySession.state, SessionState.PRACTICE_ACTIVE);
+
+  // Step 13: 학생이 재풀이 TEXT 답안 입력
+  const retryResponseMap = new Map();
+  const retryQ = retrySession.questions[0];
+  applyStudentResponseChange(retrySession, retryResponseMap, retryQ, "2000");
+  assert.equal(retryResponseMap.get(retryQ.id).value, "2000");
+
+  // Step 14: 재풀이 Draft DB 저장 및 복원 라운드트립 검증
+  const retryDraftPayload = {
+    sessionId: retrySession.id,
+    learnerId: "learner_h1",
+    subjectId: "math",
+    courseId: "measurement",
+    moduleId: "measurement",
+    sessionState: "PRACTICE_ACTIVE",
+    config: { courseId: "measurement", moduleId: "measurement", skillId: "MATH_UNIT_CAPACITY_TO_SMALLER" },
+    questions: retrySession.questions,
+    responseRecords: retryResponseMap,
+    reviewItemId: wrongItem.id
+  };
+  await saveDraftSession(retryDraftPayload);
+  const loadedRetryDraft = await getDraftSession({ learnerId: "learner_h1" });
+  assert.ok(loadedRetryDraft);
+  assert.equal(loadedRetryDraft.sessionId, retrySession.id);
+  assert.equal(loadedRetryDraft.responseRecords[retryQ.id].value, "2000");
+
+  // Step 15: 재풀이 세션 제출 (submitLearningSession)
+  const retrySubSnapshot = await submitLearningSession({
+    session: retrySession,
+    responseRecordsMap: retryResponseMap,
     reviewItemId: wrongItem.id,
     learnerId: "learner_h1"
   });
 
+  // Step 16: 고유한 재풀이 Submission ID 생성 검증
+  assert.ok(retrySubSnapshot.id);
+  assert.notEqual(retrySubSnapshot.id, subSnapshot.id, "재풀이 제출은 원본과 다른 고유 ID를 가져야 합니다.");
+
+  // Step 17: retry submission의 responseSnapshots에 입력값 보존 검증
+  assert.ok(retrySubSnapshot.responseSnapshots[retryQ.id]);
+  assert.equal(retrySubSnapshot.responseSnapshots[retryQ.id].value, "2000");
+
+  // Step 18: 제출 후 학생 답안 수정 잠금 (post-submit mutation lock)
+  assert.throws(() => {
+    applyStudentResponseChange(retrySession, retryResponseMap, retryQ, "9999");
+  }, /현재 세션 상태/);
+
+  // Step 19: 보호자 재풀이 채점 및 review_pending 상태 확인
+  await startSubmissionGrading(retrySubSnapshot.id, { learnerId: "learner_h1" });
+  await updateSubmissionGrading(retrySubSnapshot.id, {
+    [retryQ.id]: { decision: "CORRECT", comment: "재풀이 정답" }
+  }, new Map(), { status: "GRADING_ACTIVE", learnerId: "learner_h1" });
+  await finalizeSubmissionGrading(retrySubSnapshot.id, { learnerId: "learner_h1" });
+
+  const itemAfterRetry = await getReviewItem(wrongItem.id, { learnerId: "learner_h1" });
+  assert.equal(itemAfterRetry.state, "review_pending");
+
+  // 보호자 최종 해결 (resolveReviewItem) -> resolved 및 resolvedAt 전이
   const resolved = await resolveReviewItem(wrongItem.id, { learnerId: "learner_h1" });
   assert.equal(resolved.state, "resolved");
   assert.ok(resolved.resolvedAt);
+
+  // Step 20: 원본 Submission 불변성 전수 검증 (deepEqual)
+  const postRetryOriginalSub = await getSubmission(subSnapshot.id, { learnerId: "learner_h1" });
+  assert.deepEqual(postRetryOriginalSub, originalSubmissionDeepCopy, "재풀이 및 해결 후에도 원본 Submission은 deepEqual 불변이어야 합니다.");
 });
 
 // ---------------------------------------------------------------------------
@@ -802,3 +1103,83 @@ test("Group L-1: verify-dist-sync에 신규 모듈 및 정적 콘텐츠 패키�
   assert.ok(scriptContent.includes("content/packages/math-measurement-v1/activities.json"));
   assert.ok(scriptContent.includes("content/packages/math-measurement-v1/unit-catalog.json"));
 });
+
+test("Group L-2 [R3-OFFLINE-APP-SHELL-INCLUSION]: service-worker.js의 APP_SHELL에 Measurement 런타임 파일 3개가 등록되어 있어야 한다", () => {
+  const swPath = path.join(__dirname, "../public/app/service-worker.js");
+  const swContent = fs.readFileSync(swPath, "utf8");
+
+  assert.ok(swContent.includes("./js/learningRouteResolver.js"), "learningRouteResolver.js가 APP_SHELL에 포함되어야 함");
+  assert.ok(swContent.includes("./js/measurementUnitCatalog.js"), "measurementUnitCatalog.js가 APP_SHELL에 포함되어야 함");
+  assert.ok(swContent.includes("./js/measurementUnitGenerator.js"), "measurementUnitGenerator.js가 APP_SHELL에 포함되어야 함");
+});
+
+test("Group L-3 [R3-OFFLINE-PACKAGE-LOAD]: 오프라인 환경에서 로컬 콘텐츠 패키지(math-measurement-v1) 리소스 로드 성공 검증", async () => {
+  const pkg = await loadPackage("math-measurement-v1", CONTENT_DIR);
+  assert.ok(pkg);
+  assert.equal(pkg.manifest.packageId, "math-measurement-v1");
+  assert.equal(pkg.manifest.packageVersion, "1.0.0");
+  assert.equal(pkg.curriculum.skills.length, 6);
+  assert.ok(pkg.activities.length > 0);
+
+  const catalogRes = await loadPackageResource("math-measurement-v1", "unitCatalog", CONTENT_DIR);
+  assert.ok(catalogRes);
+  assert.equal(catalogRes.packageId, "math-measurement-v1");
+  assert.ok(catalogRes.dimensions.length >= 3);
+});
+
+test("Group L-4 [R3-OFFLINE-SESSION-START]: 네트워크가 차단된 상태에서 Generator 및 Session 생성이 성공해야 한다", () => {
+  const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
+  const activities = generateUnitConversionActivities({
+    skillId: "MATH_UNIT_LENGTH_TO_SMALLER",
+    count: 5,
+    seed: 444,
+    unitCatalog: catalog
+  });
+
+  assert.equal(activities.length, 5);
+
+  const session = createSession({
+    subjectId: "math",
+    courseId: "measurement",
+    moduleId: "measurement",
+    skillId: "MATH_UNIT_LENGTH_TO_SMALLER",
+    problemCount: 5
+  }, activities);
+
+  session.start();
+  assert.equal(session.state, SessionState.PRACTICE_ACTIVE);
+  assert.equal(session.courseId, "measurement");
+});
+
+test("Group L-5 [R3-OFFLINE-DRAFT-RESUME]: 오프라인 환경에서 IndexedDB를 통한 Measurement Draft 저장 및 복원 성공 검증", async () => {
+  await clearAllData();
+  const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
+  const activities = generateUnitConversionActivities({
+    skillId: "MATH_UNIT_MASS_TO_SMALLER",
+    count: 3,
+    seed: 555,
+    unitCatalog: catalog
+  });
+
+  const draft = {
+    sessionId: "sess_offline_draft_l5",
+    learnerId: "learner_l5",
+    subjectId: "math",
+    courseId: "measurement",
+    moduleId: "measurement",
+    sessionState: "PRACTICE_ACTIVE",
+    config: { courseId: "measurement", skillId: "MATH_UNIT_MASS_TO_SMALLER" },
+    questions: activities,
+    totalElapsedMs: 12000
+  };
+
+  await saveDraftSession(draft);
+  const loaded = await getDraftSession({ learnerId: "learner_l5" });
+  assert.ok(loaded);
+  assert.equal(loaded.sessionId, "sess_offline_draft_l5");
+  assert.equal(loaded.courseId, "measurement");
+
+  const route = resolvePracticeRouteForSession(loaded);
+  assert.equal(route, ROUTES.MATH_MEASUREMENT_PRACTICE);
+});
+

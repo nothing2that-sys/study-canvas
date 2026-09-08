@@ -1521,7 +1521,7 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
 
   const now = Date.now();
   const studentStrokesMapObj = deepClone(mapToObject(snapshotData.studentStrokesMap || snapshotData.strokesMap));
-  const responseSnapshotsObj = deepClone(mapToObject(snapshotData.responseSnapshots || snapshotData.responseRecords || {}));
+  const responseSnapshotsObj = deepClone(mapToObject(snapshotData.responseSnapshots || snapshotData.responseRecordsMap || snapshotData.responseRecords || {}));
   const gradingStrokesMapObj = deepClone(mapToObject(snapshotData.gradingStrokesMap));
   const gradingResultsObj = deepClone(mapToObject(snapshotData.gradingResults));
 

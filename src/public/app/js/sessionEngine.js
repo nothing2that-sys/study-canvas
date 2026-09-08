@@ -324,7 +324,11 @@ export function createSession(config = {}, questions = []) {
       studentStrokesMap: studentStrokesMapObj,
       responseSnapshots: options.responseSnapshots instanceof Map
         ? Object.fromEntries(options.responseSnapshots.entries())
-        : (options.responseSnapshots || options.responseRecords || {}),
+        : options.responseRecordsMap instanceof Map
+          ? Object.fromEntries(options.responseRecordsMap.entries())
+          : options.responseRecords instanceof Map
+            ? Object.fromEntries(options.responseRecords.entries())
+            : (options.responseSnapshots || options.responseRecordsMap || options.responseRecords || {}),
       gradingStrokesMap: {},
       gradingResults: {},
       gradingProgress: getGradingProgress(questions, {}),
@@ -424,6 +428,12 @@ export function createSession(config = {}, questions = []) {
   return {
     get id() { return id; },
     get state() { return state; },
+    get config() { return config; },
+    get subjectId() { return config.subjectId || questions[0]?.subjectId || "math"; },
+    get courseId() { return config.courseId || questions[0]?.courseId || "arithmetic"; },
+    get moduleId() { return config.moduleId || questions[0]?.moduleId || "arithmetic"; },
+    get unitId() { return config.unitId || questions[0]?.unitId || null; },
+    get skillId() { return config.skillId || questions[0]?.skillId || null; },
     get operation() { return operation; },
     get mathFormat() { return mathFormat; },
     get macroLevelId() { return macroLevelId; },

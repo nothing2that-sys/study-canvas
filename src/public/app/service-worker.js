@@ -40,6 +40,9 @@ const APP_SHELL = [
   "./js/unifiedCurriculumRegistry.js",
   "./js/mathArithmeticAdapter.js",
   "./js/contentPackageLoader.js",
+  "./js/learningRouteResolver.js",
+  "./js/measurementUnitCatalog.js",
+  "./js/measurementUnitGenerator.js",
   /* CONTENT_PACKAGES_PRECACHE_START */
   "./content/registry.json",
   "./content/packages/foundation-smoke/activities.json",

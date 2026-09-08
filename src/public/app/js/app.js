@@ -69,7 +69,7 @@ import {
   restoreSessionStateFromDraft,
   evaluateStartupDraftResumePolicy
 } from "./submissionLifecycle.js";
-import { resolvePracticeRoute, resolveLandingRoute } from "./learningRouteResolver.js";
+import { resolvePracticeRoute, resolveLandingRoute, resolvePracticeRouteForSession } from "./learningRouteResolver.js";
 import { loadPackage, loadPackageResource } from "./contentPackageLoader.js";
 import { generateUnitConversionActivities } from "./measurementUnitGenerator.js";
 
@@ -340,7 +340,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260908T103608828Z-2b15949",
+    appBuildId: "20260908T105936297Z-0f2e236",
     sessionId: currentSession.id,
     submissionId: currentSubmission?.id || `sub_${currentSession.id}`,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
@@ -431,11 +431,7 @@ function switchView(targetView, updateRoute = true) {
     if (updateRoute && getCurrentRoute() !== ROUTES.MATH_ARITHMETIC) navigate(ROUTES.MATH_ARITHMETIC);
   } else if (targetView === practiceView) {
     interactionGuard.setAppMode(AppMode.PRACTICE);
-    const targetPracticeRoute = resolvePracticeRoute({
-      subjectId: currentSession?.subjectId,
-      courseId: currentSession?.courseId,
-      moduleId: currentSession?.moduleId
-    });
+    const targetPracticeRoute = resolvePracticeRouteForSession(currentSession);
     if (updateRoute && getCurrentRoute() !== targetPracticeRoute) navigate(targetPracticeRoute);
   } else if (targetView === gradingView) {
     interactionGuard.setAppMode(AppMode.GRADING);
@@ -3726,3 +3722,25 @@ export function startMeasurementPracticeSession(skill, unitCatalog, manifest) {
 
   startSessionWithQuestions(activities, sessionConfig);
 }
+
+//+_+// Phase F11 Rework 1: Production Draft 복원 및 라우트 동기화 Facade
+export function handleRestoreDraftSession(draft) {
+  const restored = restoreSessionFromDraft(draft);
+  if (restored && currentSession?.state === SessionState.PRACTICE_ACTIVE) {
+    const targetPracticeRoute = resolvePracticeRoute({
+      subjectId: draft.subjectId,
+      courseId: draft.config?.courseId || draft.courseId,
+      moduleId: draft.config?.moduleId || draft.moduleId
+    });
+    if (targetPracticeRoute === ROUTES.MATH_MEASUREMENT_PRACTICE) {
+      navigate(ROUTES.MATH_MEASUREMENT_PRACTICE);
+    } else {
+      navigate(ROUTES.MATH_PRACTICE);
+    }
+  } else if (restored && currentSession?.state === SessionState.GRADING_ACTIVE) {
+    navigate(ROUTES.MATH_GRADING);
+  }
+  return restored;
+}
+
+export { restoreSessionFromDraft, startSessionWithQuestions };
