@@ -59,6 +59,8 @@ export function normalizeLearningActivity(input) {
 
   const subjectId = String(input.subjectId || "math").trim().toLowerCase();
   const moduleId = String(input.moduleId || "general").trim().toLowerCase();
+  const courseId = input.courseId ? String(input.courseId).trim() : null;
+  const unitId = input.unitId ? String(input.unitId).trim() : null;
   const skillId = String(input.skillId || "").trim();
   if (!skillId) {
     throw new Error("LearningActivity에는 skillId가 필요합니다.");
@@ -78,10 +80,39 @@ export function normalizeLearningActivity(input) {
     });
   }
 
+  //+_+// Phase F10B: Static Content Package 참조 메타데이터 및 출처 메타데이터
+  let contentRef = null;
+  if (input.contentRef && typeof input.contentRef === "object") {
+    const pkgId = String(input.contentRef.packageId || "").trim();
+    const actId = String(input.contentRef.contentId || input.contentRef.activityId || id).trim();
+    if (!pkgId) {
+      throw new Error("contentRef에는 packageId가 필수입니다.");
+    }
+    contentRef = {
+      packageId: pkgId,
+      packageVersion: String(input.contentRef.packageVersion || "1.0.0").trim(),
+      contentId: actId,
+      contentVersion: Number(input.contentRef.contentVersion || 1)
+    };
+  }
+
+  let sourceMetadata = null;
+  if (input.sourceMetadata && typeof input.sourceMetadata === "object") {
+    sourceMetadata = {
+      sourceType: String(input.sourceMetadata.sourceType || "INTERNAL_FIXTURE").trim(),
+      sourceId: String(input.sourceMetadata.sourceId || "PROJECT_INTERNAL").trim(),
+      license: String(input.sourceMetadata.license || "PROPRIETARY_INTERNAL").trim(),
+      attribution: input.sourceMetadata.attribution ? String(input.sourceMetadata.attribution).trim() : null,
+      reviewStatus: String(input.sourceMetadata.reviewStatus || "INTERNAL_SMOKE").trim()
+    };
+  }
+
   return {
     id,
     version: Math.max(1, Number(input.version) || 1),
     subjectId,
+    courseId,
+    unitId,
     moduleId,
     skillId,
     activityType: rawActivityType,
@@ -91,6 +122,8 @@ export function normalizeLearningActivity(input) {
     expectedAnswer: input.expectedAnswer !== undefined ? String(input.expectedAnswer) : null,
     choices,
     explanation: input.explanation ? String(input.explanation) : "",
+    contentRef,
+    sourceMetadata,
     metadata: input.metadata && typeof input.metadata === "object" ? { ...input.metadata } : {}
   };
 }
