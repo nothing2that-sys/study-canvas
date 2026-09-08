@@ -13,8 +13,8 @@ const CONTENT_ROOT = path.resolve(__dirname, "../public/app/content");
 const VALID_SUBJECTS = new Set(["math", "korean", "english"]);
 const VALID_ACTIVITY_TYPES = new Set(["SHORT_ANSWER", "MULTIPLE_CHOICE", "ARITHMETIC"]);
 const VALID_RESPONSE_TYPES = new Set(["CANVAS", "TEXT", "CHOICE"]);
-const VALID_SOURCE_TYPES = new Set(["INTERNAL_FIXTURE", "PROJECT_OWNED", "EXTERNAL"]);
-const VALID_REVIEW_STATUSES = new Set(["INTERNAL_SMOKE", "DRAFT", "VERIFIED"]);
+const VALID_SOURCE_TYPES = new Set(["INTERNAL_FIXTURE", "PROJECT_OWNED", "EXTERNAL", "ARITHMETIC_GENERATOR"]);
+const VALID_REVIEW_STATUSES = new Set(["INTERNAL", "DRAFT", "VERIFIED"]);
 
 let errors = [];
 
@@ -37,11 +37,11 @@ function readJsonFile(filePath) {
   }
 }
 
-export function validateAllContent() {
+export function validateAllContent(contentRoot = CONTENT_ROOT) {
   errors = [];
-  console.log("🔍 [Phase F10B] Content Package 유효성 검증 시작...");
+  console.log(`🔍 [Phase F10B] Content Package 유효성 검증 시작 (${contentRoot})...`);
 
-  const registryPath = path.join(CONTENT_ROOT, "registry.json");
+  const registryPath = path.join(contentRoot, "registry.json");
   const registry = readJsonFile(registryPath);
   if (!registry) {
     return { valid: false, errors };
@@ -74,7 +74,7 @@ export function validateAllContent() {
       continue;
     }
 
-    const manifestPath = path.resolve(CONTENT_ROOT, relManifestPath);
+    const manifestPath = path.resolve(contentRoot, relManifestPath);
     const packageDir = path.dirname(manifestPath);
     const manifest = readJsonFile(manifestPath);
     if (!manifest) continue;
@@ -84,11 +84,28 @@ export function validateAllContent() {
     if (manifestPkgId !== pkgId) {
       recordError(`manifest.json: 패키지 ID 불일치 (registry: ${pkgId}, manifest: ${manifestPkgId})`);
     }
-    if (!manifest.packageVersion && !manifest.version) {
+    const expectedPkgVer = pkgEntry.packageVersion || pkgEntry.version;
+    const manifestPkgVer = manifest.packageVersion || manifest.version;
+    if (!manifestPkgVer) {
       recordError(`manifest.json: 패키지 ${manifestPkgId}의 version이 누락되었습니다.`);
+    } else if (expectedPkgVer && manifestPkgVer !== expectedPkgVer) {
+      recordError(`manifest.json: 패키지 버전 불일치 (registry: ${expectedPkgVer}, manifest: ${manifestPkgVer})`);
     }
-    if (!manifest.sourcePolicy || (!manifest.sourcePolicy.defaultLicense && !manifest.sourcePolicy.license)) {
-      recordError(`manifest.json: 패키지 ${manifestPkgId}의 sourcePolicy license가 필수입니다.`);
+
+    // Source Policy 검증
+    if (!manifest.sourcePolicy || typeof manifest.sourcePolicy !== "object") {
+      recordError(`manifest.json: 패키지 ${manifestPkgId}의 sourcePolicy 객체가 누락되었습니다.`);
+    } else {
+      const defaultLicense = String(manifest.sourcePolicy.defaultLicense || manifest.sourcePolicy.license || "").trim();
+      if (!defaultLicense) {
+        recordError(`manifest.json: 패키지 ${manifestPkgId}의 sourcePolicy license는 비어있지 않아야 합니다.`);
+      }
+      if (manifest.sourcePolicy.defaultSourceType && !VALID_SOURCE_TYPES.has(manifest.sourcePolicy.defaultSourceType)) {
+        recordError(`manifest.json: 패키지 ${manifestPkgId}의 defaultSourceType이 유효하지 않습니다: ${manifest.sourcePolicy.defaultSourceType}`);
+      }
+      if (manifest.sourcePolicy.defaultReviewStatus && !VALID_REVIEW_STATUSES.has(manifest.sourcePolicy.defaultReviewStatus)) {
+        recordError(`manifest.json: 패키지 ${manifestPkgId}의 defaultReviewStatus가 유효하지 않습니다: ${manifest.sourcePolicy.defaultReviewStatus}`);
+      }
     }
 
     // Curriculum 검증
@@ -98,6 +115,9 @@ export function validateAllContent() {
     const registeredSkillIds = new Set();
 
     if (curriculum) {
+      if (curriculum.packageId && curriculum.packageId !== manifestPkgId) {
+        recordError(`curriculum.json: packageId 불일치 (manifest: ${manifestPkgId}, curriculum: ${curriculum.packageId})`);
+      }
       if (!Array.isArray(curriculum.skills)) {
         recordError(`curriculum.json: 패키지 ${manifestPkgId}의 skills는 배열이어야 합니다.`);
       } else {
@@ -129,6 +149,9 @@ export function validateAllContent() {
     const activitiesData = readJsonFile(activitiesPath);
 
     if (activitiesData) {
+      if (activitiesData.packageId && activitiesData.packageId !== manifestPkgId) {
+        recordError(`activities.json: packageId 불일치 (manifest: ${manifestPkgId}, activities: ${activitiesData.packageId})`);
+      }
       if (!Array.isArray(activitiesData.activities)) {
         recordError(`activities.json: 패키지 ${manifestPkgId}의 activities는 배열이어야 합니다.`);
       } else {
@@ -168,13 +191,40 @@ export function validateAllContent() {
           }
 
           // contentRef 검증
-          if (!act.contentRef || act.contentRef.packageId !== manifestPkgId) {
-            recordError(`activities.json: contentRef.packageId 불일치 (${act.id})`);
+          if (!act.contentRef || typeof act.contentRef !== "object") {
+            recordError(`activities.json: contentRef 누락 (${act.id})`);
+          } else {
+            if (act.contentRef.packageId !== manifestPkgId) {
+              recordError(`activities.json: contentRef.packageId 불일치 (${act.id}: expected ${manifestPkgId}, got ${act.contentRef.packageId})`);
+            }
+            if (manifestPkgVer && act.contentRef.packageVersion !== manifestPkgVer) {
+              recordError(`activities.json: contentRef.packageVersion 불일치 (${act.id}: expected ${manifestPkgVer}, got ${act.contentRef.packageVersion})`);
+            }
+            if (act.contentRef.contentId && act.contentRef.contentId !== act.id) {
+              recordError(`activities.json: contentRef.contentId 불일치 (${act.id}: expected ${act.id}, got ${act.contentRef.contentId})`);
+            }
+            if (act.contentRef.contentVersion !== undefined && act.version !== undefined && Number(act.contentRef.contentVersion) !== Number(act.version)) {
+              recordError(`activities.json: contentRef.contentVersion 불일치 (${act.id}: expected ${act.version}, got ${act.contentRef.contentVersion})`);
+            }
           }
 
-          // sourceMetadata 라이선스 검증
-          if (!act.sourceMetadata || !act.sourceMetadata.license) {
-            recordError(`activities.json: sourceMetadata.license 누락 (${act.id})`);
+          // sourceMetadata 라이선스 및 출처 검증
+          if (!act.sourceMetadata || typeof act.sourceMetadata !== "object") {
+            recordError(`activities.json: sourceMetadata 누락 (${act.id})`);
+          } else {
+            const license = String(act.sourceMetadata.license || "").trim();
+            if (!license) {
+              recordError(`activities.json: sourceMetadata.license 누락 또는 공백 (${act.id})`);
+            }
+            if (!VALID_SOURCE_TYPES.has(act.sourceMetadata.sourceType)) {
+              recordError(`activities.json: 유효하지 않은 sourceType (${act.id}: ${act.sourceMetadata.sourceType})`);
+            }
+            if (!VALID_REVIEW_STATUSES.has(act.sourceMetadata.reviewStatus)) {
+              recordError(`activities.json: 유효하지 않은 reviewStatus (${act.id}: ${act.sourceMetadata.reviewStatus})`);
+            }
+            if (!String(act.sourceMetadata.sourceId || "").trim()) {
+              recordError(`activities.json: sourceMetadata.sourceId 누락 또는 공백 (${act.id})`);
+            }
           }
         }
       }

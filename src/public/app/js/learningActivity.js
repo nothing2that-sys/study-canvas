@@ -20,8 +20,24 @@ export const GradingMode = Object.freeze({
   GUARDIAN_MANUAL: "GUARDIAN_MANUAL"
 });
 
+//+_+// Phase F10B: 출처 유형(SourceType) 및 검수 상태(ReviewStatus) 표준 열거형
+export const SourceType = Object.freeze({
+  INTERNAL_FIXTURE: "INTERNAL_FIXTURE",
+  PROJECT_OWNED: "PROJECT_OWNED",
+  EXTERNAL: "EXTERNAL",
+  ARITHMETIC_GENERATOR: "ARITHMETIC_GENERATOR"
+});
+
+export const ReviewStatus = Object.freeze({
+  INTERNAL: "INTERNAL",
+  DRAFT: "DRAFT",
+  VERIFIED: "VERIFIED"
+});
+
 const VALID_ACTIVITY_TYPES = new Set(Object.values(ActivityType));
 const VALID_RESPONSE_TYPES = new Set(Object.values(ResponseType));
+const VALID_SOURCE_TYPES = new Set(Object.values(SourceType));
+const VALID_REVIEW_STATUSES = new Set(Object.values(ReviewStatus));
 
 //+_+// F10A 범위 외 미지원 responseType 식별용 (ORDERING, MATCHING 등은 엄격 거절)
 const UNSUPPORTED_RESPONSE_TYPES = new Set([
@@ -85,25 +101,56 @@ export function normalizeLearningActivity(input) {
   if (input.contentRef && typeof input.contentRef === "object") {
     const pkgId = String(input.contentRef.packageId || "").trim();
     const actId = String(input.contentRef.contentId || input.contentRef.activityId || id).trim();
+    const pkgVer = String(input.contentRef.packageVersion || "1.0.0").trim();
+    const cntVer = Number(input.contentRef.contentVersion || 1);
     if (!pkgId) {
       throw new Error("contentRef에는 packageId가 필수입니다.");
     }
+    if (!pkgVer) {
+      throw new Error("contentRef에는 packageVersion이 필수입니다.");
+    }
+    if (!actId) {
+      throw new Error("contentRef에는 contentId가 필수입니다.");
+    }
+    if (!Number.isFinite(cntVer) || cntVer < 1) {
+      throw new Error("contentRef에는 1 이상의 contentVersion이 필수입니다.");
+    }
     contentRef = {
       packageId: pkgId,
-      packageVersion: String(input.contentRef.packageVersion || "1.0.0").trim(),
+      packageVersion: pkgVer,
       contentId: actId,
-      contentVersion: Number(input.contentRef.contentVersion || 1)
+      contentVersion: cntVer
     };
   }
 
   let sourceMetadata = null;
   if (input.sourceMetadata && typeof input.sourceMetadata === "object") {
+    const rawSourceType = String(input.sourceMetadata.sourceType || "").trim();
+    if (!VALID_SOURCE_TYPES.has(rawSourceType)) {
+      throw new Error(`유효하지 않은 sourceType입니다: ${input.sourceMetadata.sourceType}`);
+    }
+
+    const sourceId = String(input.sourceMetadata.sourceId || input.id || "").trim();
+    if (!sourceId) {
+      throw new Error("sourceMetadata에는 sourceId가 필수입니다.");
+    }
+
+    const license = String(input.sourceMetadata.license || "").trim();
+    if (!license) {
+      throw new Error("sourceMetadata에는 비어있지 않은 license가 필수입니다.");
+    }
+
+    const rawReviewStatus = String(input.sourceMetadata.reviewStatus || "").trim();
+    if (!VALID_REVIEW_STATUSES.has(rawReviewStatus)) {
+      throw new Error(`유효하지 않은 reviewStatus입니다: ${input.sourceMetadata.reviewStatus}`);
+    }
+
     sourceMetadata = {
-      sourceType: String(input.sourceMetadata.sourceType || "INTERNAL_FIXTURE").trim(),
-      sourceId: String(input.sourceMetadata.sourceId || "PROJECT_INTERNAL").trim(),
-      license: String(input.sourceMetadata.license || "PROPRIETARY_INTERNAL").trim(),
+      sourceType: rawSourceType,
+      sourceId,
+      license,
       attribution: input.sourceMetadata.attribution ? String(input.sourceMetadata.attribution).trim() : null,
-      reviewStatus: String(input.sourceMetadata.reviewStatus || "INTERNAL_SMOKE").trim()
+      reviewStatus: rawReviewStatus
     };
   }
 

@@ -78,16 +78,54 @@ export function registerSkill(rawSkill) {
 }
 
 /**
- * 패키지 단위 Skill 목록 일괄 등록
+ * 패키지 단위 Skill 목록 일괄 등록 (Atomic Preflight + Commit 보장)
+ * - Phase 1: 전체 입력 스킬 정규화 및 배치 내부 중복/충돌 검증
+ * - Phase 2: 기존 등록된 skillsMap과의 충돌 사전 검증 (동일 정의는 멱등성 허용, 상충 정의는 거절)
+ * - Phase 3: 100% 검증 통과 시에만 skillsMap에 일괄 반영 (중간 실패 시 skillsMap 0건 변형)
  */
 export function registerPackageSkills(skillsList = []) {
   if (!Array.isArray(skillsList)) {
     throw new TypeError("registerPackageSkills에는 Skill 배열이 필요합니다.");
   }
-  const registered = [];
-  for (const s of skillsList) {
-    registered.push(registerSkill(s));
+
+  // Phase 1: 정규화 및 배치 내부 중복 검증
+  const normalizedBatch = [];
+  const batchSeen = new Map();
+
+  for (const raw of skillsList) {
+    const normalized = normalizeSkillDefinition(raw);
+    if (batchSeen.has(normalized.skillId)) {
+      const prev = batchSeen.get(normalized.skillId);
+      if (JSON.stringify(prev) !== JSON.stringify(normalized)) {
+        throw new Error(`패키지 내 중복 및 상충되는 skillId가 존재합니다: ${normalized.skillId}`);
+      }
+    } else {
+      batchSeen.set(normalized.skillId, normalized);
+      normalizedBatch.push(normalized);
+    }
   }
+
+  // Phase 2: 기존 등록 상태 충돌 사전 검사
+  for (const normalized of normalizedBatch) {
+    const existing = skillsMap.get(normalized.skillId);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(normalized)) {
+      throw new Error(`이미 다른 정의로 등록된 skillId입니다: ${normalized.skillId}`);
+    }
+  }
+
+  // Phase 3: 원자적 일괄 반영 (모든 사전 검증 통과 후)
+  const registered = [];
+  for (const normalized of normalizedBatch) {
+    const existing = skillsMap.get(normalized.skillId);
+    if (existing) {
+      registered.push(existing);
+    } else {
+      const frozen = Object.freeze(normalized);
+      skillsMap.set(normalized.skillId, frozen);
+      registered.push(frozen);
+    }
+  }
+
   return registered;
 }
 

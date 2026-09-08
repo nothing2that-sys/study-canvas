@@ -122,8 +122,24 @@ export async function loadPackageManifest(manifestPath, baseDir = DEFAULT_CONTEN
   }
 
   // Source / License Policy 검증
-  if (!data.sourcePolicy || !data.sourcePolicy.defaultLicense) {
-    throw new Error("manifest에 유효한 sourcePolicy 및 defaultLicense가 필요합니다.");
+  if (!data.sourcePolicy || typeof data.sourcePolicy !== "object") {
+    throw new Error("manifest에 유효한 sourcePolicy 객체가 필요합니다.");
+  }
+  const defaultLicense = String(data.sourcePolicy.defaultLicense || "").trim();
+  if (!defaultLicense) {
+    throw new Error("manifest sourcePolicy에 비어있지 않은 defaultLicense가 필요합니다.");
+  }
+  if (data.sourcePolicy.defaultSourceType) {
+    const defaultSourceType = String(data.sourcePolicy.defaultSourceType).trim();
+    if (!["INTERNAL_FIXTURE", "PROJECT_OWNED", "EXTERNAL", "ARITHMETIC_GENERATOR"].includes(defaultSourceType)) {
+      throw new Error(`manifest sourcePolicy에 유효하지 않은 defaultSourceType입니다: ${defaultSourceType}`);
+    }
+  }
+  if (data.sourcePolicy.defaultReviewStatus) {
+    const defaultReviewStatus = String(data.sourcePolicy.defaultReviewStatus).trim();
+    if (!["INTERNAL", "DRAFT", "VERIFIED"].includes(defaultReviewStatus)) {
+      throw new Error(`manifest sourcePolicy에 유효하지 않은 defaultReviewStatus입니다: ${defaultReviewStatus}`);
+    }
   }
 
   return {
@@ -135,7 +151,7 @@ export async function loadPackageManifest(manifestPath, baseDir = DEFAULT_CONTEN
 /**
  * Curriculum Package (curriculum.json) 로드 및 검증
  */
-export async function loadCurriculumPackage(curriculumPath, manifestDir) {
+export async function loadCurriculumPackage(curriculumPath, manifestDir, expectedPackageId = null) {
   const fullUrl = joinPaths(manifestDir, curriculumPath);
   const data = await fetchJsonResource(fullUrl);
 
@@ -145,6 +161,10 @@ export async function loadCurriculumPackage(curriculumPath, manifestDir) {
 
   if (Number(data.schemaVersion) !== 1) {
     throw new Error(`지원되지 않는 curriculum schemaVersion입니다: ${data.schemaVersion}`);
+  }
+
+  if (expectedPackageId && data.packageId !== expectedPackageId) {
+    throw new Error(`curriculum.json의 packageId(${data.packageId})가 manifest packageId(${expectedPackageId})와 불일치합니다.`);
   }
 
   if (!Array.isArray(data.skills)) {
@@ -173,7 +193,13 @@ export async function loadCurriculumPackage(curriculumPath, manifestDir) {
 /**
  * Activity Package (activities.json) 로드 및 검증
  */
-export async function loadActivityPackage(activitiesPath, manifestDir, curriculumSkills = []) {
+export async function loadActivityPackage(
+  activitiesPath,
+  manifestDir,
+  curriculumSkills = [],
+  expectedPackageId = null,
+  expectedPackageVersion = null
+) {
   const fullUrl = joinPaths(manifestDir, activitiesPath);
   const data = await fetchJsonResource(fullUrl);
 
@@ -183,6 +209,10 @@ export async function loadActivityPackage(activitiesPath, manifestDir, curriculu
 
   if (Number(data.schemaVersion) !== 1) {
     throw new Error(`지원되지 않는 activities schemaVersion입니다: ${data.schemaVersion}`);
+  }
+
+  if (expectedPackageId && data.packageId !== expectedPackageId) {
+    throw new Error(`activities.json의 packageId(${data.packageId})가 manifest packageId(${expectedPackageId})와 불일치합니다.`);
   }
 
   if (!Array.isArray(data.activities)) {
@@ -215,9 +245,26 @@ export async function loadActivityPackage(activitiesPath, manifestDir, curriculu
       }
     }
 
+    // contentRef 필수 및 일치 검증
+    if (!raw.contentRef || typeof raw.contentRef !== "object") {
+      throw new Error(`활동(${raw.id})에는 contentRef 객체가 필수입니다.`);
+    }
+    if (expectedPackageId && raw.contentRef.packageId !== expectedPackageId) {
+      throw new Error(`활동(${raw.id})의 contentRef.packageId(${raw.contentRef.packageId})가 manifest packageId(${expectedPackageId})와 불일치합니다.`);
+    }
+    if (expectedPackageVersion && raw.contentRef.packageVersion !== expectedPackageVersion) {
+      throw new Error(`활동(${raw.id})의 contentRef.packageVersion(${raw.contentRef.packageVersion})가 manifest packageVersion(${expectedPackageVersion})와 불일치합니다.`);
+    }
+    if (raw.contentRef.contentId && raw.contentRef.contentId !== raw.id) {
+      throw new Error(`활동(${raw.id})의 contentRef.contentId(${raw.contentRef.contentId})가 활동 id와 불일치합니다.`);
+    }
+    if (raw.contentRef.contentVersion !== undefined && raw.version !== undefined && Number(raw.contentRef.contentVersion) !== Number(raw.version)) {
+      throw new Error(`활동(${raw.id})의 contentRef.contentVersion(${raw.contentRef.contentVersion})가 활동 version(${raw.version})과 불일치합니다.`);
+    }
+
     // Source / License metadata 검증
-    if (!raw.sourceMetadata || !raw.sourceMetadata.license) {
-      throw new Error(`활동(${raw.id})에는 sourceMetadata 및 license가 반드시 지정되어야 합니다.`);
+    if (!raw.sourceMetadata || !String(raw.sourceMetadata.license || "").trim()) {
+      throw new Error(`활동(${raw.id})에는 sourceMetadata 및 비어있지 않은 license가 반드시 지정되어야 합니다.`);
     }
 
     const activity = normalizeLearningActivity(raw);
@@ -241,8 +288,21 @@ export async function loadPackage(packageId, baseDir = DEFAULT_CONTENT_BASE) {
   }
 
   const manifest = await loadPackageManifest(pkgEntry.manifestPath, baseDir);
-  const curriculum = await loadCurriculumPackage(manifest.files.curriculum, manifest._manifestDir);
-  const activities = await loadActivityPackage(manifest.files.activities, manifest._manifestDir, curriculum.skills);
+  if (manifest.packageId !== pkgEntry.packageId) {
+    throw new Error(`manifest packageId(${manifest.packageId})가 registry packageId(${pkgEntry.packageId})와 불일치합니다.`);
+  }
+  if (pkgEntry.packageVersion && manifest.packageVersion !== pkgEntry.packageVersion) {
+    throw new Error(`manifest packageVersion(${manifest.packageVersion})가 registry packageVersion(${pkgEntry.packageVersion})와 불일치합니다.`);
+  }
+
+  const curriculum = await loadCurriculumPackage(manifest.files.curriculum, manifest._manifestDir, manifest.packageId);
+  const activities = await loadActivityPackage(
+    manifest.files.activities,
+    manifest._manifestDir,
+    curriculum.skills,
+    manifest.packageId,
+    manifest.packageVersion
+  );
 
   // Curriculum Skills 자동 Registry 등록
   registerPackageSkills(curriculum.skills);
