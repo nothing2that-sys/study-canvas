@@ -110,6 +110,12 @@ import {
 } from "../scripts/validate-content.mjs";
 
 import {
+  createLearner,
+  selectLearner,
+  _resetLearnerSessionGuardForTesting
+} from "../public/app/js/learners/learnerCommands.js";
+
+import {
   collectContentPrecacheAssets
 } from "../scripts/build.mjs";
 
@@ -668,6 +674,210 @@ test("Group E-9 [R2-ARITHMETIC-ROUTE-REGRESSION]: Arithmetic 세션/Draft는 여
   assert.equal(draftRoute, ROUTES.MATH_PRACTICE);
   assert.equal(getCurrentRoute(), ROUTES.MATH_PRACTICE);
 });
+
+test("Group E-10 [R2-ACTUAL-APP-RESTORE-HANDLER]: Production app.js handleRestoreDraftSession 직접 호출을 통한 Measurement Draft 복원 및 Arithmetic Regression 방지 검증", async () => {
+  const prevGlobals = {
+    document: globalThis.document,
+    window: globalThis.window,
+    localStorage: globalThis.localStorage,
+    requestAnimationFrame: globalThis.requestAnimationFrame,
+    cancelAnimationFrame: globalThis.cancelAnimationFrame,
+    ResizeObserver: globalThis.ResizeObserver
+  };
+
+  try {
+    const mockLocalStorage = {
+      store: new Map(),
+      getItem(k) { return this.store.get(k) || null; },
+      setItem(k, v) { this.store.set(k, String(v)); },
+      removeItem(k) { this.store.delete(k); },
+      clear() { this.store.clear(); }
+    };
+    globalThis.localStorage = mockLocalStorage;
+    globalThis.requestAnimationFrame = () => 1;
+    globalThis.cancelAnimationFrame = () => {};
+
+    let currentPath = ROUTES.HOME;
+    globalThis.window = {
+      location: {
+        get pathname() { return currentPath; },
+        set pathname(val) { currentPath = val; }
+      },
+      history: {
+        pushState(state, title, url) { currentPath = url; },
+        replaceState(state, title, url) { currentPath = url; }
+      },
+      scrollTo() {},
+      addEventListener() {},
+      removeEventListener() {},
+      matchMedia() { return { matches: false, addEventListener() {}, removeEventListener() {} }; },
+      localStorage: mockLocalStorage,
+      requestAnimationFrame: () => 1,
+      cancelAnimationFrame: () => {}
+    };
+    globalThis.ResizeObserver = class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    };
+
+    const context = {
+      clearRect() {},
+      beginPath() {},
+      moveTo() {},
+      lineTo() {},
+      quadraticCurveTo() {},
+      stroke() {},
+      arc() {},
+      fill() {},
+      save() {},
+      restore() {},
+      setTransform() {}
+    };
+
+    const dummyEl = {
+      hidden: false,
+      width: 400,
+      height: 300,
+      style: { setProperty() {}, getPropertyValue() {} },
+      value: "",
+      dataset: {},
+      classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+      addEventListener() {},
+      removeEventListener() {},
+      querySelector() { return dummyEl; },
+      querySelectorAll() { return []; },
+      setAttribute() {},
+      getAttribute() { return null; },
+      replaceChildren() {},
+      appendChild(child) { return child; },
+      removeChild(child) { return child; },
+      focus() {},
+      blur() {},
+      getContext: () => context,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 300 }),
+      setPointerCapture() {},
+      releasePointerCapture() {}
+    };
+    globalThis.document = {
+      querySelector(sel) { return dummyEl; },
+      querySelectorAll(sel) { return []; },
+      getElementById(id) { return dummyEl; },
+      createElement(tag) { return { ...dummyEl, tagName: tag.toUpperCase() }; },
+      addEventListener() {},
+      removeEventListener() {},
+      documentElement: dummyEl,
+      body: dummyEl
+    };
+
+    await clearAllData();
+    _resetRouterForTesting();
+    _resetActiveLearnerInMemoryForTesting();
+    _resetLearnerSessionGuardForTesting();
+
+    const testLearner = await createLearner({ name: "러너F11_R2" });
+    await selectLearner(testLearner.id);
+
+    initRouter({ windowRef: globalThis.window, initialPath: ROUTES.HOME });
+    assert.equal(getCurrentRoute(), ROUTES.HOME);
+
+    const { handleRestoreDraftSession } = await import("../public/app/js/app.js");
+
+    // 1. 필수 Measurement 테스트: 실제 production handleRestoreDraftSession 호출
+    const measDraft = {
+      sessionId: "sess_meas_restore_e10",
+      learnerId: testLearner.id,
+      subjectId: "math",
+      courseId: "measurement",
+      moduleId: "measurement",
+      sessionState: "PRACTICE_ACTIVE",
+      config: {
+        courseId: "measurement",
+        moduleId: "measurement",
+        skillId: "MATH_UNIT_LENGTH_TO_SMALLER"
+      },
+      questions: [
+        {
+          id: "q_meas_1",
+          type: "TEXT",
+          prompt: "5 m = ___ cm",
+          expectedAnswer: "500",
+          skillId: "MATH_UNIT_LENGTH_TO_SMALLER"
+        }
+      ],
+      currentPageIndex: 0,
+      totalElapsedMs: 1500
+    };
+
+    const measRestoreResult = handleRestoreDraftSession(measDraft);
+    assert.equal(measRestoreResult, true, "Measurement Draft 복원이 성공해야 함");
+    assert.equal(
+      getCurrentRoute(),
+      ROUTES.MATH_MEASUREMENT_PRACTICE,
+      "Measurement Draft 복원 후 current route는 /math/measurement/practice여야 함"
+    );
+    assert.equal(globalThis.window.location.pathname, ROUTES.MATH_MEASUREMENT_PRACTICE);
+    assert.notEqual(
+      getCurrentRoute(),
+      ROUTES.MATH_PRACTICE,
+      "Measurement Draft가 /math/arithmetic/practice로 이동하면 실패"
+    );
+
+    // 2. 필수 Arithmetic Regression 테스트: 동일 production handler에 Arithmetic Draft 입력
+    _resetRouterForTesting();
+    initRouter({ windowRef: globalThis.window, initialPath: ROUTES.HOME });
+    assert.equal(getCurrentRoute(), ROUTES.HOME);
+
+    const arithDraft = {
+      sessionId: "sess_arith_restore_e10",
+      learnerId: testLearner.id,
+      subjectId: "math",
+      courseId: "arithmetic",
+      moduleId: "arithmetic",
+      sessionState: "PRACTICE_ACTIVE",
+      config: {
+        courseId: "arithmetic",
+        moduleId: "arithmetic",
+        level: "M1"
+      },
+      questions: [
+        {
+          id: "q_arith_1",
+          type: "MATH",
+          operand1: 3,
+          operand2: 4,
+          operator: "+",
+          expectedAnswer: "7"
+        }
+      ],
+      currentPageIndex: 0,
+      totalElapsedMs: 2000
+    };
+
+    const arithRestoreResult = handleRestoreDraftSession(arithDraft);
+    assert.equal(arithRestoreResult, true, "Arithmetic Draft 복원이 성공해야 함");
+    assert.equal(
+      getCurrentRoute(),
+      ROUTES.MATH_PRACTICE,
+      "Arithmetic Draft 복원 후 current route는 /math/arithmetic/practice여야 함"
+    );
+    assert.equal(globalThis.window.location.pathname, ROUTES.MATH_PRACTICE);
+    assert.notEqual(
+      getCurrentRoute(),
+      ROUTES.MATH_MEASUREMENT_PRACTICE,
+      "Arithmetic Draft가 measurement route로 이동하면 실패"
+    );
+  } finally {
+    for (const [key, val] of Object.entries(prevGlobals)) {
+      if (val === undefined) {
+        delete globalThis[key];
+      } else {
+        globalThis[key] = val;
+      }
+    }
+  }
+});
+
 
 
 // ---------------------------------------------------------------------------
