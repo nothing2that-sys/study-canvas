@@ -20,6 +20,9 @@ export const GradingMode = Object.freeze({
   GUARDIAN_MANUAL: "GUARDIAN_MANUAL"
 });
 
+//+_+// Phase F12 Rework: 학습 세션 및 검증용 기본 문제 수 SSOT
+export const DEFAULT_PROBLEM_COUNT = 20;
+
 //+_+// Phase F10B: 출처 유형(SourceType) 및 검수 상태(ReviewStatus) 표준 열거형
 export const SourceType = Object.freeze({
   INTERNAL_FIXTURE: "INTERNAL_FIXTURE",

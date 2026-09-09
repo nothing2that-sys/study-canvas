@@ -369,6 +369,11 @@ export async function getLearnerDashboard(learnerId, options = {}) {
     return subOwner === targetLearnerId && s.subjectId === "korean" && (s.status === "GRADED" || s.status === "SESSION_COMPLETE");
   });
 
+  const mathCompletedSubs = (allSubmissions || []).filter((s) => {
+    const subOwner = s.learnerId || DEFAULT_LEGACY_LEARNER_ID;
+    return subOwner === targetLearnerId && (s.subjectId || "math") === "math" && (s.status === "GRADED" || s.status === "SESSION_COMPLETE");
+  });
+
   const subjects = registrySubjects.map((subj) => {
     if (subj.status === "active" && subj.id === "math") {
       return {
@@ -385,7 +390,7 @@ export async function getLearnerDashboard(learnerId, options = {}) {
           accuracy: mathAccuracy,
           totalSolveTimeMs: mathTime,
           averageSolveTimeMs: mathAvgTime,
-          sessionCount
+          sessionCount: mathCompletedSubs.length
         },
         progress: {
           totalLevels,
@@ -398,6 +403,18 @@ export async function getLearnerDashboard(learnerId, options = {}) {
       };
     }
     if (subj.status === "active" && subj.id === "korean") {
+      const hasKoreanData = koreanGraded > 0 || koreanAggs.length > 0 || koreanCompletedSubs.length > 0;
+      if (!hasKoreanData) {
+        return {
+          subjectId: subj.id,
+          title: subj.title,
+          icon: subj.icon,
+          status: subj.status,
+          enabled: subj.enabled,
+          stats: null,
+          progress: null
+        };
+      }
       return {
         subjectId: subj.id,
         title: subj.title,
@@ -415,11 +432,10 @@ export async function getLearnerDashboard(learnerId, options = {}) {
           sessionCount: koreanCompletedSubs.length
         },
         progress: {
-          totalLevels: 8,
-          masteredLevels: 0,
-          learningLevels: koreanAggs.length,
-          unstartedLevels: Math.max(0, 8 - koreanAggs.length),
-          progressRate: 0,
+          totalSkills: 8,
+          attemptedSkills: koreanAggs.length,
+          learningSkills: koreanAggs.length,
+          unstartedSkills: Math.max(0, 8 - koreanAggs.length),
           curriculum: null
         }
       };

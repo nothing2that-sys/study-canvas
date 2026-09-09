@@ -16,6 +16,9 @@ const VALID_RESPONSE_TYPES = new Set(["CANVAS", "TEXT", "CHOICE"]);
 const VALID_SOURCE_TYPES = new Set(["INTERNAL_FIXTURE", "PROJECT_OWNED", "EXTERNAL", "ARITHMETIC_GENERATOR"]);
 const VALID_REVIEW_STATUSES = new Set(["INTERNAL", "DRAFT", "VERIFIED", "AUTO_VALIDATED", "REVIEWED", "APPROVED"]);
 
+//+_+// Phase F12 Rework: 기본 문제 수 SSOT
+export const DEFAULT_PROBLEM_COUNT = 20;
+
 let errors = [];
 
 function recordError(msg) {
@@ -146,6 +149,7 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
     //+_+// Phase F12: Knowledge Catalog 검증
     const knowledgeCatalogRel = manifest.files?.knowledgeCatalog;
     const registeredKnowledgeIds = new Set();
+    const knowledgeCatalogMap = new Map();
     if (knowledgeCatalogRel) {
       const knowledgeCatalogPath = path.resolve(packageDir, knowledgeCatalogRel);
       const knowledgeCatalog = readJsonFile(knowledgeCatalogPath);
@@ -171,6 +175,7 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
               recordError(`knowledge-catalog.json: knowledgeId 누락 또는 중복 (${manifestPkgId}): ${entry.knowledgeId}`);
             }
             registeredKnowledgeIds.add(entry.knowledgeId);
+            knowledgeCatalogMap.set(entry.knowledgeId, entry);
 
             if (!VALID_DOMAINS.has(entry.domain)) {
               recordError(`knowledge-catalog.json: 유효하지 않은 domain (${entry.knowledgeId}): ${entry.domain}`);
@@ -186,6 +191,13 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
             }
             if (!entry.sourceMetadata || typeof entry.sourceMetadata !== "object") {
               recordError(`knowledge-catalog.json: sourceMetadata 누락 (${entry.knowledgeId})`);
+            } else if (manifestPkgId === "korean-core-v1") {
+              if (!entry.sourceMetadata.attribution || !String(entry.sourceMetadata.attribution).trim()) {
+                recordError(`knowledge-catalog.json: sourceMetadata.attribution 누락 (${entry.knowledgeId})`);
+              }
+              if (!entry.sourceMetadata.retrievedAt || !String(entry.sourceMetadata.retrievedAt).trim()) {
+                recordError(`knowledge-catalog.json: sourceMetadata.retrievedAt 누락 (${entry.knowledgeId})`);
+              }
             }
             if (!VALID_REVIEW_STATUSES.has(entry.reviewStatus)) {
               recordError(`knowledge-catalog.json: 유효하지 않은 reviewStatus (${entry.knowledgeId}): ${entry.reviewStatus}`);
@@ -253,10 +265,15 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
             }
           }
 
-          // knowledgeRef 참조 검증
+          // knowledgeRef 참조 및 시맨틱 도메인 검증
           if (act.knowledgeRef && registeredKnowledgeIds.size > 0) {
             if (!registeredKnowledgeIds.has(act.knowledgeRef)) {
               recordError(`activities.json: 존재하지 않는 knowledgeRef 참조 (${act.id}): ${act.knowledgeRef}`);
+            } else {
+              const kEntry = knowledgeCatalogMap.get(act.knowledgeRef);
+              if (kEntry && act.unitId && kEntry.domain !== act.unitId) {
+                recordError(`activities.json: knowledgeRef 도메인 불일치 (${act.id}: activity unitId=${act.unitId}, knowledge domain=${kEntry.domain})`);
+              }
             }
           }
 
@@ -305,6 +322,12 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
             if (act.subjectId !== "korean") {
               recordError(`activities.json: Korean 패키지의 활동은 subjectId=korean이어야 합니다 (${act.id}: ${act.subjectId})`);
             }
+            if (!act.sourceMetadata?.attribution || !String(act.sourceMetadata.attribution).trim()) {
+              recordError(`activities.json: sourceMetadata.attribution 누락 (${act.id})`);
+            }
+            if (!act.sourceMetadata?.retrievedAt || !String(act.sourceMetadata.retrievedAt).trim()) {
+              recordError(`activities.json: sourceMetadata.retrievedAt 누락 (${act.id})`);
+            }
           }
 
           // 스킬별 활동 카운트 집계
@@ -316,8 +339,8 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
         if (manifest.status === "APPROVED" && manifestPkgId === "korean-core-v1") {
           for (const sId of registeredSkillIds) {
             const count = skillActivityCounts.get(sId) || 0;
-            if (count < 20) {
-              recordError(`activities.json: Production 활성 스킬 ${sId}의 APPROVED 문제 수가 부족합니다 (현재: ${count}, 필요: 20)`);
+            if (count < DEFAULT_PROBLEM_COUNT) {
+              recordError(`activities.json: Production 활성 스킬 ${sId}의 APPROVED 문제 수가 부족합니다 (현재: ${count}, 필요: ${DEFAULT_PROBLEM_COUNT})`);
             }
           }
         }

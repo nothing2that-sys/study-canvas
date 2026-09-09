@@ -603,12 +603,14 @@ export async function renderLearnerHomeView() {
 
       if (isActive && subj.stats) {
         const accText = subj.stats.gradedAttemptCount > 0 ? `${Math.round(subj.stats.accuracy)}%` : "-";
-        const progressRate = subj.progress?.progressRate ?? 0;
+        const progressItem = subj.progress?.progressRate != null
+          ? `<span>진행률: <strong>${subj.progress.progressRate}%</strong></span>`
+          : `<span>스킬: <strong>${subj.progress?.attemptedSkills ?? 0}/${subj.progress?.totalSkills ?? 8}</strong></span>`;
         contentHtml += `
           <div class="subject-stats-row">
             <span>문제: <strong>${subj.stats.gradedAttemptCount}개</strong></span>
             <span>정답률: <strong>${accText}</strong></span>
-            <span>진행률: <strong>${progressRate}%</strong></span>
+            ${progressItem}
           </div>
         `;
       }

@@ -3,7 +3,7 @@
 //+_+// - 사전에 승인된(APPROVED) Activity Bank로부터 결정론적 문제 선택
 //+_+// - 전역 Math.random() 배제 (Mulberry32 PRNG), 원본 불변, 선택지 셔플 지원
 
-import { normalizeLearningActivity } from "./learningActivity.js";
+import { normalizeLearningActivity, DEFAULT_PROBLEM_COUNT } from "./learningActivity.js";
 
 /**
  * 결정론적 의사 난수 생성기 (Mulberry32)
@@ -69,7 +69,7 @@ function shuffleArray(array, rng) {
  */
 export function selectKoreanActivities({
   skillId,
-  count = 20,
+  count = DEFAULT_PROBLEM_COUNT,
   seed = 42,
   activities = [],
   shuffleChoices = true

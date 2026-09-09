@@ -53,7 +53,7 @@ import { createUpdateCoordinator, waitForServiceWorkerControllerChange } from ".
 import { createVisualViewportController, getPreferredScrollBehavior } from "./viewportEngine.js";
 import { setupModalManager } from "./modalEngine.js";
 import { GradeDecision, normalizeGradeDecision } from "./parentGrading.js";
-import { ResponseType, ActivityType } from "./learningActivity.js";
+import { ResponseType, ActivityType, DEFAULT_PROBLEM_COUNT } from "./learningActivity.js";
 import { createResponseRecord, applyStudentResponseChange } from "./responseEngine.js";
 import {
   canMutatePractice,
@@ -341,7 +341,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260909T073150737Z-56089c2",
+    appBuildId: "20260909T093526057Z-5a57742",
     sessionId: currentSession.id,
     submissionId: currentSubmission?.id || `sub_${currentSession.id}`,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
@@ -3557,21 +3557,7 @@ if (typeof document !== "undefined") {
       openReviewDetailModal(items, 0);
     },
     onRestoreDraftSession: (draft) => {
-      const restored = restoreSessionFromDraft(draft);
-      if (restored && currentSession?.state === SessionState.PRACTICE_ACTIVE) {
-        const targetPracticeRoute = resolvePracticeRoute({
-          subjectId: draft.subjectId,
-          courseId: draft.config?.courseId || draft.courseId,
-          moduleId: draft.config?.moduleId || draft.moduleId
-        });
-        if (targetPracticeRoute === ROUTES.MATH_MEASUREMENT_PRACTICE) {
-          navigate(ROUTES.MATH_MEASUREMENT_PRACTICE);
-        } else {
-          navigate(ROUTES.MATH_PRACTICE);
-        }
-      } else if (restored && currentSession?.state === SessionState.GRADING_ACTIVE) {
-        navigate(ROUTES.MATH_GRADING);
-      }
+      handleRestoreDraftSession(draft);
     },
     onShowSessionDetail: (session) => {
       showSessionDetail(session);
@@ -3733,7 +3719,7 @@ export function startMeasurementPracticeSession(skill, unitCatalog, manifest) {
   const seed = Date.now();
   const activities = generateUnitConversionActivities({
     skillId: skill.skillId,
-    count: 20,
+    count: DEFAULT_PROBLEM_COUNT,
     seed,
     unitCatalog,
     packageMetadata: manifest
@@ -3748,7 +3734,7 @@ export function startMeasurementPracticeSession(skill, unitCatalog, manifest) {
     stageId: skill.skillId,
     macroLevelId: skill.skillId,
     difficulty: String(skill.difficulty || "1"),
-    problemCount: 20,
+    problemCount: DEFAULT_PROBLEM_COUNT,
     pageSize: 4,
     mathFormat: "horizontal"
   };
@@ -3844,7 +3830,7 @@ export function startKoreanPracticeSession(skill, allActivities, manifest) {
   const seed = Date.now();
   const activities = selectKoreanActivities({
     skillId: skill.skillId,
-    count: 20,
+    count: DEFAULT_PROBLEM_COUNT,
     seed,
     activities: allActivities
   });
@@ -3858,7 +3844,7 @@ export function startKoreanPracticeSession(skill, allActivities, manifest) {
     stageId: skill.skillId,
     macroLevelId: skill.skillId,
     difficulty: String(skill.difficulty || "1"),
-    problemCount: 20,
+    problemCount: DEFAULT_PROBLEM_COUNT,
     pageSize: 4,
     mathFormat: "horizontal"
   };
@@ -3875,13 +3861,7 @@ export function handleRestoreDraftSession(draft) {
       courseId: draft.config?.courseId || draft.courseId,
       moduleId: draft.config?.moduleId || draft.moduleId
     });
-    if (targetPracticeRoute === ROUTES.KOREAN_CORE_PRACTICE) {
-      navigate(ROUTES.KOREAN_CORE_PRACTICE);
-    } else if (targetPracticeRoute === ROUTES.MATH_MEASUREMENT_PRACTICE) {
-      navigate(ROUTES.MATH_MEASUREMENT_PRACTICE);
-    } else {
-      navigate(ROUTES.MATH_PRACTICE);
-    }
+    navigate(targetPracticeRoute);
   } else if (restored && currentSession?.state === SessionState.GRADING_ACTIVE) {
     navigate(ROUTES.MATH_GRADING);
   }
