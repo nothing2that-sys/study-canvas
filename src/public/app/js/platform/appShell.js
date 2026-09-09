@@ -37,6 +37,7 @@ export function initAppShell(options = {}) {
     learnerHomeView: doc.querySelector("#learnerHomeView"),
     subjectHomeView: doc.querySelector("#subjectHomeView"),
     measurementLandingView: doc.querySelector("#measurementLandingView"),
+    koreanLandingView: doc.querySelector("#koreanLandingView"),
     mathAppRoot: doc.querySelector("#mathAppRoot"),
     migrationErrorView: doc.querySelector("#migrationErrorView"),
 
@@ -121,6 +122,7 @@ export function renderRouteView(routePath) {
     domElements.learnerHomeView,
     domElements.subjectHomeView,
     domElements.measurementLandingView,
+    domElements.koreanLandingView,
     domElements.migrationErrorView,
     domElements.setupView,
     domElements.practiceView,
@@ -136,11 +138,12 @@ export function renderRouteView(routePath) {
   });
 
   const isMathRoute = routePath.startsWith("/math");
+  const isKoreanPractice = routePath === ROUTES.KOREAN_CORE_PRACTICE;
   if (domElements.mathAppRoot) {
-    domElements.mathAppRoot.hidden = !isMathRoute || routePath === ROUTES.MATH_MEASUREMENT;
+    domElements.mathAppRoot.hidden = (!isMathRoute && !isKoreanPractice) || routePath === ROUTES.MATH_MEASUREMENT;
   }
   if (domElements.platformRoot) {
-    domElements.platformRoot.hidden = isMathRoute && routePath !== ROUTES.MATH_HOME && routePath !== ROUTES.MATH_MEASUREMENT;
+    domElements.platformRoot.hidden = (isMathRoute && routePath !== ROUTES.MATH_HOME && routePath !== ROUTES.MATH_MEASUREMENT) || isKoreanPractice;
   }
 
   switch (routePath) {
@@ -176,6 +179,15 @@ export function renderRouteView(routePath) {
       }
       break;
 
+    case ROUTES.KOREAN_HOME:
+    case ROUTES.KOREAN_CORE:
+      if (domElements.platformRoot) domElements.platformRoot.hidden = false;
+      if (domElements.koreanLandingView) {
+        domElements.koreanLandingView.hidden = false;
+        domElements.koreanLandingView.classList.add("active-view");
+      }
+      break;
+
     case ROUTES.MATH_ARITHMETIC:
       if (domElements.mathAppRoot) domElements.mathAppRoot.hidden = false;
       if (domElements.setupView) {
@@ -186,6 +198,7 @@ export function renderRouteView(routePath) {
 
     case ROUTES.MATH_PRACTICE:
     case ROUTES.MATH_MEASUREMENT_PRACTICE:
+    case ROUTES.KOREAN_CORE_PRACTICE:
       if (domElements.mathAppRoot) domElements.mathAppRoot.hidden = false;
       if (domElements.practiceView) {
         domElements.practiceView.hidden = false;

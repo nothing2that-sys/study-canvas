@@ -31,7 +31,10 @@ export const SourceType = Object.freeze({
 export const ReviewStatus = Object.freeze({
   INTERNAL: "INTERNAL",
   DRAFT: "DRAFT",
-  VERIFIED: "VERIFIED"
+  VERIFIED: "VERIFIED",
+  AUTO_VALIDATED: "AUTO_VALIDATED",
+  REVIEWED: "REVIEWED",
+  APPROVED: "APPROVED"
 });
 
 const VALID_ACTIVITY_TYPES = new Set(Object.values(ActivityType));

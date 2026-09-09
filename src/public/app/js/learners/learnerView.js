@@ -529,7 +529,7 @@ export async function renderLearnerHomeView() {
           });
           navigate(targetLandingRoute);
         } else if (kind === "OPEN_SUBJECT") {
-          navigate(ROUTES.MATH_HOME);
+          navigate(actionCandidate.subjectId === "korean" ? ROUTES.KOREAN_HOME : ROUTES.MATH_HOME);
         }
       };
 
@@ -615,19 +615,19 @@ export async function renderLearnerHomeView() {
 
       contentHtml += `</div>
         <div class="subject-card-footer">
-          ${isActive ? '<button type="button" class="btn-start-subject primary-action">수학 학습하기</button>' : '<span class="coming-soon-label">준비 중</span>'}
+          ${isActive ? `<button type="button" class="btn-start-subject primary-action">${escapeHtml(subj.title || "과목")} 학습하기</button>` : '<span class="coming-soon-label">준비 중</span>'}
         </div>
       `;
 
       card.innerHTML = contentHtml;
 
       if (isActive) {
-        const goMath = () => navigate(subj.entryRoute || ROUTES.MATH_HOME);
-        card.onclick = goMath;
+        const goSubject = () => navigate(subj.entryRoute || (subj.id === "korean" ? ROUTES.KOREAN_HOME : ROUTES.MATH_HOME));
+        card.onclick = goSubject;
         card.onkeydown = (e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            goMath();
+            goSubject();
           }
         };
       }

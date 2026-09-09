@@ -137,7 +137,7 @@ export async function loadPackageManifest(manifestPath, baseDir = DEFAULT_CONTEN
   }
   if (data.sourcePolicy.defaultReviewStatus) {
     const defaultReviewStatus = String(data.sourcePolicy.defaultReviewStatus).trim();
-    if (!["INTERNAL", "DRAFT", "VERIFIED"].includes(defaultReviewStatus)) {
+    if (!["INTERNAL", "DRAFT", "VERIFIED", "APPROVED"].includes(defaultReviewStatus)) {
       throw new Error(`manifest sourcePolicy에 유효하지 않은 defaultReviewStatus입니다: ${defaultReviewStatus}`);
     }
   }
@@ -186,6 +186,8 @@ export async function loadCurriculumPackage(curriculumPath, manifestDir, expecte
   return {
     packageId: data.packageId,
     curriculumVersion: data.curriculumVersion,
+    subjectId: data.subjectId || null,
+    courseId: data.courseId || null,
     skills: normalizedSkills
   };
 }

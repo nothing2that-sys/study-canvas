@@ -1530,8 +1530,9 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
     id,
     sessionId,
     learnerId,
-    subjectId: snapshotData.subjectId || "math",
-    moduleId: snapshotData.moduleId || "arithmetic",
+    subjectId: snapshotData.subjectId || snapshotData.config?.subjectId || "math",
+    courseId: snapshotData.courseId || snapshotData.config?.courseId || (snapshotData.subjectId === "korean" ? "korean-core" : "arithmetic"),
+    moduleId: snapshotData.moduleId || snapshotData.config?.moduleId || (snapshotData.subjectId === "korean" ? "korean-core" : "arithmetic"),
     status: snapshotData.status || "PARENT_GRADING_PENDING",
     config: deepClone(snapshotData.config || {}),
     questions: Array.isArray(snapshotData.questions) ? deepClone(snapshotData.questions) : [],
@@ -2353,7 +2354,7 @@ export async function finalizeSubmissionGrading(id, options = {}) {
             const origQ = (rawExisting.questions || []).find((q) => q.id === r.questionId);
             const itemSubjectId = origQ?.subjectId || rawExisting.subjectId || "math";
             const itemCourseId = origQ?.courseId || rawExisting.courseId || rawExisting.config?.courseId || "arithmetic";
-            const itemUnitId = origQ?.moduleId || rawExisting.unitId || r.operation || "mul";
+            const itemUnitId = origQ?.unitId || origQ?.moduleId || rawExisting.unitId || r.operation || "mul";
             const itemLevelId = origQ?.skillId || r.macroLevelId || r.level || "general";
             const itemSkillId = origQ?.skillId || r.skillId || null;
 
@@ -2497,7 +2498,7 @@ export async function finalizeSubmissionGrading(id, options = {}) {
               const origQ = (rawExisting.questions || []).find((q) => q.id === r.questionId);
               const itemSubjectId = origQ?.subjectId || rawExisting.subjectId || "math";
               const itemCourseId = origQ?.courseId || rawExisting.courseId || rawExisting.config?.courseId || "arithmetic";
-              const itemUnitId = origQ?.moduleId || rawExisting.unitId || r.operation || "mul";
+              const itemUnitId = origQ?.unitId || origQ?.moduleId || rawExisting.unitId || r.operation || "mul";
               const itemLevelId = origQ?.skillId || r.macroLevelId || r.level || "general";
               const itemSkillId = origQ?.skillId || r.skillId || null;
 
@@ -3219,8 +3220,11 @@ export async function startReviewRetry(reviewItemId, options = {}) {
     id: retrySessionId,
     sessionId: retrySessionId,
     learnerId: item.learnerId,
-    subjectId: origQuestion.subjectId || item.subjectId || "math",
-    moduleId: origQuestion.moduleId || item.unitId || "arithmetic",
+    subjectId: origQuestion.subjectId || item.subjectId || rawSub?.subjectId || "math",
+    courseId: origQuestion.courseId || rawSub?.courseId || rawSub?.config?.courseId || (origQuestion.subjectId === "korean" ? "korean-core" : (origQuestion.unitId ? "measurement" : "arithmetic")),
+    moduleId: origQuestion.moduleId || rawSub?.config?.moduleId || (origQuestion.subjectId === "korean" ? "korean-core" : item.unitId || "arithmetic"),
+    unitId: origQuestion.unitId || item.unitId || null,
+    skillId: origQuestion.skillId || item.skillId || null,
     operation: origQuestion.operation || (origQuestion.subjectId === "math" ? "mul" : "general"),
     macroLevelId: origQuestion.macroLevelId || origQuestion.level || origQuestion.skillId || "general",
     pageSize: 1,
@@ -3235,8 +3239,10 @@ export async function startReviewRetry(reviewItemId, options = {}) {
     learnerId: item.learnerId,
     questionId: origQuestion.id,
     questionKey: retryQuestionKey,
-    subjectId: origQuestion.subjectId || item.subjectId || "math",
-    moduleId: origQuestion.moduleId || item.unitId || "arithmetic",
+    subjectId: origQuestion.subjectId || item.subjectId || rawSub?.subjectId || "math",
+    courseId: origQuestion.courseId || rawSub?.courseId || rawSub?.config?.courseId || (origQuestion.subjectId === "korean" ? "korean-core" : (origQuestion.unitId ? "measurement" : "arithmetic")),
+    moduleId: origQuestion.moduleId || rawSub?.config?.moduleId || (origQuestion.subjectId === "korean" ? "korean-core" : item.unitId || "arithmetic"),
+    unitId: origQuestion.unitId || item.unitId || null,
     skillId: origQuestion.skillId || item.skillId || null,
     operation: origQuestion.operation,
     macroLevelId: origQuestion.macroLevelId || origQuestion.level,

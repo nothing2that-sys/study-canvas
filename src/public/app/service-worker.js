@@ -1,11 +1,11 @@
-const CACHE_NAME = "math-canvas-pro-v20260909T062148353Z-94af1ee";
+const CACHE_NAME = "math-canvas-pro-v20260909T072943527Z-2237ebb";
 
 //+_+// PWA 오프라인 구동을 위한 필수 App Shell 자산 목록
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/app.css?v=20260909T062148353Z-94af1ee",
-  "./js/app.js?v=20260909T062148353Z-94af1ee",
+  "./css/app.css?v=20260909T072943527Z-2237ebb",
+  "./js/app.js?v=20260909T072943527Z-2237ebb",
   "./js/canvasEngine.js",
   "./js/sessionEngine.js",
   "./js/parentGrading.js",
@@ -43,11 +43,16 @@ const APP_SHELL = [
   "./js/learningRouteResolver.js",
   "./js/measurementUnitCatalog.js",
   "./js/measurementUnitGenerator.js",
+  "./js/koreanActivitySelector.js",
   /* CONTENT_PACKAGES_PRECACHE_START */
   "./content/registry.json",
   "./content/packages/foundation-smoke/activities.json",
   "./content/packages/foundation-smoke/curriculum.json",
   "./content/packages/foundation-smoke/manifest.json",
+  "./content/packages/korean-core-v1/activities.json",
+  "./content/packages/korean-core-v1/curriculum.json",
+  "./content/packages/korean-core-v1/knowledge-catalog.json",
+  "./content/packages/korean-core-v1/manifest.json",
   "./content/packages/math-measurement-v1/activities.json",
   "./content/packages/math-measurement-v1/curriculum.json",
   "./content/packages/math-measurement-v1/manifest.json",

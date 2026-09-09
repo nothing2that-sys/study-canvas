@@ -72,6 +72,7 @@ import {
 import { resolvePracticeRoute, resolveLandingRoute, resolvePracticeRouteForSession } from "./learningRouteResolver.js";
 import { loadPackage, loadPackageResource } from "./contentPackageLoader.js";
 import { generateUnitConversionActivities } from "./measurementUnitGenerator.js";
+import { selectKoreanActivities } from "./koreanActivitySelector.js";
 
 // 앱 전역 인터랙션 가드 초기화
 const interactionGuard = setupInteractionGuard(typeof document !== "undefined" ? document : null);
@@ -340,7 +341,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260909T062148353Z-94af1ee",
+    appBuildId: "20260909T072943527Z-2237ebb",
     sessionId: currentSession.id,
     submissionId: currentSubmission?.id || `sub_${currentSession.id}`,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
@@ -1641,6 +1642,8 @@ function renderTextActivityStage(q, options = {}) {
   const savedRecord = questionResponseRecordsMap.get(q.id) || currentSubmission?.responseSnapshots?.[q.id];
   const studentVal = escapeHtml(String(savedRecord?.value || ""));
   const isLocked = Boolean(options.isLocked || (currentSession && currentSession.state !== SessionState.PRACTICE_ACTIVE && currentSession.state !== SessionState.SUBMITTING));
+  const isKorean = q.subjectId === "korean" || currentSession?.config?.subjectId === "korean";
+  const inputModeAttr = isKorean ? 'inputmode="text"' : 'inputmode="numeric"';
 
   return `
     <div class="typed-activity-stage" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
@@ -1648,13 +1651,13 @@ function renderTextActivityStage(q, options = {}) {
       <div class="typed-input-area" style="margin-top: 0.5rem;">
         <label for="textInput_${escapeHtml(q.id)}" class="sr-only">답안 입력</label>
         <input type="text"
-               inputmode="numeric"
+               ${inputModeAttr}
                class="typed-text-input"
                id="textInput_${escapeHtml(q.id)}"
                data-question-id="${escapeHtml(q.id)}"
                value="${studentVal}"
                placeholder="답을 입력하세요"
-               style="width: 100%; max-width: 320px; padding: 0.5rem 0.75rem; font-size: 1.1rem; border: 2px solid #ccc; border-radius: 6px;"
+               style="width: 100%; max-width: ${isKorean ? "480px" : "320px"}; padding: 0.5rem 0.75rem; font-size: 1.1rem; border: 2px solid #ccc; border-radius: 6px;"
                ${isLocked ? "disabled" : ""} />
       </div>
     </div>
@@ -1853,7 +1856,33 @@ function renderCurrentWorksheetPage() {
     if (q.responseType === "TEXT" || q.activityType === "SHORT_ANSWER") {
       const inputEl = document.querySelector(`#textInput_${q.id}`);
       if (inputEl) {
+        let isComposing = false;
+        inputEl.addEventListener("compositionstart", () => {
+          isComposing = true;
+          inputEl.dataset.isComposing = "true";
+        });
+        inputEl.addEventListener("compositionend", (e) => {
+          isComposing = false;
+          inputEl.dataset.isComposing = "false";
+          try {
+            applyStudentResponseChange(currentSession, questionResponseRecordsMap, q, e.target.value);
+            triggerDraftSave();
+          } catch (err) {
+            console.warn("[app] 학생 응답 변경 거절 (Session Locked):", err);
+          }
+        });
         inputEl.addEventListener("input", (e) => {
+          if (isComposing || e.isComposing || inputEl.dataset.isComposing === "true") {
+            return;
+          }
+          try {
+            applyStudentResponseChange(currentSession, questionResponseRecordsMap, q, e.target.value);
+            triggerDraftSave();
+          } catch (err) {
+            console.warn("[app] 학생 응답 변경 거절 (Session Locked):", err);
+          }
+        });
+        inputEl.addEventListener("change", (e) => {
           try {
             applyStudentResponseChange(currentSession, questionResponseRecordsMap, q, e.target.value);
             triggerDraftSave();
@@ -2318,7 +2347,7 @@ function renderGradingView() {
 
       <details class="grading-explanation">
         <summary>오답 풀이 단계를 확인하기</summary>
-        <p>${q.explanation ? escapeHtml(q.explanation) : (q.operandA !== undefined ? `${Number(q.operandA).toLocaleString()} ${symbol} ${Number(q.operandB).toLocaleString()}의 정답은 <strong>${answerFormatted}</strong>입니다. 위 모범 풀이에서 자리 맞춤과 중간 계산을 순서대로 비교해 보세요.` : `정답: <strong>${answerFormatted}</strong>`)}</p>
+        <p>${(q.gradingReference?.explanation || q.explanation) ? escapeHtml(q.gradingReference?.explanation || q.explanation) : (q.operandA !== undefined ? `${Number(q.operandA).toLocaleString()} ${symbol} ${Number(q.operandB).toLocaleString()}의 정답은 <strong>${answerFormatted}</strong>입니다. 위 모범 풀이에서 자리 맞춤과 중간 계산을 순서대로 비교해 보세요.` : `정답: <strong>${answerFormatted}</strong>`)}</p>
       </details>
 
       <!-- 채점자 퀵 코멘트 칩 및 메모 입력 -->
@@ -3558,6 +3587,8 @@ if (typeof document !== "undefined") {
       await renderSubjectHomeView();
     } else if (path === ROUTES.MATH_MEASUREMENT) {
       await renderMeasurementLandingView();
+    } else if (path === ROUTES.KOREAN_HOME || path === ROUTES.KOREAN_CORE) {
+      await renderKoreanLandingView();
     } else if (path === ROUTES.MATH_ARITHMETIC) {
       switchView(setupView, false);
       loadDashboardStats();
@@ -3591,7 +3622,9 @@ if (typeof document !== "undefined") {
         await checkDraftResumeOnStartup();
       } else if (route === ROUTES.MATH_MEASUREMENT) {
         await renderMeasurementLandingView();
-      } else if (route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.MATH_GRADING) {
+      } else if (route === ROUTES.KOREAN_HOME || route === ROUTES.KOREAN_CORE) {
+        await renderKoreanLandingView();
+      } else if (route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.KOREAN_CORE_PRACTICE || route === ROUTES.MATH_GRADING) {
         if (result.persistedDraft) {
           restoreSessionFromDraft(result.persistedDraft);
         } else if (route === ROUTES.MATH_GRADING && result.persistedSubmission) {
@@ -3723,6 +3756,116 @@ export function startMeasurementPracticeSession(skill, unitCatalog, manifest) {
   startSessionWithQuestions(activities, sessionConfig);
 }
 
+//+_+// Phase F12: Korean Landing View 렌더링 및 세션 생성
+let currentKoreanDomain = "vocabulary";
+
+export async function renderKoreanLandingView() {
+  const container = document.querySelector("#koreanSkillsContainer");
+  const tabs = document.querySelectorAll("#koreanDomainTabs .korean-tab-btn");
+  if (!container) return;
+
+  let pkgData = null;
+  try {
+    pkgData = await loadPackage("korean-core-v1");
+  } catch (err) {
+    console.warn("[app] korean-core-v1 로드 실패:", err);
+    container.innerHTML = `<p class="error-msg">국어 패키지를 불러올 수 없습니다: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
+
+  tabs.forEach((tab) => {
+    tab.onclick = () => {
+      tabs.forEach((t) => {
+        t.classList.remove("active");
+        t.setAttribute("aria-selected", "false");
+      });
+      tab.classList.add("active");
+      tab.setAttribute("aria-selected", "true");
+      currentKoreanDomain = tab.dataset.domain || "vocabulary";
+      renderSkillsForDomain();
+    };
+  });
+
+  let aggregates = [];
+  try {
+    const activeLearnerId = getActiveLearnerId();
+    aggregates = await getAllProgressAggregates({ learnerId: activeLearnerId, subjectId: "korean" });
+  } catch (_) {
+    aggregates = [];
+  }
+  const aggMap = new Map((aggregates || []).map((a) => [a.levelId, a]));
+
+  function renderSkillsForDomain() {
+    container.innerHTML = "";
+    const skills = (pkgData.curriculum?.skills || []).filter((s) => s.unitId === currentKoreanDomain);
+
+    if (skills.length === 0) {
+      container.innerHTML = '<p class="empty-msg">해당 영역의 학습 스킬이 없습니다.</p>';
+      return;
+    }
+
+    skills.forEach((skill) => {
+      const agg = aggMap.get(skill.skillId);
+      const accuracyText = agg && agg.gradedAttemptCount > 0
+        ? `정답률 ${Math.round(agg.accuracy)}% (${agg.gradedAttemptCount}문제 풀이)`
+        : "학습 기록 없음";
+
+      const card = document.createElement("div");
+      card.className = "korean-skill-card";
+      card.innerHTML = `
+        <div class="korean-skill-header">
+          <div>
+            <h3 class="korean-skill-title">${escapeHtml(skill.title || skill.name || skill.skillId)}</h3>
+            <p class="korean-skill-desc">${escapeHtml(skill.description || "")}</p>
+          </div>
+        </div>
+        <div class="korean-skill-meta">
+          <span>📊 ${accuracyText}</span>
+          <span>📝 20문제</span>
+        </div>
+        <button type="button" class="korean-start-btn" id="startSkill_${escapeHtml(skill.skillId)}" aria-label="${escapeHtml(skill.title || skill.name || skill.skillId)} 20문제 학습 시작">
+          학습 시작하기 (20문제) →
+        </button>
+      `;
+
+      card.querySelector(`#startSkill_${CSS.escape(skill.skillId)}`)?.addEventListener("click", () => {
+        startKoreanPracticeSession(skill, pkgData.activities, pkgData.manifest);
+      });
+
+      container.appendChild(card);
+    });
+  }
+
+  renderSkillsForDomain();
+}
+
+//+_+// Phase F12: Korean 세션 시작
+export function startKoreanPracticeSession(skill, allActivities, manifest) {
+  const seed = Date.now();
+  const activities = selectKoreanActivities({
+    skillId: skill.skillId,
+    count: 20,
+    seed,
+    activities: allActivities
+  });
+
+  const sessionConfig = {
+    subjectId: "korean",
+    courseId: "korean-core",
+    moduleId: "korean-core",
+    unitId: skill.unitId,
+    skillId: skill.skillId,
+    stageId: skill.skillId,
+    macroLevelId: skill.skillId,
+    difficulty: String(skill.difficulty || "1"),
+    problemCount: 20,
+    pageSize: 4,
+    mathFormat: "horizontal"
+  };
+
+  startSessionWithQuestions(activities, sessionConfig);
+}
+
 //+_+// Phase F11 Rework 1: Production Draft 복원 및 라우트 동기화 Facade
 export function handleRestoreDraftSession(draft) {
   const restored = restoreSessionFromDraft(draft);
@@ -3732,7 +3875,9 @@ export function handleRestoreDraftSession(draft) {
       courseId: draft.config?.courseId || draft.courseId,
       moduleId: draft.config?.moduleId || draft.moduleId
     });
-    if (targetPracticeRoute === ROUTES.MATH_MEASUREMENT_PRACTICE) {
+    if (targetPracticeRoute === ROUTES.KOREAN_CORE_PRACTICE) {
+      navigate(ROUTES.KOREAN_CORE_PRACTICE);
+    } else if (targetPracticeRoute === ROUTES.MATH_MEASUREMENT_PRACTICE) {
       navigate(ROUTES.MATH_MEASUREMENT_PRACTICE);
     } else {
       navigate(ROUTES.MATH_PRACTICE);

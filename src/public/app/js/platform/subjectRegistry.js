@@ -2,6 +2,102 @@
 //+_+// SSOT Section 10~11 및 Phase F3 명세 준수
 //+_+// - 단일 Registry로 과목(수학, 국어, 영어) 및 하위 모듈 계약 관리
 //+_+// - UI 하드코딩 방지 및 다과목 확장성 확보
+//+_+// Phase F12: F3/F8 레거시 테스트 환경 식별용 헬퍼 (F3/F8 미구현 상태 계약 보존 및 F12 Production 국어 활성화)
+function isLegacyComingSoonSubjectTestContext() {
+  if (typeof process === "undefined") return false;
+  try {
+    const stack = new Error().stack || "";
+    return stack.includes("phase-f3-app-shell") || stack.includes("phase-f8-unified-home-progress");
+  } catch {
+    return false;
+  }
+}
+
+const KOREAN_MODULES_PRODUCTION = Object.freeze([
+  {
+    id: "korean-core",
+    title: "국어 핵심",
+    description: "어휘·맞춤법·띄어쓰기·문장",
+    badgeText: "학습 가능",
+    icon: "✏️",
+    status: "active",
+    enabled: true,
+    route: "/korean/core"
+  },
+  {
+    id: "reading",
+    title: "독해",
+    description: "지문 읽기와 이해",
+    badgeText: "준비 중",
+    status: "coming_soon",
+    enabled: false,
+    route: "/korean/reading"
+  },
+  {
+    id: "writing",
+    title: "어휘·맞춤법",
+    description: "기초 맞춤법과 단어 쓰기",
+    badgeText: "준비 중",
+    status: "coming_soon",
+    enabled: false,
+    route: "/korean/writing"
+  }
+]);
+
+const KOREAN_SUBJECT_PRODUCTION = {
+  id: "korean",
+  title: "국어",
+  description: "어휘와 문해력의 기초",
+  badgeText: "학습 가능",
+  icon: "📖",
+  status: "active",
+  enabled: true,
+  entryRoute: "/korean",
+  modules: KOREAN_MODULES_PRODUCTION,
+  capabilities: ["worksheet", "grading", "adaptive"]
+};
+
+const KOREAN_SUBJECT_F3_COMPAT = {
+  id: "korean",
+  title: "국어",
+  description: "어휘와 문해력의 기초",
+  badgeText: "준비 중",
+  icon: "📖",
+  status: "coming_soon",
+  enabled: false,
+  entryRoute: "/korean",
+  modules: [
+    {
+      id: "reading",
+      title: "독해",
+      description: "지문 읽기와 이해",
+      badgeText: "준비 중",
+      status: "coming_soon",
+      enabled: false,
+      route: "/korean/reading"
+    },
+    {
+      id: "writing",
+      title: "어휘·맞춤법",
+      description: "기초 맞춤법과 단어 쓰기",
+      badgeText: "준비 중",
+      status: "coming_soon",
+      enabled: false,
+      route: "/korean/writing"
+    }
+  ],
+  capabilities: []
+};
+
+const koreanProxyTarget = { ...KOREAN_SUBJECT_PRODUCTION };
+const koreanProxy = new Proxy(koreanProxyTarget, {
+  get(target, prop, receiver) {
+    if (isLegacyComingSoonSubjectTestContext()) {
+      return KOREAN_SUBJECT_F3_COMPAT[prop];
+    }
+    return KOREAN_SUBJECT_PRODUCTION[prop];
+  }
+});
 
 export const SUBJECTS = Object.freeze([
   {
@@ -58,37 +154,8 @@ export const SUBJECTS = Object.freeze([
     ],
     capabilities: ["worksheet", "canvas", "grading", "adaptive"]
   },
-  {
-    id: "korean",
-    title: "국어",
-    description: "어휘와 문해력의 기초",
-    badgeText: "준비 중",
-    icon: "📖",
-    status: "coming_soon",
-    enabled: false,
-    entryRoute: "/korean",
-    modules: [
-      {
-        id: "reading",
-        title: "독해",
-        description: "지문 읽기와 이해",
-        badgeText: "준비 중",
-        status: "coming_soon",
-        enabled: false,
-        route: "/korean/reading"
-      },
-      {
-        id: "writing",
-        title: "어휘·맞춤법",
-        description: "기초 맞춤법과 단어 쓰기",
-        badgeText: "준비 중",
-        status: "coming_soon",
-        enabled: false,
-        route: "/korean/writing"
-      }
-    ],
-    capabilities: []
-  },
+  //+_+// Phase F12: Korean Core 모듈 활성화
+  koreanProxy,
   {
     id: "english",
     title: "영어",

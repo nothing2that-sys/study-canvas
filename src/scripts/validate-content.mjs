@@ -14,7 +14,7 @@ const VALID_SUBJECTS = new Set(["math", "korean", "english"]);
 const VALID_ACTIVITY_TYPES = new Set(["SHORT_ANSWER", "MULTIPLE_CHOICE", "ARITHMETIC"]);
 const VALID_RESPONSE_TYPES = new Set(["CANVAS", "TEXT", "CHOICE"]);
 const VALID_SOURCE_TYPES = new Set(["INTERNAL_FIXTURE", "PROJECT_OWNED", "EXTERNAL", "ARITHMETIC_GENERATOR"]);
-const VALID_REVIEW_STATUSES = new Set(["INTERNAL", "DRAFT", "VERIFIED"]);
+const VALID_REVIEW_STATUSES = new Set(["INTERNAL", "DRAFT", "VERIFIED", "AUTO_VALIDATED", "REVIEWED", "APPROVED"]);
 
 let errors = [];
 
@@ -143,6 +143,58 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
       }
     }
 
+    //+_+// Phase F12: Knowledge Catalog 검증
+    const knowledgeCatalogRel = manifest.files?.knowledgeCatalog;
+    const registeredKnowledgeIds = new Set();
+    if (knowledgeCatalogRel) {
+      const knowledgeCatalogPath = path.resolve(packageDir, knowledgeCatalogRel);
+      const knowledgeCatalog = readJsonFile(knowledgeCatalogPath);
+      if (knowledgeCatalog) {
+        if (knowledgeCatalog.schemaVersion !== 1) {
+          recordError(`knowledge-catalog.json: schemaVersion은 1이어야 합니다 (${manifestPkgId}): ${knowledgeCatalog.schemaVersion}`);
+        }
+        if (knowledgeCatalog.packageId && knowledgeCatalog.packageId !== manifestPkgId) {
+          recordError(`knowledge-catalog.json: packageId 불일치 (${manifestPkgId}: expected ${manifestPkgId}, got ${knowledgeCatalog.packageId})`);
+        }
+        if (manifestPkgVer && knowledgeCatalog.packageVersion && knowledgeCatalog.packageVersion !== manifestPkgVer) {
+          recordError(`knowledge-catalog.json: packageVersion 불일치 (${manifestPkgId}: expected ${manifestPkgVer}, got ${knowledgeCatalog.packageVersion})`);
+        }
+        if (!Number.isInteger(knowledgeCatalog.catalogVersion) || knowledgeCatalog.catalogVersion < 1) {
+          recordError(`knowledge-catalog.json: catalogVersion은 1 이상의 정수여야 합니다 (${manifestPkgId}): ${knowledgeCatalog.catalogVersion}`);
+        }
+        if (!Array.isArray(knowledgeCatalog.entries) || knowledgeCatalog.entries.length === 0) {
+          recordError(`knowledge-catalog.json: entries는 비어있지 않은 배열이어야 합니다 (${manifestPkgId})`);
+        } else {
+          const VALID_DOMAINS = new Set(["vocabulary", "spelling", "spacing", "sentence"]);
+          for (const entry of knowledgeCatalog.entries) {
+            if (!entry.knowledgeId || registeredKnowledgeIds.has(entry.knowledgeId)) {
+              recordError(`knowledge-catalog.json: knowledgeId 누락 또는 중복 (${manifestPkgId}): ${entry.knowledgeId}`);
+            }
+            registeredKnowledgeIds.add(entry.knowledgeId);
+
+            if (!VALID_DOMAINS.has(entry.domain)) {
+              recordError(`knowledge-catalog.json: 유효하지 않은 domain (${entry.knowledgeId}): ${entry.domain}`);
+            }
+            if (!entry.title || !String(entry.title).trim()) {
+              recordError(`knowledge-catalog.json: title 누락 (${entry.knowledgeId})`);
+            }
+            if (!entry.summary || !String(entry.summary).trim()) {
+              recordError(`knowledge-catalog.json: summary 누락 (${entry.knowledgeId})`);
+            }
+            if (!entry.ruleType || !String(entry.ruleType).trim()) {
+              recordError(`knowledge-catalog.json: ruleType 누락 (${entry.knowledgeId})`);
+            }
+            if (!entry.sourceMetadata || typeof entry.sourceMetadata !== "object") {
+              recordError(`knowledge-catalog.json: sourceMetadata 누락 (${entry.knowledgeId})`);
+            }
+            if (!VALID_REVIEW_STATUSES.has(entry.reviewStatus)) {
+              recordError(`knowledge-catalog.json: 유효하지 않은 reviewStatus (${entry.knowledgeId}): ${entry.reviewStatus}`);
+            }
+          }
+        }
+      }
+    }
+
     // Activities 검증
     const activitiesRel = manifest.files?.activities || manifest.activitiesPath || "activities.json";
     const activitiesPath = path.resolve(packageDir, activitiesRel);
@@ -156,6 +208,7 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
         recordError(`activities.json: 패키지 ${manifestPkgId}의 activities는 배열이어야 합니다.`);
       } else {
         const seenActivityIds = new Set();
+        const skillActivityCounts = new Map();
         for (const act of activitiesData.activities) {
           if (!act.id || seenActivityIds.has(act.id)) {
             recordError(`activities.json: 활동 ID 누락 또는 중복 (${manifestPkgId}): ${act.id}`);
@@ -187,6 +240,23 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
               if (act.expectedAnswer && !choiceIds.has(act.expectedAnswer)) {
                 recordError(`activities.json: expectedAnswer가 choices 목록에 존재하지 않습니다 (${act.id}: ${act.expectedAnswer})`);
               }
+            }
+          }
+
+          // TEXT 응답 검증
+          if (act.responseType === "TEXT" || act.activityType === "SHORT_ANSWER") {
+            if (!act.expectedAnswer || typeof act.expectedAnswer !== "string" || !act.expectedAnswer.trim()) {
+              recordError(`activities.json: TEXT 활동은 expectedAnswer 문자열이 필요합니다 (${act.id})`);
+            }
+            if (act.subjectId === "korean" && (!act.gradingReference || typeof act.gradingReference !== "object")) {
+              recordError(`activities.json: Korean TEXT 활동은 gradingReference 객체가 필요합니다 (${act.id})`);
+            }
+          }
+
+          // knowledgeRef 참조 검증
+          if (act.knowledgeRef && registeredKnowledgeIds.size > 0) {
+            if (!registeredKnowledgeIds.has(act.knowledgeRef)) {
+              recordError(`activities.json: 존재하지 않는 knowledgeRef 참조 (${act.id}): ${act.knowledgeRef}`);
             }
           }
 
@@ -224,6 +294,30 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
             }
             if (!String(act.sourceMetadata.sourceId || "").trim()) {
               recordError(`activities.json: sourceMetadata.sourceId 누락 또는 공백 (${act.id})`);
+            }
+          }
+
+          // Korean Production 패키지 검증
+          if (manifest.status === "APPROVED" && manifestPkgId === "korean-core-v1") {
+            if (act.sourceMetadata?.reviewStatus !== "APPROVED") {
+              recordError(`activities.json: Production Korean 활동은 reviewStatus=APPROVED이어야 합니다 (${act.id}: ${act.sourceMetadata?.reviewStatus})`);
+            }
+            if (act.subjectId !== "korean") {
+              recordError(`activities.json: Korean 패키지의 활동은 subjectId=korean이어야 합니다 (${act.id}: ${act.subjectId})`);
+            }
+          }
+
+          // 스킬별 활동 카운트 집계
+          const isApproved = act.sourceMetadata?.reviewStatus === "APPROVED";
+          skillActivityCounts.set(act.skillId, (skillActivityCounts.get(act.skillId) || 0) + (isApproved ? 1 : 0));
+        }
+
+        // Active Skill 문제 수 검증
+        if (manifest.status === "APPROVED" && manifestPkgId === "korean-core-v1") {
+          for (const sId of registeredSkillIds) {
+            const count = skillActivityCounts.get(sId) || 0;
+            if (count < 20) {
+              recordError(`activities.json: Production 활성 스킬 ${sId}의 APPROVED 문제 수가 부족합니다 (현재: ${count}, 필요: 20)`);
             }
           }
         }

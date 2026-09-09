@@ -303,8 +303,9 @@ export function createSession(config = {}, questions = []) {
       id: options.id || `sub_${sId}`,
       sessionId: sId,
       learnerId: targetLearnerId,
-      subjectId: options.subjectId || "math",
-      moduleId: options.moduleId || "arithmetic",
+      subjectId: options.subjectId || config.subjectId || questions[0]?.subjectId || "math",
+      courseId: options.courseId || config.courseId || questions[0]?.courseId || "arithmetic",
+      moduleId: options.moduleId || config.moduleId || questions[0]?.moduleId || "arithmetic",
       status: options.status || "PARENT_GRADING_PENDING",
       config: {
         ...config,

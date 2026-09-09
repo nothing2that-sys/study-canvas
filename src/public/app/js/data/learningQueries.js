@@ -346,6 +346,29 @@ export async function getLearnerDashboard(learnerId, options = {}) {
   const mathAccuracy = mathGraded > 0 ? (mathCorrect / mathGraded) * 100 : 0;
   const mathAvgTime = mathGraded > 0 ? Math.round(mathTime / mathGraded) : 0;
 
+  //+_+// Phase F12: 국어(Korean) 집계 통계
+  const koreanAggs = targetAggregates.filter((a) => a.subjectId === "korean");
+  let koreanGraded = 0;
+  let koreanCorrect = 0;
+  let koreanIncorrect = 0;
+  let koreanRetry = 0;
+  let koreanTime = 0;
+
+  koreanAggs.forEach((a) => {
+    koreanGraded += Number(a.gradedAttemptCount) || 0;
+    koreanCorrect += Number(a.correctCount) || 0;
+    koreanIncorrect += Number(a.incorrectCount) || 0;
+    koreanRetry += Number(a.retryRequestedCount) || 0;
+    koreanTime += Number(a.totalSolveTimeMs) || 0;
+  });
+
+  const koreanAccuracy = koreanGraded > 0 ? (koreanCorrect / koreanGraded) * 100 : 0;
+  const koreanAvgTime = koreanGraded > 0 ? Math.round(koreanTime / koreanGraded) : 0;
+  const koreanCompletedSubs = (allSubmissions || []).filter((s) => {
+    const subOwner = s.learnerId || DEFAULT_LEGACY_LEARNER_ID;
+    return subOwner === targetLearnerId && s.subjectId === "korean" && (s.status === "GRADED" || s.status === "SESSION_COMPLETE");
+  });
+
   const subjects = registrySubjects.map((subj) => {
     if (subj.status === "active" && subj.id === "math") {
       return {
@@ -371,6 +394,33 @@ export async function getLearnerDashboard(learnerId, options = {}) {
           unstartedLevels,
           progressRate,
           curriculum: curriculumProgressData
+        }
+      };
+    }
+    if (subj.status === "active" && subj.id === "korean") {
+      return {
+        subjectId: subj.id,
+        title: subj.title,
+        icon: subj.icon,
+        status: subj.status,
+        enabled: subj.enabled,
+        stats: {
+          gradedAttemptCount: koreanGraded,
+          correctCount: koreanCorrect,
+          incorrectCount: koreanIncorrect,
+          retryRequestedCount: koreanRetry,
+          accuracy: koreanAccuracy,
+          totalSolveTimeMs: koreanTime,
+          averageSolveTimeMs: koreanAvgTime,
+          sessionCount: koreanCompletedSubs.length
+        },
+        progress: {
+          totalLevels: 8,
+          masteredLevels: 0,
+          learningLevels: koreanAggs.length,
+          unstartedLevels: Math.max(0, 8 - koreanAggs.length),
+          progressRate: 0,
+          curriculum: null
         }
       };
     }

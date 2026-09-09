@@ -18,7 +18,7 @@
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-180.png">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
-    <link rel="stylesheet" href="./css/app.css?v=20260909T062148353Z-94af1ee">
+    <link rel="stylesheet" href="./css/app.css?v=20260909T072943527Z-2237ebb">
   </head>
   <body>
     <div class="app-shell">
@@ -191,6 +191,26 @@
 
               <div class="measurement-skills-container" id="measurementSkillsContainer">
                 <!-- 스킬 카드 목록이 동적으로 렌더링됩니다 -->
+              </div>
+            </section>
+          <!-- 5. 국어 핵심 학습 랜딩 뷰 (/korean, /korean/core) -->
+          <div id="koreanLandingView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="koreanLandingTitle">
+              <span class="platform-hero-tag">📖 국어 핵심</span>
+              <h1 id="koreanLandingTitle">국어 핵심 학습</h1>
+              <p class="platform-hero-sub">어휘, 맞춤법, 띄어쓰기, 문장까지 바르고 자연스러운 한국어 실력을 기릅니다.</p>
+            </section>
+
+            <section class="korean-category-section" aria-label="국어 학습 영역 선택">
+              <div class="korean-tabs" id="koreanDomainTabs" role="tablist" aria-label="국어 학습 영역">
+                <button type="button" class="korean-tab-btn active" role="tab" id="tabVocab" aria-selected="true" data-domain="vocabulary">어휘</button>
+                <button type="button" class="korean-tab-btn" role="tab" id="tabSpelling" aria-selected="false" data-domain="spelling">맞춤법</button>
+                <button type="button" class="korean-tab-btn" role="tab" id="tabSpacing" aria-selected="false" data-domain="spacing">띄어쓰기</button>
+                <button type="button" class="korean-tab-btn" role="tab" id="tabSentence" aria-selected="false" data-domain="sentence">문장</button>
+              </div>
+
+              <div class="korean-skills-container" id="koreanSkillsContainer">
+                <!-- 국어 스킬 카드 목록이 동적으로 렌더링됩니다 -->
               </div>
             </section>
           </div>
@@ -882,6 +902,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./js/app.js?v=20260909T062148353Z-94af1ee"></script>
+    <script type="module" src="./js/app.js?v=20260909T072943527Z-2237ebb"></script>
   </body>
 </html>
