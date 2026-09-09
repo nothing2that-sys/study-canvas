@@ -3807,10 +3807,10 @@ export async function renderKoreanLandingView() {
         </div>
         <div class="korean-skill-meta">
           <span>📊 ${accuracyText}</span>
-          <span>📝 20문제</span>
+          <span>📝 ${DEFAULT_PROBLEM_COUNT}문제</span>
         </div>
-        <button type="button" class="korean-start-btn" id="startSkill_${escapeHtml(skill.skillId)}" aria-label="${escapeHtml(skill.title || skill.name || skill.skillId)} 20문제 학습 시작">
-          학습 시작하기 (20문제) →
+        <button type="button" class="korean-start-btn" id="startSkill_${escapeHtml(skill.skillId)}" aria-label="${escapeHtml(skill.title || skill.name || skill.skillId)} ${DEFAULT_PROBLEM_COUNT}문제 학습 시작">
+          학습 시작하기 (${DEFAULT_PROBLEM_COUNT}문제) →
         </button>
       `;
 

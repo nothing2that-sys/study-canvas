@@ -19,6 +19,78 @@ const VALID_REVIEW_STATUSES = new Set(["INTERNAL", "DRAFT", "VERIFIED", "AUTO_VA
 //+_+// Phase F12 Rework: 기본 문제 수 SSOT
 export const DEFAULT_PROBLEM_COUNT = 20;
 
+//+_+// Phase F12 Rework 2: 허용된 canonical license set
+export const CANONICAL_LICENSES = new Set([
+  "KOGL_TYPE_1",
+  "KOGL_TYPE_2",
+  "KOGL_TYPE_3",
+  "KOGL_TYPE_4",
+  "CC_BY_SA_2_0_KR",
+  "PUBLIC_DOMAIN",
+  "PROJECT_OWNED"
+]);
+
+/**
+ * Knowledge Entry sourceMetadata 라이선스 및 출처 정밀 검증
+ * @param {Object} sm - sourceMetadata 객체
+ * @param {string} [context] - 에러 메시지용 컨텍스트 식별자
+ * @returns {{ valid: boolean, errors: string[] }}
+ */
+export function validateKnowledgeSourceMetadata(sm, context = "knowledge-catalog.json") {
+  const localErrors = [];
+  if (!sm || typeof sm !== "object") {
+    localErrors.push(`${context}: sourceMetadata 누락 또는 객체 아님`);
+    return { valid: false, errors: localErrors };
+  }
+
+  const sourceType = String(sm.sourceType || "").trim();
+  if (!sourceType || !VALID_SOURCE_TYPES.has(sourceType)) {
+    localErrors.push(`${context}: 유효하지 않은 sourceType: ${sourceType}`);
+  }
+
+  const license = String(sm.license || "").trim();
+  if (!license) {
+    localErrors.push(`${context}: sourceMetadata.license 누락`);
+  } else if (!CANONICAL_LICENSES.has(license)) {
+    localErrors.push(`${context}: 허용되지 않은 canonical license: ${license}`);
+  }
+
+  const attribution = String(sm.attribution || "").trim();
+  if (sourceType === "EXTERNAL") {
+    if (!attribution) {
+      localErrors.push(`${context}: EXTERNAL source는 attribution 필수`);
+    }
+    const sourceName = String(sm.sourceName || "").trim();
+    if (!sourceName) {
+      localErrors.push(`${context}: EXTERNAL source는 sourceName 필수`);
+    }
+    const sourceUrl = String(sm.sourceUrl || "").trim();
+    if (!sourceUrl || (!sourceUrl.startsWith("http://") && !sourceUrl.startsWith("https://"))) {
+      localErrors.push(`${context}: EXTERNAL source는 유효한 sourceUrl(http/https) 필수`);
+    }
+  }
+
+  // Case A: 국립국어원 공식 출처에 PUBLIC_DOMAIN이 잘못 사용된 경우 거부
+  if (attribution.includes("국립국어원") && license === "PUBLIC_DOMAIN") {
+    localErrors.push(`${context}: 국립국어원 공식 자료는 PUBLIC_DOMAIN 라이선스로 지정할 수 없습니다 (공공누리 KOGL_TYPE_1 등 공공저작물 이용조건 준수 필수)`);
+  }
+
+  // licenseUrl 필수 여부 검증 (KOGL, CC)
+  if (license.startsWith("KOGL") || license.startsWith("CC")) {
+    const licenseUrl = String(sm.licenseUrl || "").trim();
+    if (!licenseUrl || (!licenseUrl.startsWith("http://") && !licenseUrl.startsWith("https://"))) {
+      localErrors.push(`${context}: ${license} 라이선스는 유효한 licenseUrl(http/https) 필수`);
+    }
+  }
+
+  const retrievedAt = String(sm.retrievedAt || "").trim();
+  if (!retrievedAt) {
+    localErrors.push(`${context}: retrievedAt 필수`);
+  }
+
+  return { valid: localErrors.length === 0, errors: localErrors };
+}
+
 let errors = [];
 
 function recordError(msg) {
@@ -189,14 +261,10 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
             if (!entry.ruleType || !String(entry.ruleType).trim()) {
               recordError(`knowledge-catalog.json: ruleType 누락 (${entry.knowledgeId})`);
             }
-            if (!entry.sourceMetadata || typeof entry.sourceMetadata !== "object") {
-              recordError(`knowledge-catalog.json: sourceMetadata 누락 (${entry.knowledgeId})`);
-            } else if (manifestPkgId === "korean-core-v1") {
-              if (!entry.sourceMetadata.attribution || !String(entry.sourceMetadata.attribution).trim()) {
-                recordError(`knowledge-catalog.json: sourceMetadata.attribution 누락 (${entry.knowledgeId})`);
-              }
-              if (!entry.sourceMetadata.retrievedAt || !String(entry.sourceMetadata.retrievedAt).trim()) {
-                recordError(`knowledge-catalog.json: sourceMetadata.retrievedAt 누락 (${entry.knowledgeId})`);
+            const metaRes = validateKnowledgeSourceMetadata(entry.sourceMetadata, `knowledge-catalog.json (${entry.knowledgeId})`);
+            if (!metaRes.valid) {
+              for (const err of metaRes.errors) {
+                recordError(err);
               }
             }
             if (!VALID_REVIEW_STATUSES.has(entry.reviewStatus)) {
