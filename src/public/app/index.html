@@ -18,7 +18,7 @@
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-180.png">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
-    <link rel="stylesheet" href="./css/app.css?v=20260910T074125982Z-bf19010">
+    <link rel="stylesheet" href="./css/app.css?v=20260910T232425172Z-999bde4">
   </head>
   <body>
     <div class="app-shell">
@@ -215,6 +215,28 @@
 
               <div class="korean-skills-container" id="koreanSkillsContainer">
                 <!-- 국어 스킬 카드 목록이 동적으로 렌더링됩니다 -->
+              </div>
+            </section>
+          </div>
+
+          <!-- 6. 영어 핵심 학습 랜딩 뷰 (/english, /english/core) -->
+          <div id="englishLandingView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="englishLandingTitle">
+              <span class="platform-hero-tag">🔤 영어 핵심</span>
+              <h1 id="englishLandingTitle">영어 핵심 학습</h1>
+              <p class="platform-hero-sub">어휘, 단어형, 표현, 문장까지 정확하고 자연스러운 영어 실력을 기릅니다.</p>
+            </section>
+
+            <section class="english-category-section" aria-label="영어 학습 영역 선택">
+              <div class="english-tabs" id="englishDomainTabs" role="tablist" aria-label="영어 학습 영역">
+                <button type="button" class="english-tab-btn active" role="tab" id="tabEnVocab" aria-selected="true" data-domain="vocabulary">어휘</button>
+                <button type="button" class="english-tab-btn" role="tab" id="tabEnWordForm" aria-selected="false" data-domain="word_form">단어형</button>
+                <button type="button" class="english-tab-btn" role="tab" id="tabEnExpression" aria-selected="false" data-domain="expression">표현</button>
+                <button type="button" class="english-tab-btn" role="tab" id="tabEnSentence" aria-selected="false" data-domain="sentence">문장</button>
+              </div>
+
+              <div class="english-skills-container" id="englishSkillsContainer">
+                <!-- 영어 스킬 카드 목록이 동적으로 렌더링됩니다 -->
               </div>
             </section>
           </div>
@@ -906,6 +928,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./js/app.js?v=20260910T074125982Z-bf19010"></script>
+    <script type="module" src="./js/app.js?v=20260910T232425172Z-999bde4"></script>
   </body>
 </html>

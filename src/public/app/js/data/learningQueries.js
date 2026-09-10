@@ -369,6 +369,29 @@ export async function getLearnerDashboard(learnerId, options = {}) {
     return subOwner === targetLearnerId && s.subjectId === "korean" && (s.status === "GRADED" || s.status === "SESSION_COMPLETE");
   });
 
+  //+_+// Phase F13: 영어(English) 집계 통계
+  const englishAggs = targetAggregates.filter((a) => a.subjectId === "english");
+  let englishGraded = 0;
+  let englishCorrect = 0;
+  let englishIncorrect = 0;
+  let englishRetry = 0;
+  let englishTime = 0;
+
+  englishAggs.forEach((a) => {
+    englishGraded += Number(a.gradedAttemptCount) || 0;
+    englishCorrect += Number(a.correctCount) || 0;
+    englishIncorrect += Number(a.incorrectCount) || 0;
+    englishRetry += Number(a.retryRequestedCount) || 0;
+    englishTime += Number(a.totalSolveTimeMs) || 0;
+  });
+
+  const englishAccuracy = englishGraded > 0 ? (englishCorrect / englishGraded) * 100 : 0;
+  const englishAvgTime = englishGraded > 0 ? Math.round(englishTime / englishGraded) : 0;
+  const englishCompletedSubs = (allSubmissions || []).filter((s) => {
+    const subOwner = s.learnerId || DEFAULT_LEGACY_LEARNER_ID;
+    return subOwner === targetLearnerId && s.subjectId === "english" && (s.status === "GRADED" || s.status === "SESSION_COMPLETE");
+  });
+
   const mathCompletedSubs = (allSubmissions || []).filter((s) => {
     const subOwner = s.learnerId || DEFAULT_LEGACY_LEARNER_ID;
     return subOwner === targetLearnerId && (s.subjectId || "math") === "math" && (s.status === "GRADED" || s.status === "SESSION_COMPLETE");
@@ -439,6 +462,46 @@ export async function getLearnerDashboard(learnerId, options = {}) {
           attemptedSkills: koreanAggs.length,
           learningSkills: koreanAggs.length,
           unstartedSkills: Math.max(0, 8 - koreanAggs.length),
+          curriculum: null
+        }
+      };
+    }
+    if (subj.status === "active" && subj.id === "english") {
+      const hasEnglishData = englishGraded > 0 || englishAggs.length > 0 || englishCompletedSubs.length > 0;
+      if (!hasEnglishData) {
+        return {
+          id: subj.id,
+          subjectId: subj.id,
+          title: subj.title,
+          icon: subj.icon,
+          status: subj.status,
+          enabled: subj.enabled,
+          stats: null,
+          progress: null
+        };
+      }
+      return {
+        id: subj.id,
+        subjectId: subj.id,
+        title: subj.title,
+        icon: subj.icon,
+        status: subj.status,
+        enabled: subj.enabled,
+        stats: {
+          gradedAttemptCount: englishGraded,
+          correctCount: englishCorrect,
+          incorrectCount: englishIncorrect,
+          retryRequestedCount: englishRetry,
+          accuracy: englishAccuracy,
+          totalSolveTimeMs: englishTime,
+          averageSolveTimeMs: englishAvgTime,
+          sessionCount: englishCompletedSubs.length
+        },
+        progress: {
+          totalSkills: 8,
+          attemptedSkills: englishAggs.length,
+          learningSkills: englishAggs.length,
+          unstartedSkills: Math.max(0, 8 - englishAggs.length),
           curriculum: null
         }
       };

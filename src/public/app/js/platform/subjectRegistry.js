@@ -34,6 +34,38 @@ const KOREAN_MODULES = Object.freeze([
   }
 ]);
 
+//+_+// Phase F13: English Core 모듈 상시 활성화 (SSOT)
+const ENGLISH_MODULES = Object.freeze([
+  {
+    id: "english-core",
+    title: "영어 핵심",
+    description: "어휘·단어형·표현·문장",
+    badgeText: "학습 가능",
+    icon: "🔤",
+    status: "active",
+    enabled: true,
+    route: "/english/core"
+  },
+  {
+    id: "phonics",
+    title: "파닉스",
+    description: "소리와 글자의 관계",
+    badgeText: "준비 중",
+    status: "coming_soon",
+    enabled: false,
+    route: "/english/phonics"
+  },
+  {
+    id: "reading",
+    title: "독해",
+    description: "짧은 글 읽기와 이해",
+    badgeText: "준비 중",
+    status: "coming_soon",
+    enabled: false,
+    route: "/english/reading"
+  }
+]);
+
 export const SUBJECTS = Object.freeze([
   {
     id: "math",
@@ -102,36 +134,18 @@ export const SUBJECTS = Object.freeze([
     modules: KOREAN_MODULES,
     capabilities: ["worksheet", "grading", "adaptive"]
   },
+  //+_+// Phase F13: English Core 활성화 (canonical active subject)
   {
     id: "english",
     title: "영어",
-    description: "파닉스와 기초 어휘",
-    badgeText: "준비 중",
+    description: "어휘와 표현의 기초",
+    badgeText: "학습 가능",
     icon: "🔤",
-    status: "coming_soon",
-    enabled: false,
+    status: "active",
+    enabled: true,
     entryRoute: "/english",
-    modules: [
-      {
-        id: "vocabulary",
-        title: "기초 단어",
-        description: "초등 필수 영단어",
-        badgeText: "준비 중",
-        status: "coming_soon",
-        enabled: false,
-        route: "/english/vocabulary"
-      },
-      {
-        id: "phonics",
-        title: "파닉스",
-        description: "소리와 글자의 관계",
-        badgeText: "준비 중",
-        status: "coming_soon",
-        enabled: false,
-        route: "/english/phonics"
-      }
-    ],
-    capabilities: []
+    modules: ENGLISH_MODULES,
+    capabilities: ["worksheet", "grading", "adaptive"]
   }
 ]);
 

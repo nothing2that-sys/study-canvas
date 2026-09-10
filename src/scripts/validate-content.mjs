@@ -371,7 +371,7 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
         if (!Array.isArray(knowledgeCatalog.entries) || knowledgeCatalog.entries.length === 0) {
           recordError(`knowledge-catalog.json: entries는 비어있지 않은 배열이어야 합니다 (${manifestPkgId})`);
         } else {
-          const VALID_DOMAINS = new Set(["vocabulary", "spelling", "spacing", "sentence"]);
+          const VALID_DOMAINS = new Set(["vocabulary", "spelling", "spacing", "sentence", "word_form", "expression"]);
           for (const entry of knowledgeCatalog.entries) {
             if (!entry.knowledgeId || registeredKnowledgeIds.has(entry.knowledgeId)) {
               recordError(`knowledge-catalog.json: knowledgeId 누락 또는 중복 (${manifestPkgId}): ${entry.knowledgeId}`);
@@ -458,8 +458,8 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
             if (!act.expectedAnswer || typeof act.expectedAnswer !== "string" || !act.expectedAnswer.trim()) {
               recordError(`activities.json: TEXT 활동은 expectedAnswer 문자열이 필요합니다 (${act.id})`);
             }
-            if (act.subjectId === "korean" && (!act.gradingReference || typeof act.gradingReference !== "object")) {
-              recordError(`activities.json: Korean TEXT 활동은 gradingReference 객체가 필요합니다 (${act.id})`);
+            if ((act.subjectId === "korean" || act.subjectId === "english") && (!act.gradingReference || typeof act.gradingReference !== "object")) {
+              recordError(`activities.json: ${act.subjectId} TEXT 활동은 gradingReference 객체가 필요합니다 (${act.id})`);
             }
           }
 
@@ -512,13 +512,14 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
             }
           }
 
-          // Korean Production 패키지 검증
-          if (manifest.status === "APPROVED" && manifestPkgId === "korean-core-v1") {
+          // Korean & English Production 패키지 검증
+          if (manifest.status === "APPROVED" && (manifestPkgId === "korean-core-v1" || manifestPkgId === "english-core-v1")) {
+            const expectedSubject = manifestPkgId === "korean-core-v1" ? "korean" : "english";
             if (act.sourceMetadata?.reviewStatus !== "APPROVED") {
-              recordError(`activities.json: Production Korean 활동은 reviewStatus=APPROVED이어야 합니다 (${act.id}: ${act.sourceMetadata?.reviewStatus})`);
+              recordError(`activities.json: Production ${expectedSubject} 활동은 reviewStatus=APPROVED이어야 합니다 (${act.id}: ${act.sourceMetadata?.reviewStatus})`);
             }
-            if (act.subjectId !== "korean") {
-              recordError(`activities.json: Korean 패키지의 활동은 subjectId=korean이어야 합니다 (${act.id}: ${act.subjectId})`);
+            if (act.subjectId !== expectedSubject) {
+              recordError(`activities.json: ${expectedSubject} 패키지의 활동은 subjectId=${expectedSubject}이어야 합니다 (${act.id}: ${act.subjectId})`);
             }
             if (!act.sourceMetadata?.attribution || !String(act.sourceMetadata.attribution).trim()) {
               recordError(`activities.json: sourceMetadata.attribution 누락 (${act.id})`);
@@ -534,7 +535,7 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
         }
 
         // Active Skill 문제 수 검증
-        if (manifest.status === "APPROVED" && manifestPkgId === "korean-core-v1") {
+        if (manifest.status === "APPROVED" && (manifestPkgId === "korean-core-v1" || manifestPkgId === "english-core-v1")) {
           for (const sId of registeredSkillIds) {
             const count = skillActivityCounts.get(sId) || 0;
             if (count < DEFAULT_PROBLEM_COUNT) {

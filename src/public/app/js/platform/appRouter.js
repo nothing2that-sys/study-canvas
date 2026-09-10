@@ -24,7 +24,11 @@ export const ROUTES = Object.freeze({
   //+_+// Phase F12: Korean Core 모듈 라우트
   KOREAN_HOME: "/korean",
   KOREAN_CORE: "/korean/core",
-  KOREAN_CORE_PRACTICE: "/korean/core/practice"
+  KOREAN_CORE_PRACTICE: "/korean/core/practice",
+  //+_+// Phase F13: English Core 모듈 라우트
+  ENGLISH_HOME: "/english",
+  ENGLISH_CORE: "/english/core",
+  ENGLISH_CORE_PRACTICE: "/english/core/practice"
 });
 
 //+_+// 활성 학습자가 필요한 보호된 라우트 목록
@@ -39,7 +43,10 @@ const PROTECTED_ROUTES = new Set([
   ROUTES.MATH_MEASUREMENT_PRACTICE,
   ROUTES.KOREAN_HOME,
   ROUTES.KOREAN_CORE,
-  ROUTES.KOREAN_CORE_PRACTICE
+  ROUTES.KOREAN_CORE_PRACTICE,
+  ROUTES.ENGLISH_HOME,
+  ROUTES.ENGLISH_CORE,
+  ROUTES.ENGLISH_CORE_PRACTICE
 ]);
 
 let currentPath = ROUTES.ROOT;
@@ -80,7 +87,8 @@ export function resolveGuardedPath(targetPath) {
     const isPracticeActive = sessionCheckCallback("practice_active");
     const isGradingActive = sessionCheckCallback("grading_active");
 
-    if (isPracticeActive && normalized !== ROUTES.MATH_PRACTICE && normalized !== ROUTES.MATH_MEASUREMENT_PRACTICE && normalized !== ROUTES.KOREAN_CORE_PRACTICE) {
+    if (isPracticeActive && normalized !== ROUTES.MATH_PRACTICE && normalized !== ROUTES.MATH_MEASUREMENT_PRACTICE && normalized !== ROUTES.KOREAN_CORE_PRACTICE && normalized !== ROUTES.ENGLISH_CORE_PRACTICE) {
+      if (currentPath === ROUTES.ENGLISH_CORE_PRACTICE) return ROUTES.ENGLISH_CORE_PRACTICE;
       if (currentPath === ROUTES.KOREAN_CORE_PRACTICE) return ROUTES.KOREAN_CORE_PRACTICE;
       if (currentPath === ROUTES.MATH_MEASUREMENT_PRACTICE) return ROUTES.MATH_MEASUREMENT_PRACTICE;
       return ROUTES.MATH_PRACTICE;
@@ -118,6 +126,13 @@ export function resolveGuardedPath(targetPath) {
   if (normalized === ROUTES.KOREAN_CORE_PRACTICE) {
     if (sessionCheckCallback && !sessionCheckCallback("practice")) {
       return ROUTES.KOREAN_CORE;
+    }
+  }
+
+  //+_+// Phase F13: English Core 풀이 화면 직접 진입 가드
+  if (normalized === ROUTES.ENGLISH_CORE_PRACTICE) {
+    if (sessionCheckCallback && !sessionCheckCallback("practice")) {
+      return ROUTES.ENGLISH_CORE;
     }
   }
 

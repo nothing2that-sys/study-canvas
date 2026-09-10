@@ -38,6 +38,7 @@ export function initAppShell(options = {}) {
     subjectHomeView: doc.querySelector("#subjectHomeView"),
     measurementLandingView: doc.querySelector("#measurementLandingView"),
     koreanLandingView: doc.querySelector("#koreanLandingView"),
+    englishLandingView: doc.querySelector("#englishLandingView"),
     mathAppRoot: doc.querySelector("#mathAppRoot"),
     migrationErrorView: doc.querySelector("#migrationErrorView"),
 
@@ -105,7 +106,7 @@ export async function updateShellHeader(options = {}) {
 
   //+_+// 풀이 또는 채점 중인 경우 상단 셸 최소화 스타일 조정
   const route = getCurrentRoute();
-  const isPracticeMode = route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.MATH_GRADING;
+  const isPracticeMode = route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.KOREAN_CORE_PRACTICE || route === ROUTES.ENGLISH_CORE_PRACTICE || route === ROUTES.MATH_GRADING;
   if (domElements.topbar) {
     if (isPracticeMode) {
       domElements.topbar.classList.add("topbar-compact");
@@ -123,6 +124,7 @@ export function renderRouteView(routePath) {
     domElements.subjectHomeView,
     domElements.measurementLandingView,
     domElements.koreanLandingView,
+    domElements.englishLandingView,
     domElements.migrationErrorView,
     domElements.setupView,
     domElements.practiceView,
@@ -138,12 +140,12 @@ export function renderRouteView(routePath) {
   });
 
   const isMathRoute = routePath.startsWith("/math");
-  const isKoreanPractice = routePath === ROUTES.KOREAN_CORE_PRACTICE;
+  const isPracticeRoute = routePath === ROUTES.MATH_PRACTICE || routePath === ROUTES.MATH_MEASUREMENT_PRACTICE || routePath === ROUTES.KOREAN_CORE_PRACTICE || routePath === ROUTES.ENGLISH_CORE_PRACTICE;
   if (domElements.mathAppRoot) {
-    domElements.mathAppRoot.hidden = (!isMathRoute && !isKoreanPractice) || routePath === ROUTES.MATH_MEASUREMENT;
+    domElements.mathAppRoot.hidden = (!isMathRoute && !isPracticeRoute) || routePath === ROUTES.MATH_MEASUREMENT;
   }
   if (domElements.platformRoot) {
-    domElements.platformRoot.hidden = (isMathRoute && routePath !== ROUTES.MATH_HOME && routePath !== ROUTES.MATH_MEASUREMENT) || isKoreanPractice;
+    domElements.platformRoot.hidden = (isMathRoute && routePath !== ROUTES.MATH_HOME && routePath !== ROUTES.MATH_MEASUREMENT) || isPracticeRoute;
   }
 
   switch (routePath) {
@@ -188,6 +190,15 @@ export function renderRouteView(routePath) {
       }
       break;
 
+    case ROUTES.ENGLISH_HOME:
+    case ROUTES.ENGLISH_CORE:
+      if (domElements.platformRoot) domElements.platformRoot.hidden = false;
+      if (domElements.englishLandingView) {
+        domElements.englishLandingView.hidden = false;
+        domElements.englishLandingView.classList.add("active-view");
+      }
+      break;
+
     case ROUTES.MATH_ARITHMETIC:
       if (domElements.mathAppRoot) domElements.mathAppRoot.hidden = false;
       if (domElements.setupView) {
@@ -199,6 +210,7 @@ export function renderRouteView(routePath) {
     case ROUTES.MATH_PRACTICE:
     case ROUTES.MATH_MEASUREMENT_PRACTICE:
     case ROUTES.KOREAN_CORE_PRACTICE:
+    case ROUTES.ENGLISH_CORE_PRACTICE:
       if (domElements.mathAppRoot) domElements.mathAppRoot.hidden = false;
       if (domElements.practiceView) {
         domElements.practiceView.hidden = false;

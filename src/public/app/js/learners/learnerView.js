@@ -529,7 +529,10 @@ export async function renderLearnerHomeView() {
           });
           navigate(targetLandingRoute);
         } else if (kind === "OPEN_SUBJECT") {
-          navigate(actionCandidate.subjectId === "korean" ? ROUTES.KOREAN_HOME : ROUTES.MATH_HOME);
+          let route = ROUTES.MATH_HOME;
+          if (actionCandidate.subjectId === "korean") route = ROUTES.KOREAN_HOME;
+          else if (actionCandidate.subjectId === "english") route = ROUTES.ENGLISH_HOME;
+          navigate(route);
         }
       };
 
@@ -625,7 +628,17 @@ export async function renderLearnerHomeView() {
 
       if (isActive) {
         const subjectKey = subj.subjectId || subj.id;
-        const goSubject = () => navigate(subj.entryRoute || (subjectKey === "korean" ? ROUTES.KOREAN_HOME : ROUTES.MATH_HOME));
+        const goSubject = () => {
+          if (subj.entryRoute) {
+            navigate(subj.entryRoute);
+          } else if (subjectKey === "english") {
+            navigate(ROUTES.ENGLISH_HOME);
+          } else if (subjectKey === "korean") {
+            navigate(ROUTES.KOREAN_HOME);
+          } else {
+            navigate(ROUTES.MATH_HOME);
+          }
+        };
         card.onclick = goSubject;
         card.onkeydown = (e) => {
           if (e.key === "Enter" || e.key === " ") {
