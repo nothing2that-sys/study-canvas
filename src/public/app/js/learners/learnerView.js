@@ -624,7 +624,8 @@ export async function renderLearnerHomeView() {
       card.innerHTML = contentHtml;
 
       if (isActive) {
-        const goSubject = () => navigate(subj.entryRoute || (subj.id === "korean" ? ROUTES.KOREAN_HOME : ROUTES.MATH_HOME));
+        const subjectKey = subj.subjectId || subj.id;
+        const goSubject = () => navigate(subj.entryRoute || (subjectKey === "korean" ? ROUTES.KOREAN_HOME : ROUTES.MATH_HOME));
         card.onclick = goSubject;
         card.onkeydown = (e) => {
           if (e.key === "Enter" || e.key === " ") {

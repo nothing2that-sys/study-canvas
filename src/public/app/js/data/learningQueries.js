@@ -377,6 +377,7 @@ export async function getLearnerDashboard(learnerId, options = {}) {
   const subjects = registrySubjects.map((subj) => {
     if (subj.status === "active" && subj.id === "math") {
       return {
+        id: subj.id,
         subjectId: subj.id,
         title: subj.title,
         icon: subj.icon,
@@ -406,6 +407,7 @@ export async function getLearnerDashboard(learnerId, options = {}) {
       const hasKoreanData = koreanGraded > 0 || koreanAggs.length > 0 || koreanCompletedSubs.length > 0;
       if (!hasKoreanData) {
         return {
+          id: subj.id,
           subjectId: subj.id,
           title: subj.title,
           icon: subj.icon,
@@ -416,6 +418,7 @@ export async function getLearnerDashboard(learnerId, options = {}) {
         };
       }
       return {
+        id: subj.id,
         subjectId: subj.id,
         title: subj.title,
         icon: subj.icon,
@@ -441,6 +444,7 @@ export async function getLearnerDashboard(learnerId, options = {}) {
       };
     }
     return {
+      id: subj.id,
       subjectId: subj.id,
       title: subj.title,
       icon: subj.icon,
