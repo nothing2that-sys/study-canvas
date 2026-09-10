@@ -31,6 +31,87 @@ export const CANONICAL_LICENSES = new Set([
 ]);
 
 /**
+ * Canonical Source Contracts SSOT
+ * actual source -> license 계약 (기관명 기반 일괄 추론 금지)
+ */
+export const KNOWN_SOURCE_CONTRACTS = {
+  STD_KOREAN_DICTIONARY: {
+    id: "STD_KOREAN_DICTIONARY",
+    name: "국립국어원 표준국어대사전",
+    matches: (sm) => {
+      const id = String(sm.sourceId || "");
+      const name = String(sm.sourceName || "");
+      return id.includes("표준국어대사전") || name.includes("표준국어대사전");
+    },
+    expectedLicense: "CC_BY_SA_2_0_KR",
+    disallowedLicenses: ["KOGL_TYPE_1", "PUBLIC_DOMAIN"],
+    validate: (sm, context, localErrors) => {
+      const url = String(sm.sourceUrl || "").trim();
+      if (!url.includes("stdict.korean.go.kr")) {
+        localErrors.push(`${context}: 표준국어대사전 출처의 sourceUrl은 stdict.korean.go.kr 도메인이어야 합니다 (현재: ${url})`);
+      }
+    }
+  },
+  KOREAN_ORTHOGRAPHY_NORMS: {
+    id: "KOREAN_ORTHOGRAPHY_NORMS",
+    name: "한국 어문 규정 (한글 맞춤법 및 표준어 규정)",
+    matches: (sm) => {
+      const id = String(sm.sourceId || "");
+      const name = String(sm.sourceName || "");
+      const isOrthography = id.includes("한글 맞춤법") || id.includes("한글맞춤법") || name.includes("한글 맞춤법");
+      const isStandardLang = id.includes("표준어 규정") || id.includes("표준어규정") || name.includes("표준어 규정");
+      const isEtiquette = id.includes("표준 언어 예절") || name.includes("표준 언어 예절");
+      return (isOrthography || isStandardLang) && !isEtiquette;
+    },
+    expectedLicense: "KOGL_TYPE_1",
+    disallowedLicenses: ["PUBLIC_DOMAIN", "CC_BY_SA_2_0_KR"],
+    validate: (sm, context, localErrors) => {
+      const url = String(sm.sourceUrl || "").trim();
+      const genericRoots = [
+        "https://kornorms.korean.go.kr",
+        "https://kornorms.korean.go.kr/",
+        "http://kornorms.korean.go.kr",
+        "http://kornorms.korean.go.kr/",
+        "https://www.korean.go.kr",
+        "https://www.korean.go.kr/",
+        "https://korean.go.kr",
+        "https://korean.go.kr/"
+      ];
+      if (genericRoots.includes(url)) {
+        localErrors.push(`${context}: 한국 어문 규정 출처는 generic root URL(${url})이 아닌 구체적 규정 조항 URL(regltnView.do 등)이어야 합니다`);
+      }
+    }
+  },
+  STANDARD_LANGUAGE_ETIQUETTE_2011: {
+    id: "STANDARD_LANGUAGE_ETIQUETTE_2011",
+    name: "국립국어원 표준 언어 예절 (2011)",
+    matches: (sm) => {
+      const id = String(sm.sourceId || "");
+      const name = String(sm.sourceName || "");
+      return id.includes("표준 언어 예절") || name.includes("표준 언어 예절");
+    },
+    expectedLicense: "KOGL_TYPE_4",
+    disallowedLicenses: ["KOGL_TYPE_1", "PUBLIC_DOMAIN"],
+    validate: (sm, context, localErrors) => {
+      const url = String(sm.sourceUrl || "").trim();
+      const genericRoots = [
+        "https://kornorms.korean.go.kr",
+        "https://kornorms.korean.go.kr/",
+        "http://kornorms.korean.go.kr",
+        "http://kornorms.korean.go.kr/",
+        "https://www.korean.go.kr",
+        "https://www.korean.go.kr/",
+        "https://korean.go.kr",
+        "https://korean.go.kr/"
+      ];
+      if (genericRoots.includes(url)) {
+        localErrors.push(`${context}: 표준 언어 예절 출처는 generic root URL(${url})이 아닌 구체적 자료/보고서 URL이어야 합니다`);
+      }
+    }
+  }
+};
+
+/**
  * Knowledge Entry sourceMetadata 라이선스 및 출처 정밀 검증
  * @param {Object} sm - sourceMetadata 객체
  * @param {string} [context] - 에러 메시지용 컨텍스트 식별자
@@ -62,6 +143,20 @@ export function validateKnowledgeSourceMetadata(sm, context = "knowledge-catalog
   const licenseUrl = String(sm.licenseUrl || "").trim();
   const retrievedAt = String(sm.retrievedAt || "").trim();
 
+  if (!retrievedAt) {
+    localErrors.push(`${context}: retrievedAt 필수`);
+  }
+
+  if (sourceType === "PROJECT_OWNED") {
+    if (license && license !== "PROJECT_OWNED") {
+      localErrors.push(`${context}: PROJECT_OWNED 소스는 license가 PROJECT_OWNED여야 합니다 (현재: ${license})`);
+    }
+    if (!attribution) {
+      localErrors.push(`${context}: PROJECT_OWNED 소스는 attribution 필수`);
+    }
+    return { valid: localErrors.length === 0, errors: localErrors };
+  }
+
   if (sourceType === "EXTERNAL") {
     if (!attribution) {
       localErrors.push(`${context}: EXTERNAL source는 attribution 필수`);
@@ -75,44 +170,52 @@ export function validateKnowledgeSourceMetadata(sm, context = "knowledge-catalog
     if (!sourceUrl || (!sourceUrl.startsWith("http://") && !sourceUrl.startsWith("https://"))) {
       localErrors.push(`${context}: EXTERNAL source는 유효한 sourceUrl(http/https) 필수`);
     }
-  }
 
-  // Source-specific contract: 표준국어대사전 (CC_BY_SA_2_0_KR 필수, KOGL 및 PUBLIC_DOMAIN 거부)
-  if (sourceName.includes("표준국어대사전") || sourceId.includes("표준국어대사전")) {
-    if (license === "KOGL_TYPE_1" || license === "PUBLIC_DOMAIN") {
-      localErrors.push(`${context}: 표준국어대사전 출처의 저작권 라이선스는 CC_BY_SA_2_0_KR이어야 하며, ${license}은 허용되지 않습니다 (국립국어원 표준국어대사전 저작권 정책 준수 필수)`);
-    } else if (license !== "CC_BY_SA_2_0_KR") {
-      localErrors.push(`${context}: 표준국어대사전 출처의 저작권 라이선스는 CC_BY_SA_2_0_KR이어야 합니다 (현재: ${license})`);
+    // Generic root URL 단독 사용 금지 (exact source URL 필수)
+    const genericRoots = new Set([
+      "https://kornorms.korean.go.kr",
+      "https://kornorms.korean.go.kr/",
+      "http://kornorms.korean.go.kr",
+      "http://kornorms.korean.go.kr/",
+      "https://www.korean.go.kr",
+      "https://www.korean.go.kr/",
+      "https://korean.go.kr",
+      "https://korean.go.kr/"
+    ]);
+    if (genericRoots.has(sourceUrl)) {
+      localErrors.push(`${context}: EXTERNAL source에 generic root URL(${sourceUrl})만 지정되어 구체적 출처가 특정되지 않았습니다. 조항 또는 세부 문서 URL이 필요합니다.`);
     }
-  }
 
-  // Source-specific contract: 한국 어문 규정 (한글 맞춤법, 표준어 규정, 표준 언어 예절 등: KOGL_TYPE_1 필수, PUBLIC_DOMAIN 거부)
-  const isKoreanNorms = sourceName.includes("어문 규범") || 
-                        sourceName.includes("한글 맞춤법") || 
-                        sourceName.includes("표준어 규정") ||
-                        sourceName.includes("표준 언어 예절") ||
-                        sourceId.includes("한글 맞춤법") ||
-                        sourceId.includes("한글맞춤법") ||
-                        sourceId.includes("표준어 규정") ||
-                        sourceId.includes("표준어규정") ||
-                        sourceId.includes("표준 언어 예절");
-  if (isKoreanNorms) {
-    if (license === "PUBLIC_DOMAIN") {
-      localErrors.push(`${context}: 공식 한국 어문 규정(한글 맞춤법/표준어 규정 등)은 PUBLIC_DOMAIN 라이선스로 지정할 수 없습니다 (공공누리 제1유형 KOGL_TYPE_1 준수 필수)`);
-    } else if (license !== "KOGL_TYPE_1") {
-      localErrors.push(`${context}: 공식 한국 어문 규정 출처는 KOGL_TYPE_1 라이선스를 따라야 합니다 (현재: ${license})`);
+    // Source Contract 매칭
+    let matchedContract = null;
+    for (const contract of Object.values(KNOWN_SOURCE_CONTRACTS)) {
+      if (contract.matches(sm)) {
+        matchedContract = contract;
+        break;
+      }
     }
-  }
 
-  // licenseUrl 필수 여부 검증 (KOGL, CC)
-  if (license.startsWith("KOGL") || license.startsWith("CC")) {
-    if (!licenseUrl || (!licenseUrl.startsWith("http://") && !licenseUrl.startsWith("https://"))) {
-      localErrors.push(`${context}: ${license} 라이선스는 유효한 licenseUrl(http/https) 필수`);
+    if (!matchedContract) {
+      // 등록되지 않은 미검증 EXTERNAL 출처는 거부 (arbitrary official-looking sourceName 등)
+      localErrors.push(`${context}: 등록되지 않았거나 출처 계약(contract)이 정의되지 않은 외부 출처입니다 (sourceName: "${sourceName}", sourceId: "${sourceId}")`);
+    } else {
+      // Contract 검증
+      if (matchedContract.disallowedLicenses && matchedContract.disallowedLicenses.includes(license)) {
+        localErrors.push(`${context}: ${matchedContract.name} 출처의 저작권 라이선스는 ${matchedContract.expectedLicense}이어야 하며, ${license}은 허용되지 않습니다`);
+      } else if (matchedContract.expectedLicense && license !== matchedContract.expectedLicense) {
+        localErrors.push(`${context}: ${matchedContract.name} 출처의 저작권 라이선스는 ${matchedContract.expectedLicense}이어야 합니다 (현재: ${license})`);
+      }
+      if (matchedContract.validate) {
+        matchedContract.validate(sm, context, localErrors);
+      }
     }
-  }
 
-  if (!retrievedAt) {
-    localErrors.push(`${context}: retrievedAt 필수`);
+    // licenseUrl 필수 여부 검증 (KOGL, CC)
+    if (license.startsWith("KOGL") || license.startsWith("CC")) {
+      if (!licenseUrl || (!licenseUrl.startsWith("http://") && !licenseUrl.startsWith("https://"))) {
+        localErrors.push(`${context}: ${license} 라이선스는 유효한 licenseUrl(http/https) 필수`);
+      }
+    }
   }
 
   return { valid: localErrors.length === 0, errors: localErrors };
