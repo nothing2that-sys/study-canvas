@@ -164,6 +164,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   let dpr = (typeof window !== "undefined" && window.devicePixelRatio) ? window.devicePixelRatio : 1;
   let rafId = null;
   let lastDrawnPointIndex = 0;
+  let eraserGestureChanged = false;
 
   // 동적 touch-action 업데이트
   function updateTouchAction() {
@@ -364,27 +365,29 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   // 획 지우개 처리
-  function eraseStrokesAtPoint(pt) {
-    if (strokes.length === 0) return;
+  function eraseStrokesAtPoints(points) {
+    if (strokes.length === 0 || !Array.isArray(points) || points.length === 0) return false;
     const radius = settings.eraserRadius;
     const initialLen = strokes.length;
 
     strokes = strokes.filter((stroke) => {
       return !stroke.points.some((p) => {
         const mapped = mapPointToCanvas(p, stroke);
-        const dist = Math.hypot(mapped.x - pt.x, mapped.y - pt.y);
-        return dist <= radius;
+        return points.some((pt) => Math.hypot(mapped.x - pt.x, mapped.y - pt.y) <= radius);
       });
     });
 
     if (strokes.length !== initialLen) {
       redraw();
-      notifyChange();
+      eraserGestureChanged = true;
+      return true;
     }
+    return false;
   }
 
   function saveToUndoStack() {
-    undoStack.push(JSON.parse(JSON.stringify(strokes)));
+    //+_+// 확정된 stroke 객체는 이후 직접 수정하지 않으므로 배열만 복사해 고속 연속 필기의 전체 point 직렬화를 피한다.
+    undoStack.push(strokes.slice());
     if (undoStack.length > 50) undoStack.shift();
     redoStack = [];
   }
@@ -410,8 +413,10 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     const points = [];
 
     for (const evt of events) {
-      const clientX = evt.clientX ?? (evt.touches?.[0]?.clientX || 0);
-      const clientY = evt.clientY ?? (evt.touches?.[0]?.clientY || 0);
+      const touch = evt.touches?.[0] || evt.changedTouches?.[0] || null;
+      const clientX = Number.isFinite(evt.clientX) ? evt.clientX : touch?.clientX;
+      const clientY = Number.isFinite(evt.clientY) ? evt.clientY : touch?.clientY;
+      if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) continue;
       const x = clientX - cachedCanvasRect.left;
       const y = clientY - cachedCanvasRect.top;
       const relX = cachedGridInfo.gridWidth > 0 ? (x - cachedGridInfo.gridLeft) / cachedGridInfo.gridWidth : 0;
@@ -421,6 +426,34 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     }
 
     return points;
+  }
+
+  function appendUniquePoints(target, points) {
+    if (!target || !Array.isArray(points) || points.length === 0) return 0;
+    let appended = 0;
+    for (const point of points) {
+      const previous = target[target.length - 1];
+      if (previous && previous.x === point.x && previous.y === point.y) continue;
+      target.push(point);
+      appended += 1;
+    }
+    return appended;
+  }
+
+  function cancelScheduledRender() {
+    if (rafId && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(rafId);
+    }
+    rafId = null;
+  }
+
+  function captureTerminalEvent(e) {
+    const points = extractPoints(e);
+    if (settings.isEraser) {
+      eraseStrokesAtPoints(points);
+      return;
+    }
+    if (currentStroke) appendUniquePoints(currentStroke.points, points);
   }
 
   // ----------------------------------------------------
@@ -481,12 +514,16 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     cachedGridInfo = getGridBoundingInfo();
 
     const pts = extractPoints(e);
-    if (pts.length === 0) return;
+    if (pts.length === 0) {
+      resetActivePointers();
+      return;
+    }
 
     saveToUndoStack();
+    eraserGestureChanged = false;
 
     if (settings.isEraser) {
-      eraseStrokesAtPoint(pts[0]);
+      eraseStrokesAtPoints(pts);
       return;
     }
 
@@ -529,13 +566,12 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     if (pts.length === 0) return;
 
     if (settings.isEraser) {
-      pts.forEach(p => eraseStrokesAtPoint(p));
+      eraseStrokesAtPoints(pts);
       return;
     }
 
     if (currentStroke) {
-      currentStroke.points.push(...pts);
-      scheduleRender();
+      if (appendUniquePoints(currentStroke.points, pts) > 0) scheduleRender();
     }
   }
 
@@ -546,6 +582,20 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
     if (e.cancelable) e.preventDefault();
 
+    //+_+// 빠른 짧은 획은 마지막 pointermove 없이 pointerup될 수 있으므로 종료 좌표를 확정 전에 반영한다.
+    captureTerminalEvent(e);
+    cancelScheduledRender();
+
+    if (currentStroke && currentStroke.points.length > 0) {
+      renderIncremental();
+      strokes.push(currentStroke);
+      currentStroke = null;
+      notifyChange();
+    } else if (settings.isEraser && eraserGestureChanged) {
+      notifyChange();
+    }
+    eraserGestureChanged = false;
+
     isDrawing = false;
     activePenPointerId = null;
     activeTouchPointerId = null;
@@ -572,12 +622,6 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       currentState = InputState.IDLE;
     }
 
-    if (currentStroke && currentStroke.points.length > 0) {
-      strokes.push(currentStroke);
-      currentStroke = null;
-      redraw();
-      notifyChange();
-    }
   }
 
   function onPointerCancel(e) {
@@ -587,6 +631,20 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
     if (e.cancelable) e.preventDefault();
 
+    //+_+// cancel 좌표는 마지막 전달 좌표와 같을 수 있으므로 중복 제거 후 안전하게 확정한다.
+    captureTerminalEvent(e);
+    cancelScheduledRender();
+
+    if (currentStroke && currentStroke.points.length > 0) {
+      renderIncremental();
+      strokes.push(currentStroke);
+      currentStroke = null;
+      notifyChange();
+    } else if (settings.isEraser && eraserGestureChanged) {
+      notifyChange();
+    }
+    eraserGestureChanged = false;
+
     isDrawing = false;
     activePenPointerId = null;
     activeTouchPointerId = null;
@@ -613,16 +671,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       currentState = InputState.IDLE;
     }
 
-    //+_+// CODEX 명세: 취소 시에도 유효 좌표(1개 이상)가 있다면 획을 버리지 않고 보존
-    if (currentStroke && currentStroke.points.length > 0) {
-      strokes.push(currentStroke);
-      currentStroke = null;
-      redraw();
-      notifyChange();
-    } else {
-      currentStroke = null;
-      redraw();
-    }
+    currentStroke = null;
   }
 
   function onLostPointerCapture(e) {
@@ -638,23 +687,23 @@ export function createDrawingCanvas(canvasElement, options = {}) {
         }
       } catch (_) {}
     }
-    if (rafId && typeof cancelAnimationFrame === "function") {
-      cancelAnimationFrame(rafId);
-      rafId = null;
-    }
+    cancelScheduledRender();
     if (cooldownTimer) {
       clearTimeout(cooldownTimer);
       cooldownTimer = null;
     }
     if (isDrawing) {
+      let strokeCommitted = false;
       if (currentStroke && currentStroke.points.length > 0) {
+        renderIncremental();
         strokes.push(currentStroke);
+        strokeCommitted = true;
       }
       currentStroke = null;
       isDrawing = false;
-      redraw();
-      notifyChange();
+      if (strokeCommitted || eraserGestureChanged) notifyChange();
     }
+    eraserGestureChanged = false;
     activePenPointerId = null;
     activeTouchPointerId = null;
     activeTouchPointerType = null;
@@ -754,7 +803,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     },
     undo() {
       if (undoStack.length === 0) return false;
-      redoStack.push(JSON.parse(JSON.stringify(strokes)));
+      redoStack.push(strokes.slice());
       strokes = undoStack.pop();
       redraw();
       notifyChange();
@@ -762,7 +811,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     },
     redo() {
       if (redoStack.length === 0) return false;
-      undoStack.push(JSON.parse(JSON.stringify(strokes)));
+      undoStack.push(strokes.slice());
       strokes = redoStack.pop();
       redraw();
       notifyChange();
