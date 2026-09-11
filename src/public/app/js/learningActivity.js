@@ -45,6 +45,27 @@ const VALID_RESPONSE_TYPES = new Set(Object.values(ResponseType));
 const VALID_SOURCE_TYPES = new Set(Object.values(SourceType));
 const VALID_REVIEW_STATUSES = new Set(Object.values(ReviewStatus));
 
+export function resolveActivityResponseType(activity) {
+  const explicitType = String(activity?.responseType || "").trim().toUpperCase();
+  if (explicitType) {
+    if (!VALID_RESPONSE_TYPES.has(explicitType)) {
+      throw new Error(`유효하지 않은 responseType입니다: ${activity?.responseType}`);
+    }
+    return explicitType;
+  }
+
+  const activityType = String(activity?.activityType || "").trim().toUpperCase();
+  if (activityType === ActivityType.SHORT_ANSWER) return ResponseType.TEXT;
+  if (activityType === ActivityType.MULTIPLE_CHOICE) return ResponseType.CHOICE;
+
+  //+_+// responseType 도입 이전의 수학 연산 문제는 기존 Canvas 입력을 유지한다
+  return ResponseType.CANVAS;
+}
+
+export function usesDrawingCanvas(activity) {
+  return resolveActivityResponseType(activity) === ResponseType.CANVAS;
+}
+
 //+_+// F10A 범위 외 미지원 responseType 식별용 (ORDERING, MATCHING 등은 엄격 거절)
 const UNSUPPORTED_RESPONSE_TYPES = new Set([
   "ORDERING",

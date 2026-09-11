@@ -930,6 +930,63 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
   cursor: default;
 }
 
+.problem-canvas-stage.typed-response-surface {
+  align-items: flex-start;
+  touch-action: pan-y;
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+}
+
+.typed-response-surface .typed-activity-stage,
+.typed-response-surface .typed-input-area,
+.typed-response-surface .typed-choices-list {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.typed-choice-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 48px;
+  padding: 0.75rem;
+  border: 2px solid var(--line);
+  border-radius: 10px;
+  box-sizing: border-box;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.typed-choice-item:hover {
+  border-color: var(--accent);
+}
+
+.typed-choice-item:focus-within {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.typed-choice-item.selected-choice {
+  border-color: var(--accent);
+  background: rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.typed-text-input {
+  min-height: 48px;
+  box-sizing: border-box;
+  pointer-events: auto;
+  touch-action: manipulation;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* 세로셈 모눈 자릿수 그리드 (Fluid Dynamic Digit Grid) */
 :root {
   --grid-cell-w: 40px;
@@ -4852,4 +4909,3 @@ body.theme-midnight .active-learner-pill {
 .english-start-btn:hover {
   opacity: 0.9;
 }
-

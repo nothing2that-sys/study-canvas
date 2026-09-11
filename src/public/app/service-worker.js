@@ -37,6 +37,7 @@ const APP_SHELL = [
   "./js/data/learningCommands.js",
   "./js/data/learningQueries.js",
   "./js/learningActivity.js",
+  "./js/typedInteractionSurface.js",
   "./js/unifiedCurriculumRegistry.js",
   "./js/mathArithmeticAdapter.js",
   "./js/contentPackageLoader.js",

@@ -53,8 +53,9 @@ import { createUpdateCoordinator, waitForServiceWorkerControllerChange } from ".
 import { createVisualViewportController, getPreferredScrollBehavior } from "./viewportEngine.js";
 import { setupModalManager } from "./modalEngine.js";
 import { GradeDecision, normalizeGradeDecision } from "./parentGrading.js";
-import { ResponseType, ActivityType, DEFAULT_PROBLEM_COUNT } from "./learningActivity.js";
+import { ResponseType, ActivityType, DEFAULT_PROBLEM_COUNT, resolveActivityResponseType, usesDrawingCanvas } from "./learningActivity.js";
 import { createResponseRecord, applyStudentResponseChange } from "./responseEngine.js";
+import { bindChoiceResponseSurface } from "./typedInteractionSurface.js";
 import {
   canMutatePractice,
   applyStudentStrokeChange,
@@ -1709,18 +1710,16 @@ function renderChoiceActivityStage(q, options = {}) {
           const isExpected = isShowGuides && (String(c.id) === expectedChoiceId);
           const isStudentSelected = !isShowGuides && (String(c.id) === studentChoiceId);
           return `
-            <div class="typed-choice-item ${isExpected ? "expected-choice" : ""} ${isStudentSelected ? "selected-choice" : ""}"
-                 style="padding: 0.5rem; border-radius: 6px; ${isExpected ? "background: #e6f4ea; border: 2px solid #34a853;" : (isStudentSelected ? "background: #e8f0fe; border: 2px solid #1a73e8;" : "border: 1px solid #ddd;")}">
-              <label class="choice-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                <input type="radio"
-                       name="choice_${escapeHtml(q.id)}"
-                       value="${cId}"
-                       data-question-id="${escapeHtml(q.id)}"
-                       ${String(c.id) === (isShowGuides ? expectedChoiceId : studentChoiceId) ? "checked" : ""}
-                       ${isLocked || isShowGuides ? "disabled" : ""} />
-                <span>${cLabel}</span>
-              </label>
-            </div>
+            <label class="typed-choice-item choice-label ${isExpected ? "expected-choice" : ""} ${isStudentSelected ? "selected-choice" : ""}"
+                   style="${isExpected ? "background: #e6f4ea; border-color: #34a853;" : (isStudentSelected ? "background: #e8f0fe; border-color: #1a73e8;" : "")}">
+              <input type="radio"
+                     name="choice_${escapeHtml(q.id)}"
+                     value="${cId}"
+                     data-question-id="${escapeHtml(q.id)}"
+                     ${String(c.id) === (isShowGuides ? expectedChoiceId : studentChoiceId) ? "checked" : ""}
+                     ${isLocked || isShowGuides ? "disabled" : ""} />
+              <span>${cLabel}</span>
+            </label>
           `;
         }).join("")}
       </div>
@@ -1730,10 +1729,11 @@ function renderChoiceActivityStage(q, options = {}) {
 
 function renderProblemStageContent(q, options = {}) {
   //+_+// Phase F10A: typed ResponseType 우선 분기
-  if (q.responseType === "TEXT" || q.activityType === "SHORT_ANSWER") {
+  const responseType = resolveActivityResponseType(q);
+  if (responseType === ResponseType.TEXT) {
     return renderTextActivityStage(q, options);
   }
-  if (q.responseType === "CHOICE" || q.activityType === "MULTIPLE_CHOICE") {
+  if (responseType === ResponseType.CHOICE) {
     return renderChoiceActivityStage(q, options);
   }
   const mathFormat = q.mathFormat || currentSession?.mathFormat || (currentResultSummary?.mathFormat) || (currentModalSession?.mathFormat) || "vertical";
@@ -1812,7 +1812,9 @@ function renderCurrentWorksheetPage() {
   // 문제 카드 그리드 렌더링
   worksheetGrid.replaceChildren(...pageData.questions.map((q, qIdx) => {
     const card = document.createElement("div");
-    card.className = "worksheet-card";
+    const responseType = resolveActivityResponseType(q);
+    const isCanvasSurface = responseType === ResponseType.CANVAS;
+    card.className = `worksheet-card response-surface-${responseType.toLowerCase()}`;
     card.id = `worksheetCard_${q.id}`;
     if (qIdx === currentFocusedProblemIndex) {
       card.classList.add("active-focus");
@@ -1826,9 +1828,9 @@ function renderCurrentWorksheetPage() {
         </div>
       </div>
       <div class="card-problem-body" id="problemBody_${q.id}">
-        <div class="problem-canvas-stage">
+        <div class="problem-canvas-stage ${isCanvasSurface ? "canvas-response-surface" : "typed-response-surface"}" data-response-type="${responseType}">
           ${renderProblemStageContent(q, { showGuides: false })}
-          <canvas class="drawing-canvas worksheet-problem-canvas" id="canvas_${q.id}"></canvas>
+          ${isCanvasSurface ? `<canvas class="drawing-canvas worksheet-problem-canvas" id="canvas_${q.id}"></canvas>` : ""}
         </div>
       </div>
     `;
@@ -1845,6 +1847,7 @@ function renderCurrentWorksheetPage() {
 
   // 각 문제 카드의 캔버스 초기화
   pageData.questions.forEach((q) => {
+    if (!usesDrawingCanvas(q)) return;
     const canvasEl = document.querySelector(`#canvas_${q.id}`);
     if (canvasEl) {
       const canvasInstance = createDrawingCanvas(canvasEl, {
@@ -1878,7 +1881,8 @@ function renderCurrentWorksheetPage() {
 
   //+_+// Phase F10A / Rework 1: typed questions (TEXT/CHOICE) 이벤트 리스너 바인딩 (Production Mutation Guard 경유)
   pageData.questions.forEach((q) => {
-    if (q.responseType === "TEXT" || q.activityType === "SHORT_ANSWER") {
+    const responseType = resolveActivityResponseType(q);
+    if (responseType === ResponseType.TEXT) {
       const inputEl = document.querySelector(`#textInput_${q.id}`);
       if (inputEl) {
         let isComposing = false;
@@ -1916,19 +1920,14 @@ function renderCurrentWorksheetPage() {
           }
         });
       }
-    } else if (q.responseType === "CHOICE" || q.activityType === "MULTIPLE_CHOICE") {
-      const radioEls = document.querySelectorAll(`input[name="choice_${q.id}"]`);
-      radioEls.forEach((radio) => {
-        radio.addEventListener("change", (e) => {
-          if (e.target.checked) {
-            try {
-              applyStudentResponseChange(currentSession, questionResponseRecordsMap, q, e.target.value);
-              triggerDraftSave();
-            } catch (err) {
-              console.warn("[app] 학생 응답 변경 거절 (Session Locked):", err);
-            }
-          }
-        });
+    } else if (responseType === ResponseType.CHOICE) {
+      bindChoiceResponseSurface(document, q.id, (value) => {
+        try {
+          applyStudentResponseChange(currentSession, questionResponseRecordsMap, q, value);
+          triggerDraftSave();
+        } catch (err) {
+          console.warn("[app] 학생 응답 변경 거절 (Session Locked):", err);
+        }
       });
     }
   });
