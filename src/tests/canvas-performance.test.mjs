@@ -77,3 +77,44 @@ test("R2-P1-01: 1,000개 고속 Coalesced Point 필기 성능 및 지우개 Undo
 
   canvas.destroy();
 });
+
+test("E-R1-03: 250개 고속 짧은 획의 종료 좌표 및 Undo Redo 보존", () => {
+  const listeners = new Map();
+  const mockCanvas = {
+    getContext: () => ({
+      clearRect: () => {}, beginPath: () => {}, moveTo: () => {}, lineTo: () => {},
+      quadraticCurveTo: () => {}, stroke: () => {}, arc: () => {}, fill: () => {},
+      save: () => {}, restore: () => {}, setTransform: () => {}
+    }),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 600, height: 400 }),
+    addEventListener: (type, fn) => listeners.set(type, fn),
+    removeEventListener: (type) => listeners.delete(type),
+    setPointerCapture: () => {}, releasePointerCapture: () => {}, style: {}
+  };
+
+  let changeCount = 0;
+  const canvas = createDrawingCanvas(mockCanvas, {
+    profile: InputProfile.IPAD_PEN_ONLY,
+    onStrokeChange: () => { changeCount++; }
+  });
+
+  for (let i = 0; i < 250; i++) {
+    const pointerId = i + 1;
+    const x = 10 + (i % 50);
+    const y = 10 + Math.floor(i / 50);
+    listeners.get("pointerdown")({ pointerType: "pen", pointerId, clientX: x, clientY: y });
+    listeners.get("pointerup")({ pointerType: "pen", pointerId, clientX: x + 4, clientY: y + 6 });
+  }
+
+  const strokes = canvas.getStrokes();
+  assert.equal(strokes.length, 250);
+  assert.equal(strokes.every((stroke) => stroke.points.length === 2), true, "모든 짧은 획에 종료점이 있어야 함");
+  assert.equal(changeCount, 250, "획 하나당 변경 알림은 한 번만 발생해야 함");
+
+  assert.equal(canvas.undo(), true);
+  assert.equal(canvas.getStrokes().length, 249);
+  assert.equal(canvas.redo(), true);
+  assert.equal(canvas.getStrokes().length, 250);
+
+  canvas.destroy();
+});

@@ -141,3 +141,76 @@ test("R2-P1-01 & 7.3: 고속 필기 getCoalescedEvents 다중 좌표 수집 보�
 
   canvas.destroy();
 });
+
+test("E-R1-01: Safari fallback 고속 단획의 pointerup 종료 좌표 보존", () => {
+  const listeners = new Map();
+  const mockCanvas = {
+    getContext: () => ({
+      clearRect: () => {},
+      beginPath: () => {},
+      moveTo: () => {},
+      lineTo: () => {},
+      quadraticCurveTo: () => {},
+      stroke: () => {},
+      arc: () => {},
+      fill: () => {},
+      save: () => {},
+      restore: () => {},
+      setTransform: () => {}
+    }),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 300, height: 260 }),
+    addEventListener: (type, fn) => listeners.set(type, fn),
+    removeEventListener: (type) => listeners.delete(type),
+    setPointerCapture: () => {},
+    releasePointerCapture: () => {},
+    style: {}
+  };
+
+  const canvas = createDrawingCanvas(mockCanvas, { profile: InputProfile.IPAD_PEN_ONLY });
+
+  //+_+// Safari fallback처럼 getCoalescedEvents와 pointermove 없이 즉시 끝나는 빠른 획을 재현한다.
+  listeners.get("pointerdown")({ pointerType: "pen", pointerId: 201, clientX: 11, clientY: 13 });
+  listeners.get("pointerup")({ pointerType: "pen", pointerId: 201, clientX: 27, clientY: 31 });
+
+  const strokes = canvas.getStrokes();
+  assert.equal(strokes.length, 1);
+  assert.equal(strokes[0].points.length, 2, "시작점과 pointerup 종료점이 모두 저장되어야 함");
+  assert.deepEqual(
+    strokes[0].points.map(({ x, y }) => ({ x, y })),
+    [{ x: 11, y: 13 }, { x: 27, y: 31 }]
+  );
+
+  canvas.destroy();
+});
+
+test("E-R1-02: pointercancel과 lostpointercapture 종료 경로의 좌표 무결성", () => {
+  const listeners = new Map();
+  const mockCanvas = {
+    getContext: () => ({
+      clearRect: () => {}, beginPath: () => {}, moveTo: () => {}, lineTo: () => {},
+      quadraticCurveTo: () => {}, stroke: () => {}, arc: () => {}, fill: () => {},
+      save: () => {}, restore: () => {}, setTransform: () => {}
+    }),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 300, height: 260 }),
+    addEventListener: (type, fn) => listeners.set(type, fn),
+    removeEventListener: (type) => listeners.delete(type),
+    setPointerCapture: () => {}, releasePointerCapture: () => {}, style: {}
+  };
+
+  const canvas = createDrawingCanvas(mockCanvas, { profile: InputProfile.IPAD_PEN_ONLY });
+
+  listeners.get("pointerdown")({ pointerType: "pen", pointerId: 301, clientX: 5, clientY: 7 });
+  listeners.get("pointermove")({ pointerType: "pen", pointerId: 301, clientX: 15, clientY: 17 });
+  listeners.get("pointercancel")({ pointerType: "pen", pointerId: 301, clientX: 15, clientY: 17 });
+
+  listeners.get("pointerdown")({ pointerType: "pen", pointerId: 302, clientX: 40, clientY: 50 });
+  //+_+// 좌표가 없는 capture 상실 이벤트가 원점 좌표를 추가하지 않아야 한다.
+  listeners.get("lostpointercapture")({ pointerType: "pen", pointerId: 302 });
+
+  const strokes = canvas.getStrokes();
+  assert.equal(strokes.length, 2);
+  assert.equal(strokes[0].points.length, 2, "cancel 좌표가 직전 좌표와 같으면 중복 저장하지 않아야 함");
+  assert.deepEqual(strokes[1].points.map(({ x, y }) => ({ x, y })), [{ x: 40, y: 50 }]);
+
+  canvas.destroy();
+});
