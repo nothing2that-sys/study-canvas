@@ -925,6 +925,11 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
   -webkit-touch-callout: none;
 }
 
+.problem-canvas-stage .drawing-canvas.review-canvas {
+  pointer-events: none !important;
+  cursor: default;
+}
+
 /* 세로셈 모눈 자릿수 그리드 (Fluid Dynamic Digit Grid) */
 :root {
   --grid-cell-w: 40px;
@@ -3393,6 +3398,13 @@ body.mode-grading {
   width: 100%;
   height: 100%;
   display: block;
+}
+.review-section-box .detail-review-stage {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  min-height: 220px;
+  width: 100%;
 }
 .review-answer-comparison {
   display: grid;

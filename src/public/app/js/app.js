@@ -77,7 +77,7 @@ import { selectEnglishActivities } from "./englishActivitySelector.js";
 
 // 앱 전역 인터랙션 가드 초기화
 const interactionGuard = setupInteractionGuard(typeof document !== "undefined" ? document : null);
-const modalManager = setupModalManager({ documentRef: document, interactionGuard });
+const modalManager = setupModalManager({ documentRef: typeof document !== "undefined" ? document : null, interactionGuard });
 
 // DOM 요소 캐싱 - 뷰 컨테이너
 const setupView = document.querySelector("#setupView");
@@ -342,7 +342,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260910T232456471Z-9aced60",
+    appBuildId: "20260911T052050688Z-f9d4c2e",
     sessionId: currentSession.id,
     submissionId: currentSubmission?.id || `sub_${currentSession.id}`,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
@@ -954,6 +954,10 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
     const safeComment = escapeHtml(r.comment);
     const commentHtml = safeComment ? `<span class="comment-badge">✏️ 피드백: ${safeComment}</span>` : "";
     const canvasId = `modalReviewCanvas_${session.id || "temp"}_${r.questionId || idx}`;
+    const isTyped = r.responseType === "TEXT" || r.activityType === "SHORT_ANSWER" || r.responseType === "CHOICE" || r.activityType === "MULTIPLE_CHOICE";
+    const exprText = (r.operandA !== undefined && r.operandB !== undefined)
+      ? `${r.operandA.toLocaleString()} ${symbol} ${r.operandB.toLocaleString()} = <strong>${r.answer?.toLocaleString() ?? r.expectedAnswer}</strong>`
+      : escapeHtml(r.prompt || r.question || "");
 
     if (mode === "compact") {
       return `
@@ -961,7 +965,7 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
           <div class="detail-item-header">
             <div class="detail-left">
               <span class="detail-order">${idx + 1}번</span>
-              <span class="detail-expr">${r.operandA.toLocaleString()} ${symbol} ${r.operandB.toLocaleString()} = <strong>${r.answer.toLocaleString()}</strong></span>
+              <span class="detail-expr">${exprText}</span>
               <span class="detail-badge ${r.isCorrect ? "correct" : "wrong"}">${r.isCorrect ? "✔ 정답" : "✖ 오답"}</span>
             </div>
             ${commentHtml}
@@ -975,7 +979,7 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
         <div class="detail-item-header">
           <div class="detail-left">
             <span class="detail-order">${idx + 1}번</span>
-            <span class="detail-expr">${r.operandA.toLocaleString()} ${symbol} ${r.operandB.toLocaleString()} = <strong>${r.answer.toLocaleString()}</strong></span>
+            <span class="detail-expr">${exprText}</span>
             <span class="detail-badge ${r.isCorrect ? "correct" : "wrong"}">${r.isCorrect ? "✔ 정답" : "✖ 오답"}</span>
           </div>
           ${commentHtml}
@@ -983,8 +987,8 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
         <!-- 학생 필기 및 빨간 펜 첨삭 복원 영역 -->
         <div class="detail-review-stage">
           <div class="problem-canvas-stage">
-            ${renderProblemStageContent(r, { showGuides: false })}
-            <canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>
+            ${renderProblemStageContent(r, { showGuides: false, readOnly: true, responseSnapshots: session.responseSnapshots })}
+            ${isTyped ? "" : `<canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>`}
           </div>
         </div>
       </div>
@@ -994,6 +998,8 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
   if (mode === "detail") {
     requestAnimationFrame(() => {
       results.forEach((r, idx) => {
+        const isTyped = r.responseType === "TEXT" || r.activityType === "SHORT_ANSWER" || r.responseType === "CHOICE" || r.activityType === "MULTIPLE_CHOICE";
+        if (isTyped) return;
         const canvasId = `modalReviewCanvas_${session.id || "temp"}_${r.questionId || idx}`;
         const canvasEl = document.querySelector(`#${canvasId}`);
         if (canvasEl) {
@@ -1050,6 +1056,12 @@ async function openReviewDetailModal(items, index = 0) {
   await renderReviewModalItem(currentReviewItems[currentReviewIndex]);
   if (typeof reviewDetailModal.showModal === "function" && !reviewDetailModal.open) {
     reviewDetailModal.showModal();
+    requestAnimationFrame(() => {
+      if (reviewModalCanvasInstance) {
+        reviewModalCanvasInstance.resize();
+        reviewModalCanvasInstance.redraw();
+      }
+    });
   }
 }
 
@@ -1062,7 +1074,7 @@ async function renderReviewModalItem(reviewItem) {
   }
 
   const learnerId = reviewItem.learnerId || getActiveLearnerId();
-  // 원본 Submission 및 문제 데이터 조회
+  // 원본 Submission 및 문제 데이터 조회 (불변 SSOT)
   const sourceSub = await getSubmission(reviewItem.sourceSubmissionId, { allLearners: true });
   const question = sourceSub?.questions?.find((q) => q.id === reviewItem.questionId) || {
     operandA: 0,
@@ -1074,6 +1086,10 @@ async function renderReviewModalItem(reviewItem) {
   const gradeInfo = sourceSub?.gradingResults?.[reviewItem.questionId] || {};
   const studentStrokes = sourceSub?.studentStrokesMap?.[reviewItem.questionId] || [];
   const gradingStrokes = sourceSub?.gradingStrokesMap?.[reviewItem.questionId] || [];
+  const isTypedActivity = question.responseType === "TEXT" ||
+    question.activityType === "SHORT_ANSWER" ||
+    question.responseType === "CHOICE" ||
+    question.activityType === "MULTIPLE_CHOICE";
 
   // 1. 헤더 태그 및 타이틀
   const totalItems = currentReviewItems.length;
@@ -1085,7 +1101,11 @@ async function renderReviewModalItem(reviewItem) {
 
   const opSymbol = question.operation === "div" ? "÷" : "×";
   if (reviewModalTitle) {
-    reviewModalTitle.textContent = `${question.operandA?.toLocaleString?.() ?? question.operandA} ${opSymbol} ${question.operandB?.toLocaleString?.() ?? question.operandB}`;
+    if (question.operandA !== undefined && question.operandB !== undefined) {
+      reviewModalTitle.textContent = `${question.operandA?.toLocaleString?.() ?? question.operandA} ${opSymbol} ${question.operandB?.toLocaleString?.() ?? question.operandB}`;
+    } else {
+      reviewModalTitle.textContent = question.prompt || question.question || "오답 함께 보기";
+    }
   }
 
   // 2. 상태 뱃지
@@ -1125,7 +1145,7 @@ async function renderReviewModalItem(reviewItem) {
           ${steps.steps.map((s, i) => `${i + 1}단계: ${s.quotientDigit} × ${steps.divisor} = ${s.multiplyValue}, 나머지 ${s.remainder}`).join("<br>")}
         </div>
       `;
-    } else {
+    } else if (question.operandA !== undefined && question.operandB !== undefined) {
       const steps = getMultiplicationSteps(question.operandA, question.operandB);
       explanationHtml = `
         <div><strong>정답:</strong> ${steps.result.toLocaleString()}</div>
@@ -1133,41 +1153,41 @@ async function renderReviewModalItem(reviewItem) {
           ${steps.partialProducts.map((p, i) => `${i + 1}단계 (자리 ${p.digitPosition + 1}): ${steps.operandA} × ${p.digit} = ${p.rawProductStr}`).join("<br>")}
         </div>
       `;
+    } else {
+      const ansDisplay = question.answer !== undefined ? (question.answer?.toLocaleString?.() ?? question.answer) : (question.expectedAnswer ?? "");
+      explanationHtml = `정답: <strong>${escapeHtml(String(ansDisplay))}</strong>`;
     }
   } catch (_) {
-    explanationHtml = `정답: ${question.answer?.toLocaleString?.() ?? question.answer}`;
+    const ansDisplay = question.answer !== undefined ? (question.answer?.toLocaleString?.() ?? question.answer) : (question.expectedAnswer ?? "");
+    explanationHtml = `정답: ${escapeHtml(String(ansDisplay))}`;
   }
 
   const feedbackComment = gradeInfo.comment ? escapeHtml(gradeInfo.comment) : "";
+  const correctAnsDisplay = question.answer !== undefined ? (question.answer?.toLocaleString?.() ?? question.answer) : (question.expectedAnswer ?? "");
 
   // 4. 모달 본문 렌더링
   const canvasId = `reviewModalCanvas_${reviewItem.id}`;
   reviewModalProblemBody.innerHTML = `
-    <!-- 세로셈 / 문제 표시 -->
-    <div class="review-section-box">
-      <div class="review-section-title">문제</div>
-      <div class="review-math-display">
-        ${question.operandA?.toLocaleString?.() ?? question.operandA} ${opSymbol} ${question.operandB?.toLocaleString?.() ?? question.operandB}
-      </div>
-    </div>
-
     <!-- 학생 답안 vs 정답 비교 -->
     <div class="review-answer-comparison">
       <div class="review-answer-pill student-ans">
         <small style="display:block; font-weight:700; margin-bottom:4px;">학생 풀이 결과</small>
-        <strong>${gradeInfo.decision === "RETRY" ? "재풀이 요청" : "틀림"}</strong>
+        <strong>${gradeInfo.decision === "RETRY" ? "재풀이 요청" : (gradeInfo.decision === "CORRECT" || gradeInfo.isCorrect ? "정답" : "틀림")}</strong>
       </div>
       <div class="review-answer-pill correct-ans">
         <small style="display:block; font-weight:700; margin-bottom:4px;">정답</small>
-        <strong>${question.answer?.toLocaleString?.() ?? question.answer}</strong>
+        <strong>${correctAnsDisplay}</strong>
       </div>
     </div>
 
-    <!-- 원본 학생 필기 및 보호자 첨삭 캔버스 -->
+    <!-- 원본 문제 배경 (Layer 0) + 학생 필기 (Layer 1) + 보호자 첨삭 (Layer 2) 복원 영역 -->
     <div class="review-section-box">
-      <div class="review-section-title">학생 필기 및 보호자 첨삭 확인</div>
-      <div class="review-canvas-container">
-        <canvas id="${canvasId}"></canvas>
+      <div class="review-section-title">${isTypedActivity ? "학생 응답 및 보호자 피드백 확인" : "학생 필기 및 보호자 첨삭 확인"}</div>
+      <div class="review-preview detail-review-stage">
+        <div class="problem-canvas-stage">
+          ${renderProblemStageContent(question, { showGuides: false, readOnly: true, responseSnapshots: sourceSub?.responseSnapshots })}
+          ${isTypedActivity ? "" : `<canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>`}
+        </div>
       </div>
     </div>
 
@@ -1187,19 +1207,21 @@ async function renderReviewModalItem(reviewItem) {
     ` : ""}
   `;
 
-  // 캔버스 복원
-  requestAnimationFrame(() => {
-    const canvasEl = document.querySelector(`#${canvasId}`);
-    if (canvasEl) {
-      reviewModalCanvasInstance = createDrawingCanvas(canvasEl, {
-        readOnly: true,
-        backgroundStrokes: studentStrokes
-      });
-      if (gradingStrokes.length > 0) {
-        reviewModalCanvasInstance.setStrokes(gradingStrokes);
+  // 캔버스 복원 (CANVAS 기반 활동)
+  if (!isTypedActivity) {
+    requestAnimationFrame(() => {
+      const canvasEl = document.querySelector(`#${canvasId}`);
+      if (canvasEl) {
+        reviewModalCanvasInstance = createDrawingCanvas(canvasEl, {
+          readOnly: true,
+          backgroundStrokes: studentStrokes
+        });
+        if (gradingStrokes.length > 0) {
+          reviewModalCanvasInstance.setStrokes(gradingStrokes);
+        }
       }
-    }
-  });
+    });
+  }
 
   // 5. 액션 버튼군 렌더링
   let navBtns = "";
@@ -1640,9 +1662,9 @@ function renderTextActivityStage(q, options = {}) {
     `;
   }
 
-  const savedRecord = questionResponseRecordsMap.get(q.id) || currentSubmission?.responseSnapshots?.[q.id];
+  const savedRecord = options.responseRecord || options.responseSnapshots?.[q.id] || questionResponseRecordsMap.get(q.id) || currentSubmission?.responseSnapshots?.[q.id];
   const studentVal = escapeHtml(String(savedRecord?.value || ""));
-  const isLocked = Boolean(options.isLocked || (currentSession && currentSession.state !== SessionState.PRACTICE_ACTIVE && currentSession.state !== SessionState.SUBMITTING));
+  const isLocked = Boolean(options.isLocked || options.readOnly || (currentSession && currentSession.state !== SessionState.PRACTICE_ACTIVE && currentSession.state !== SessionState.SUBMITTING));
   const isKorean = q.subjectId === "korean" || currentSession?.config?.subjectId === "korean";
   const isEnglish = q.subjectId === "english" || currentSession?.config?.subjectId === "english";
   const isTextSubject = isKorean || isEnglish;
@@ -1673,9 +1695,9 @@ function renderChoiceActivityStage(q, options = {}) {
   const expectedChoiceId = String(q.expectedAnswer !== undefined ? q.expectedAnswer : (q.answer !== undefined ? q.answer : ""));
   const choices = Array.isArray(q.choices) ? q.choices : [];
 
-  const savedRecord = questionResponseRecordsMap.get(q.id) || currentSubmission?.responseSnapshots?.[q.id];
+  const savedRecord = options.responseRecord || options.responseSnapshots?.[q.id] || questionResponseRecordsMap.get(q.id) || currentSubmission?.responseSnapshots?.[q.id];
   const studentChoiceId = String(savedRecord?.value || "");
-  const isLocked = Boolean(options.isLocked || (currentSession && currentSession.state !== SessionState.PRACTICE_ACTIVE && currentSession.state !== SessionState.SUBMITTING));
+  const isLocked = Boolean(options.isLocked || options.readOnly || (currentSession && currentSession.state !== SessionState.PRACTICE_ACTIVE && currentSession.state !== SessionState.SUBMITTING));
 
   return `
     <div class="typed-activity-stage" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
@@ -2671,6 +2693,10 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
     const safeComment = escapeHtml(r.comment);
     const commentHtml = safeComment ? `<span class="comment-badge">✏️ 피드백: ${safeComment}</span>` : "";
     const canvasId = `resultReviewCanvas_${r.questionId || idx}`;
+    const isTyped = r.responseType === "TEXT" || r.activityType === "SHORT_ANSWER" || r.responseType === "CHOICE" || r.activityType === "MULTIPLE_CHOICE";
+    const exprText = (r.operandA !== undefined && r.operandB !== undefined)
+      ? `${r.operandA.toLocaleString()} ${symbol} ${r.operandB.toLocaleString()} = <strong>${r.answer?.toLocaleString() ?? r.expectedAnswer}</strong>`
+      : escapeHtml(r.prompt || r.question || "");
 
     const reviewBtnHtml = !r.isCorrect
       ? `<button type="button" class="btn-review-item-action" data-qid="${r.questionId || idx}" style="margin-left:auto; font-size:12px; font-weight:700; background:#fef08a; color:#854d0e; border:1px solid #fde047; padding:4px 10px; border-radius:8px; cursor:pointer;">🔍 오답 함께 보기</button>`
@@ -2681,7 +2707,7 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
         <div class="detail-item-header">
           <div class="detail-left">
             <span class="detail-order">${idx + 1}번</span>
-            <span class="detail-expr">${r.operandA.toLocaleString()} ${symbol} ${r.operandB.toLocaleString()} = <strong>${r.answer.toLocaleString()}</strong></span>
+            <span class="detail-expr">${exprText}</span>
             <span class="detail-badge ${r.isCorrect ? "correct" : "wrong"}">${r.isCorrect ? "✔ 정답" : "✖ 오답"}</span>
           </div>
           ${reviewBtnHtml}
@@ -2693,7 +2719,7 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
         <div class="detail-item-header">
           <div class="detail-left">
             <span class="detail-order">${idx + 1}번</span>
-            <span class="detail-expr">${r.operandA.toLocaleString()} ${symbol} ${r.operandB.toLocaleString()} = <strong>${r.answer.toLocaleString()}</strong></span>
+            <span class="detail-expr">${exprText}</span>
             <span class="detail-badge ${r.isCorrect ? "correct" : "wrong"}">${r.isCorrect ? "✔ 정답" : "✖ 오답"}</span>
           </div>
           ${reviewBtnHtml}
@@ -2702,8 +2728,8 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
         <!-- 학생 필기 및 빨간 펜 첨삭 복원 영역 -->
         <div class="detail-review-stage">
           <div class="problem-canvas-stage">
-            ${renderProblemStageContent(r, { showGuides: false })}
-            <canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>
+            ${renderProblemStageContent(r, { showGuides: false, readOnly: true, responseSnapshots: currentSubmission?.responseSnapshots })}
+            ${isTyped ? "" : `<canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>`}
           </div>
         </div>
       `;
@@ -2741,6 +2767,8 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
     // 캔버스에 학생 필기 + 빨간 펜 첨삭 스트로크 복원
     requestAnimationFrame(() => {
       summary.results.forEach((r, idx) => {
+        const isTyped = r.responseType === "TEXT" || r.activityType === "SHORT_ANSWER" || r.responseType === "CHOICE" || r.activityType === "MULTIPLE_CHOICE";
+        if (isTyped) return;
         const canvasId = `resultReviewCanvas_${r.questionId || idx}`;
         const canvasEl = document.querySelector(`#${canvasId}`);
         if (canvasEl) {
@@ -3985,4 +4013,12 @@ export function handleRestoreDraftSession(draft) {
   return restored;
 }
 
-export { restoreSessionFromDraft, startSessionWithQuestions };
+export {
+  restoreSessionFromDraft,
+  startSessionWithQuestions,
+  openReviewDetailModal,
+  renderReviewModalItem,
+  renderResultDetailItems,
+  renderModalDetailItems,
+  renderProblemStageContent
+};
