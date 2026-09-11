@@ -1,9 +1,11 @@
 # Math Canvas Pro — Unified Curriculum & Activity Platform v2.2
 
+> 문서 상태: SUPERSEDED. 제품 방향과 F13 이후 로드맵의 현재 정본은 `Docs/UNIFIED_CURRICULUM_ACTIVITY_PLATFORM_v2.3.md`이다. 본 문서는 v2.2 설계 이력 보존용이며 충돌 시 v2.3을 따른다.
+
 문서 버전: v2.2  
 작성일: 2026-09-08  
 대상 저장소: `Study Canvas 개발 저장소`  
-상태: 다음 확장 단계의 설계 기준  
+상태: SUPERSEDED_HISTORY  
 기존 기준 문서: `Docs/통합_학습_웹앱_확장_설계_구조_구현계획서_v2.1.md`
 
 ---

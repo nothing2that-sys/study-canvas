@@ -1,6 +1,8 @@
 # Math Canvas Pro — Unified Curriculum & Activity Platform v2.2 Architecture Amendment
 
-문서 상태: ARCHITECTURE_BASELINE  
+> 문서 상태: SUPERSEDED. 현재 제품 정본은 `Docs/UNIFIED_CURRICULUM_ACTIVITY_PLATFORM_v2.3.md`, 학년 계약은 `Docs/Architecture/CURRICULUM_LEVEL_AND_CONTENT_ELIGIBILITY_V1.md`, 문제집 UX 계약은 `Docs/Architecture/DIGITAL_WORKBOOK_UX_ARCHITECTURE_V1.md`를 따른다.
+
+문서 상태: SUPERSEDED_HISTORY  
 작성일: 2026-09-07  
 적용 기준: Math Canvas Pro Software Platform v1 승인 이후 확장 작업  
 기준 Release HEAD: `b20bcd28e2fef371fd18f519ec79411da5dee2c4`  
