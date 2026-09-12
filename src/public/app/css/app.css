@@ -4138,6 +4138,45 @@ body.theme-midnight .active-learner-pill {
   box-sizing: border-box;
 }
 
+.learner-form select.text-input {
+  width: 100%;
+  min-height: 46px;
+  background: var(--paper);
+}
+
+.learner-form .form-help {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.learner-policy-fieldset {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(23, 63, 53, 0.18);
+  border-radius: 12px;
+}
+
+.learner-policy-fieldset legend {
+  padding: 0 6px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.learner-form .learner-policy-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+}
+
+.learner-form .form-error {
+  margin: 0;
+  color: #b42318;
+  font-weight: 700;
+}
+
 .avatar-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);

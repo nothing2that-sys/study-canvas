@@ -129,6 +129,9 @@ export function initLearnerView(options = {}) {
     learnerForm: doc.querySelector("#learnerForm"),
     learnerModalTitle: doc.querySelector("#learnerModalTitle"),
     learnerNameInput: doc.querySelector("#learnerNameInput"),
+    learnerSchoolGradeInput: doc.querySelector("#learnerSchoolGradeInput"),
+    learnerAllowPreviewInput: doc.querySelector("#learnerAllowPreviewInput"),
+    learnerAllowAdvancedInput: doc.querySelector("#learnerAllowAdvancedInput"),
     avatarOptionsGrid: queryFirst(doc, "#learnerAvatarList", "#avatarOptionsGrid"),
     saveLearnerBtn: doc.querySelector("#saveLearnerBtn"),
     archiveLearnerBtn: doc.querySelector("#archiveLearnerBtn"),
@@ -239,7 +242,7 @@ export async function renderLearnerSelectView() {
       <div class="learner-card-avatar">${escapeHtml(learner.avatar || "🌱")}</div>
       <div class="learner-card-info">
         <div class="learner-card-name">${escapeHtml(learner.name)}</div>
-        <div class="learner-card-badge">${learner.id === activeId ? "최근 학습" : "학습자"}</div>
+        <div class="learner-card-badge">${learner.schoolGrade ? `초등 ${learner.schoolGrade}학년` : "학년 설정 필요"}${learner.id === activeId ? " · 최근 학습" : ""}</div>
       </div>
       <button type="button" class="edit-learner-btn icon-btn" title="프로필 수정" aria-label="프로필 수정">
         ✏️
@@ -765,11 +768,17 @@ export async function openLearnerModal(learnerId = null) {
     if (!learner) return;
     if (dom.learnerModalTitle) dom.learnerModalTitle.textContent = "학습자 프로필 수정";
     if (dom.learnerNameInput) dom.learnerNameInput.value = learner.name;
+    if (dom.learnerSchoolGradeInput) dom.learnerSchoolGradeInput.value = learner.schoolGrade ? String(learner.schoolGrade) : "";
+    if (dom.learnerAllowPreviewInput) dom.learnerAllowPreviewInput.checked = Boolean(learner.guardianPolicy?.allowPreviewAboveGrade);
+    if (dom.learnerAllowAdvancedInput) dom.learnerAllowAdvancedInput.checked = Boolean(learner.guardianPolicy?.allowedDifficulties?.includes("ADVANCED"));
     selectedAvatarKey = learner.avatar || "🌱";
     if (dom.archiveLearnerBtn) dom.archiveLearnerBtn.hidden = false;
   } else {
     if (dom.learnerModalTitle) dom.learnerModalTitle.textContent = "새 학습자 추가";
     if (dom.learnerNameInput) dom.learnerNameInput.value = "";
+    if (dom.learnerSchoolGradeInput) dom.learnerSchoolGradeInput.value = "";
+    if (dom.learnerAllowPreviewInput) dom.learnerAllowPreviewInput.checked = false;
+    if (dom.learnerAllowAdvancedInput) dom.learnerAllowAdvancedInput.checked = false;
     selectedAvatarKey = "🌱";
     if (dom.archiveLearnerBtn) dom.archiveLearnerBtn.hidden = true;
   }
@@ -806,6 +815,25 @@ async function handleSaveLearner() {
     }
     return;
   }
+  const schoolGrade = dom.learnerSchoolGradeInput ? Number(dom.learnerSchoolGradeInput.value) : null;
+  if (dom.learnerSchoolGradeInput && !schoolGrade) {
+    if (dom.learnerModalError) {
+      dom.learnerModalError.textContent = "현재 초등학교 학년을 선택해주세요.";
+      dom.learnerModalError.hidden = false;
+    }
+    return;
+  }
+  const allowPreviewAboveGrade = Boolean(dom.learnerAllowPreviewInput?.checked);
+  const allowedDifficulties = ["FOUNDATION", "STANDARD"];
+  if (dom.learnerAllowAdvancedInput?.checked) allowedDifficulties.push("ADVANCED");
+  const guardianPolicy = {
+    allowReviewBelowGrade: true,
+    maxReviewGradeDelta: 2,
+    allowPreviewAboveGrade,
+    maxPreviewGradeDelta: allowPreviewAboveGrade ? 1 : 0,
+    allowedDifficulties,
+    requireGuardianForLockedRange: true
+  };
 
   try {
     if (editingLearnerId) {
@@ -813,14 +841,18 @@ async function handleSaveLearner() {
         name,
         avatar: selectedAvatarKey,
         icon: selectedAvatarKey,
-        avatarKey: selectedAvatarKey
+        avatarKey: selectedAvatarKey,
+        schoolGrade,
+        guardianPolicy
       });
     } else {
       await createLearner({
         name,
         avatar: selectedAvatarKey,
         icon: selectedAvatarKey,
-        avatarKey: selectedAvatarKey
+        avatarKey: selectedAvatarKey,
+        schoolGrade,
+        guardianPolicy
       });
     }
     closeLearnerModal();

@@ -1,6 +1,10 @@
 import { normalizeDraft } from "./draftEngine.js";
 import { getGradingProgress, normalizeGradeDecision, createGradeDecision } from "./parentGrading.js";
 import { createSession } from "./sessionEngine.js";
+import {
+  normalizeSchoolGrade,
+  normalizeGuardianLearningPolicy
+} from "./contentEligibility.js";
 
 /**
  * Math Canvas Pro - IndexedDB 로컬 영구 스토리지 관리자 (Phase F1: 스키마 버전 및 학습자 프로필)
@@ -315,7 +319,18 @@ function createMemoryFallbackDB() {
 // 4. 학습자 프로필(LearnerProfile) CRUD API
 // ============================================================================
 
-export async function createLearnerProfile({ name, icon, avatarKey, migrationSource, isLegacyDefault } = {}) {
+export async function createLearnerProfile({
+  name,
+  icon,
+  avatarKey,
+  schoolGrade,
+  schoolYear,
+  curriculumVersion,
+  guardianPolicy,
+  learningPlacements,
+  migrationSource,
+  isLegacyDefault
+} = {}) {
   const trimmedName = String(name || "").trim();
   if (!trimmedName) {
     throw new Error("학습자 이름이 필요합니다.");
@@ -325,7 +340,9 @@ export async function createLearnerProfile({ name, icon, avatarKey, migrationSou
   const id = `learner_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const now = Date.now();
   const selectedIcon = icon || avatarKey || "avatar_1";
+  const normalizedGrade = normalizeSchoolGrade(schoolGrade, { allowUnset: true });
 
+  const normalizedGuardianPolicy = normalizeGuardianLearningPolicy(guardianPolicy || {}, id);
   const profile = {
     id,
     name: trimmedName,
@@ -334,6 +351,12 @@ export async function createLearnerProfile({ name, icon, avatarKey, migrationSou
     createdAt: now,
     updatedAt: now,
     lastActiveAt: now,
+    schoolGrade: normalizedGrade,
+    schoolYear: schoolYear === undefined || schoolYear === null || schoolYear === "" ? null : Number(schoolYear),
+    curriculumVersion: String(curriculumVersion || "2022-revised").trim(),
+    guardianPolicyId: normalizedGuardianPolicy.id,
+    guardianPolicy: normalizedGuardianPolicy,
+    learningPlacements: learningPlacements && typeof learningPlacements === "object" ? { ...learningPlacements } : {},
     archived: false,
     archivedAt: null,
     ...(migrationSource !== undefined ? { migrationSource } : {}),
@@ -370,12 +393,28 @@ export async function updateLearnerProfile(id, updates = {}) {
   }
 
   const now = Date.now();
+  const nextGrade = updates.schoolGrade !== undefined
+    ? normalizeSchoolGrade(updates.schoolGrade, { allowUnset: true })
+    : normalizeSchoolGrade(existing.schoolGrade, { allowUnset: true });
+  const nextGuardianPolicy = updates.guardianPolicy !== undefined
+    ? normalizeGuardianLearningPolicy(updates.guardianPolicy || {}, id)
+    : normalizeGuardianLearningPolicy(existing.guardianPolicy || {}, id);
   const updatedProfile = {
     ...existing,
     name: updates.name !== undefined ? String(updates.name).trim() : existing.name,
     avatar: updates.avatar || updates.icon || updates.avatarKey || existing.avatar || existing.icon || "🌱",
     icon: updates.avatar || updates.icon || updates.avatarKey || existing.icon || existing.avatar || "🌱",
     avatarKey: updates.avatar || updates.icon || updates.avatarKey || existing.avatarKey || existing.avatar || "🌱",
+    schoolGrade: nextGrade,
+    schoolYear: updates.schoolYear !== undefined ? updates.schoolYear : (existing.schoolYear ?? null),
+    curriculumVersion: updates.curriculumVersion !== undefined
+      ? String(updates.curriculumVersion || "").trim()
+      : String(existing.curriculumVersion || "2022-revised").trim(),
+    guardianPolicy: nextGuardianPolicy,
+    guardianPolicyId: nextGuardianPolicy.id,
+    learningPlacements: updates.learningPlacements && typeof updates.learningPlacements === "object"
+      ? { ...updates.learningPlacements }
+      : { ...(existing.learningPlacements || {}) },
     archived: updates.archived !== undefined ? Boolean(updates.archived) : existing.archived,
     archivedAt: updates.archivedAt !== undefined ? updates.archivedAt : existing.archivedAt,
     lastActiveAt: updates.lastActiveAt !== undefined ? updates.lastActiveAt : existing.lastActiveAt,
@@ -3477,5 +3516,3 @@ export async function getSkillProgressForLearner(learnerId, options = {}) {
   const finalizedSubs = allSubs.filter((s) => s.status === "GRADED" || s.status === "SESSION_COMPLETE");
   return calculateSkillProgressForLearner(targetLearnerId, finalizedSubs, options);
 }
-
-

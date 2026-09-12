@@ -33,7 +33,7 @@ function assertNoActiveSession(actionName = "작업") {
 }
 
 //+_+// 신규 학습자 프로필 생성
-export async function createLearner({ name, avatar, icon, avatarKey }) {
+export async function createLearner({ name, avatar, icon, avatarKey, schoolGrade, guardianPolicy }) {
   assertNoActiveSession("생성");
 
   const selectedAvatar = avatar || icon || avatarKey || "🌱";
@@ -41,7 +41,9 @@ export async function createLearner({ name, avatar, icon, avatarKey }) {
     name,
     avatar: selectedAvatar,
     icon: selectedAvatar,
-    avatarKey: selectedAvatar
+    avatarKey: selectedAvatar,
+    schoolGrade,
+    guardianPolicy
   });
 
   //+_+// 생성 후 자동 선택

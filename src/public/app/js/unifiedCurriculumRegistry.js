@@ -4,6 +4,12 @@
 //+_+// - 과목(Subject), 코스(Course), 단원(Unit) 간 격리 및 충돌 방지
 //+_+// - 기존 수학 Arithmetic Stage Registry는 이동하지 않고 보존 (Adapter 연계)
 
+import {
+  normalizeSchoolGrade,
+  normalizeSemester,
+  normalizeDifficulty
+} from "./contentEligibility.js";
+
 const skillsMap = new Map();
 
 /**
@@ -32,8 +38,11 @@ export function normalizeSkillDefinition(raw) {
   const unitId = String(raw.unitId || "general").trim().toLowerCase();
   const gradeBand = String(raw.gradeBand || "all").trim();
 
-  const difficulty = Number(raw.difficulty);
-  if (!Number.isFinite(difficulty) || difficulty < 1 || difficulty > 5) {
+  const isCanonicalDifficulty = typeof raw.difficulty === "string" && /^[A-Za-z]+$/.test(raw.difficulty.trim());
+  const difficulty = isCanonicalDifficulty
+    ? normalizeDifficulty(raw.difficulty, { allowUnset: false })
+    : Number(raw.difficulty);
+  if (!isCanonicalDifficulty && (!Number.isFinite(difficulty) || difficulty < 1 || difficulty > 5)) {
     throw new Error(`Skill(${skillId})의 difficulty는 1 이상 5 이하의 숫자여야 합니다 (입력값: ${raw.difficulty}).`);
   }
 
@@ -56,9 +65,31 @@ export function normalizeSkillDefinition(raw) {
     description: String(raw.description || "").trim(),
     gradeBand,
     difficulty,
+    gradeLevel: normalizeSchoolGrade(raw.gradeLevel, { allowUnset: true }),
+    semester: normalizeSemester(raw.semester, { allowUnset: true }),
+    curriculumVersion: raw.curriculumVersion ? String(raw.curriculumVersion).trim() : null,
+    achievementStandardIds: Array.isArray(raw.achievementStandardIds)
+      ? raw.achievementStandardIds.map((id) => String(id).trim()).filter(Boolean)
+      : [],
+    reviewStatus: raw.reviewStatus ? String(raw.reviewStatus).trim().toUpperCase() : null,
     status,
     prerequisites
   };
+}
+
+//+_+// 신규 추천 대상으로 등록하기 전 정확한 교육과정 메타데이터가 있는지 검증
+export function assertSkillEligibilityMetadata(skill) {
+  const normalized = normalizeSkillDefinition(skill);
+  if (normalized.gradeLevel === null || normalized.semester === null || !normalized.curriculumVersion || normalized.achievementStandardIds.length === 0) {
+    throw new Error(`Skill(${normalized.skillId})에 학년·학기·교육과정 메타데이터가 필요합니다.`);
+  }
+  if (typeof normalized.difficulty !== "string") {
+    throw new Error(`Skill(${normalized.skillId})에 표준 난이도 메타데이터가 필요합니다.`);
+  }
+  if (normalized.reviewStatus !== "APPROVED") {
+    throw new Error(`Skill(${normalized.skillId})은 APPROVED 상태여야 합니다.`);
+  }
+  return normalized;
 }
 
 /**

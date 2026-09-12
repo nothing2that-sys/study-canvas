@@ -4,6 +4,12 @@
 //+_+// - activityType과 responseType 분리 (TEXT, CHOICE, CANVAS)
 //+_+// - 자동 채점 배제 및 Guardian Manual 채점 지원용 expectedAnswer 유지
 
+import {
+  normalizeSchoolGrade,
+  normalizeSemester,
+  normalizeDifficulty
+} from "./contentEligibility.js";
+
 export const ActivityType = Object.freeze({
   SHORT_ANSWER: "SHORT_ANSWER",
   MULTIPLE_CHOICE: "MULTIPLE_CHOICE",
@@ -198,8 +204,33 @@ export function normalizeLearningActivity(input) {
     explanation: input.explanation ? String(input.explanation) : "",
     contentRef,
     sourceMetadata,
+    gradeLevel: normalizeSchoolGrade(input.gradeLevel, { allowUnset: true }),
+    semester: normalizeSemester(input.semester, { allowUnset: true }),
+    difficulty: typeof input.difficulty === "string"
+      ? normalizeDifficulty(input.difficulty, { allowUnset: true })
+      : (input.difficulty ?? null),
+    curriculumVersion: input.curriculumVersion ? String(input.curriculumVersion).trim() : null,
+    achievementStandardIds: Array.isArray(input.achievementStandardIds)
+      ? input.achievementStandardIds.map((id) => String(id).trim()).filter(Boolean)
+      : [],
+    reviewStatus: input.reviewStatus ? String(input.reviewStatus).trim().toUpperCase() : (sourceMetadata?.reviewStatus || null),
     metadata: input.metadata && typeof input.metadata === "object" ? { ...input.metadata } : {}
   };
+}
+
+//+_+// 신규 추천용 Activity가 학년 노출 심사에 필요한 계약을 충족하는지 검증
+export function assertActivityEligibilityMetadata(activity) {
+  const normalized = normalizeLearningActivity(activity);
+  if (normalized.gradeLevel === null || normalized.semester === null || !normalized.curriculumVersion || normalized.achievementStandardIds.length === 0) {
+    throw new Error(`LearningActivity(${normalized.id})에 학년·학기·교육과정 메타데이터가 필요합니다.`);
+  }
+  if (typeof normalized.difficulty !== "string") {
+    throw new Error(`LearningActivity(${normalized.id})에 표준 난이도 메타데이터가 필요합니다.`);
+  }
+  if (normalized.reviewStatus !== "APPROVED") {
+    throw new Error(`LearningActivity(${normalized.id})은 APPROVED 상태여야 합니다.`);
+  }
+  return normalized;
 }
 
 //+_+// ============================================================================

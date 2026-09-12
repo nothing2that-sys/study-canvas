@@ -18,7 +18,7 @@
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-180.png">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
-    <link rel="stylesheet" href="./css/app.css?v=20260912T025809841Z-1ea3507">
+    <link rel="stylesheet" href="./css/app.css?v=20260912T040806220Z-152a0b8">
   </head>
   <body>
     <div class="app-shell">
@@ -892,11 +892,36 @@
             <input type="text" id="learnerNameInput" class="text-input" required maxlength="20" placeholder="이름을 입력하세요 (예: 민준)" autocomplete="off">
           </div>
           <div class="form-group">
+            <label for="learnerSchoolGradeInput">현재 초등학교 학년</label>
+            <select id="learnerSchoolGradeInput" class="text-input" required>
+              <option value="">학년을 선택하세요</option>
+              <option value="1">1학년</option>
+              <option value="2">2학년</option>
+              <option value="3">3학년</option>
+              <option value="4">4학년</option>
+              <option value="5">5학년</option>
+              <option value="6">6학년</option>
+            </select>
+            <p class="form-help">선택한 학년을 기준으로 복습·현재 학년·예습 콘텐츠를 구분합니다.</p>
+          </div>
+          <fieldset class="learner-policy-fieldset">
+            <legend>보호자 학습 범위</legend>
+            <label class="learner-policy-option">
+              <input type="checkbox" id="learnerAllowPreviewInput">
+              <span>한 학년 위 예습 허용</span>
+            </label>
+            <label class="learner-policy-option">
+              <input type="checkbox" id="learnerAllowAdvancedInput">
+              <span>심화 난이도 허용</span>
+            </label>
+          </fieldset>
+          <div class="form-group">
             <label>대표 아바타 선택</label>
             <div class="avatar-grid" id="learnerAvatarList">
               <!-- 아바타 라디오 목록이 렌더링됩니다 -->
             </div>
           </div>
+          <p id="learnerModalError" class="form-error" role="alert" hidden></p>
           <div class="dialog-actions">
             <button type="button" id="archiveLearnerBtn" class="btn-danger-outline" hidden>학습자 보관</button>
             <div class="dialog-actions-right">
@@ -932,6 +957,6 @@
       </div>
     </dialog>
 
-    <script type="module" src="./js/app.js?v=20260912T025809841Z-1ea3507"></script>
+    <script type="module" src="./js/app.js?v=20260912T040806220Z-152a0b8"></script>
   </body>
 </html>

@@ -3,6 +3,7 @@
 
 import { DEFAULT_LEGACY_LEARNER_ID } from "../storage.js";
 import { getAllSubjects } from "../platform/subjectRegistry.js";
+import { evaluateContentEligibility } from "../contentEligibility.js";
 
 /**
  * @typedef {Object} RecommendationCandidate
@@ -65,7 +66,8 @@ export function buildLearningRecommendations({
   curriculumProgress = { mul: [], div: [] },
   subjects = null,
   now = Date.now(),
-  limit = 5
+  limit = 5,
+  eligibilityContext = null
 }) {
   const targetLearnerId = (typeof learnerId === "string" && learnerId) ? learnerId : DEFAULT_LEGACY_LEARNER_ID;
   const currentTime = typeof now === "number" && !isNaN(now) ? now : Date.now();
@@ -377,7 +379,7 @@ export function buildLearningRecommendations({
     ? Math.round(averageSolveTimeMs * defaultNewLearningCount)
     : null;
 
-  candidates.push({
+  const newLearningCandidate = {
     id: `rec:new:${targetLearnerId}:math:arithmetic:${currentLearningStage.id || currentLearningStage.levelId || "M1"}`,
     learnerId: targetLearnerId,
     type: "NEW_LEARNING",
@@ -397,7 +399,16 @@ export function buildLearningRecommendations({
       targetId: currentLearningStage.id || "M1"
     },
     rawItem: currentLearningStage
-  });
+  };
+  const eligibility = eligibilityContext
+    ? evaluateContentEligibility({ ...eligibilityContext, content: currentLearningStage, requestedMode: "NEW" })
+    : null;
+  if (!eligibility || eligibility.eligible) {
+    candidates.push({
+      ...newLearningCandidate,
+      eligibility: eligibility || undefined
+    });
+  }
 
   // --------------------------------------------------------------------------
   // Tier 7: 최근 학습하지 않은 활성 과목 (RETURN_TO_SUBJECT)
