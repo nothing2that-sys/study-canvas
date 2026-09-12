@@ -1415,6 +1415,10 @@ export async function saveWorkbookAssignment(input, options = {}) {
   if (expectedLearnerId && assignment.learnerId !== expectedLearnerId) {
     throw new Error("다른 학습자의 문제집 Assignment는 저장할 수 없습니다.");
   }
+  const existing = await getWorkbookAssignment(assignment.assignmentId, { allLearners: true });
+  if (existing && existing.learnerId !== assignment.learnerId) {
+    throw new Error("다른 학습자가 소유한 Assignment ID를 덮어쓸 수 없습니다.");
+  }
   const db = await getDB();
   if (db.isMemory) {
     db.workbookAssignments.set(assignment.assignmentId, assignment);

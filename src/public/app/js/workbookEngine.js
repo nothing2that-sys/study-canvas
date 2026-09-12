@@ -27,6 +27,8 @@ export const PageProgressStatus = Object.freeze({
 
 const VALID_TYPES = new Set(Object.values(WorkbookType));
 const VALID_ASSIGNMENT_STATUSES = new Set(Object.values(WorkbookAssignmentStatus));
+const VALID_SEMESTERS = new Set(["1", "2", "ALL"]);
+const VALID_DIFFICULTIES = new Set(["FOUNDATION", "STANDARD", "ADVANCED"]);
 
 function requiredText(value, label) {
   const normalized = String(value || "").trim();
@@ -57,6 +59,11 @@ export function normalizeWorkbookDefinition(input = {}) {
     throw new Error("문제집 학년은 1부터 6까지여야 합니다.");
   }
   if (gradeLevel === null && !legacyUnclassified) throw new Error("검수된 문제집에는 학년이 필요합니다.");
+  const semester = String(input.semester || "ALL").trim().toUpperCase();
+  if (!VALID_SEMESTERS.has(semester)) throw new Error(`유효하지 않은 학기입니다: ${input.semester}`);
+  const difficulty = input.difficulty ? String(input.difficulty).trim().toUpperCase() : null;
+  if (difficulty && !VALID_DIFFICULTIES.has(difficulty)) throw new Error(`유효하지 않은 난이도입니다: ${input.difficulty}`);
+  if (!legacyUnclassified && !difficulty) throw new Error("검수된 문제집에는 표준 난이도가 필요합니다.");
   return deepFreezeWorkbook({
     workbookId: requiredText(input.workbookId, "workbookId"),
     type,
@@ -65,8 +72,8 @@ export function normalizeWorkbookDefinition(input = {}) {
     title: requiredText(input.title, "title"),
     description: String(input.description || "").trim(),
     gradeLevel,
-    semester: String(input.semester || "ALL").trim().toUpperCase(),
-    difficulty: input.difficulty ? String(input.difficulty).trim().toUpperCase() : null,
+    semester,
+    difficulty,
     status: String(input.status || "ACTIVE").trim().toUpperCase(),
     legacyUnclassified
   });
@@ -165,7 +172,12 @@ export function moveWorkbookAssignment(assignment, pageId, { bookmark = false, n
 export function projectWorkbookPageProgress({ pageId, draft = null, submissions = [], reviewItems = [] } = {}) {
   const id = requiredText(pageId, "pageId");
   const ownedSubmissions = (submissions || []).filter((item) => String(item?.config?.workbookPageId || item?.workbookPageId || "") === id);
-  const ownedReviews = (reviewItems || []).filter((item) => String(item?.workbookPageId || item?.sourceWorkbookPageId || "") === id && item?.state !== "resolved");
+  const ownedSubmissionIds = new Set(ownedSubmissions.map((item) => String(item.id || "")));
+  const ownedReviews = (reviewItems || []).filter((item) => {
+    const directPageId = String(item?.workbookPageId || item?.sourceWorkbookPageId || "");
+    const linkedSubmission = ownedSubmissionIds.has(String(item?.sourceSubmissionId || ""));
+    return (directPageId === id || linkedSubmission) && String(item?.state || "").toUpperCase() !== "RESOLVED";
+  });
   if (ownedReviews.length > 0) return PageProgressStatus.REVIEW_DUE;
   if (ownedSubmissions.some((item) => item.status === "GRADED" || item.status === "SESSION_COMPLETE")) return PageProgressStatus.GRADED;
   if (ownedSubmissions.some((item) => item.status === "PARENT_GRADING_PENDING" || item.status === "GRADING_ACTIVE")) return PageProgressStatus.GRADING_PENDING;

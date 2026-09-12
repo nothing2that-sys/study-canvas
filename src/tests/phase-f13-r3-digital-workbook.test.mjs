@@ -51,7 +51,8 @@ test("F13-R3 문제집 유형과 필수 식별자를 정규화한다", () => {
     subjectId: "MATH",
     courseId: "core",
     title: "3학년 수학",
-    gradeLevel: 3
+    gradeLevel: 3,
+    difficulty: "standard"
   });
   assert.equal(definition.type, "FIXED");
   assert.equal(definition.subjectId, "math");
@@ -62,6 +63,14 @@ test("F13-R3 검수 문제집은 1부터 6까지의 학년만 허용한다", () 
   assert.throws(() => normalizeWorkbookDefinition({ workbookId: "a", subjectId: "math", courseId: "c", title: "t", gradeLevel: 0 }));
   assert.throws(() => normalizeWorkbookDefinition({ workbookId: "a", subjectId: "math", courseId: "c", title: "t", gradeLevel: 7 }));
   assert.throws(() => normalizeWorkbookDefinition({ workbookId: "a", subjectId: "math", courseId: "c", title: "t" }));
+});
+
+
+test("F13-R3 검수 문제집은 표준 학기와 난이도만 허용한다", () => {
+  const base = { workbookId: "w", subjectId: "math", courseId: "core", title: "검수 문제집", gradeLevel: 3 };
+  assert.throws(() => normalizeWorkbookDefinition({ ...base, semester: "3", difficulty: "STANDARD" }));
+  assert.throws(() => normalizeWorkbookDefinition({ ...base, semester: "ALL", difficulty: "HARD" }));
+  assert.throws(() => normalizeWorkbookDefinition({ ...base, semester: "ALL" }));
 });
 
 test("F13-R3 기존 미분류 콘텐츠만 null 학년을 명시적으로 허용한다", () => {
@@ -153,6 +162,15 @@ test("F13-R3 PageProgress는 제출과 보호자 채점 대기를 투영한다",
   assert.equal(projectWorkbookPageProgress({ pageId: "p1", submissions: [{ workbookPageId: "p1", status: "PARENT_GRADING_PENDING" }] }), PageProgressStatus.GRADING_PENDING);
 });
 
+
+test("F13-R3 ReviewItem은 원본 Submission을 통해 문제집 페이지에 투영된다", () => {
+  assert.equal(projectWorkbookPageProgress({
+    pageId: "p1",
+    submissions: [{ id: "sub-1", config: { workbookPageId: "p1" }, status: "GRADED" }],
+    reviewItems: [{ sourceSubmissionId: "sub-1", state: "review_pending" }]
+  }), PageProgressStatus.REVIEW_DUE);
+});
+
 test("F13-R3 미해결 복습은 PageProgress 최우선 상태다", () => {
   assert.equal(projectWorkbookPageProgress({
     pageId: "p1",
@@ -184,6 +202,14 @@ test("F13-R3 다른 학습자 Assignment 저장을 거절한다", async () => {
   setCurrentLearnerId("learner-a");
   const other = createWorkbookAssignment({ learnerId: "learner-b", workbookId: "w", editionVersion: 1 });
   await assert.rejects(() => saveWorkbookAssignment(other));
+});
+
+
+test("F13-R3 동일 Assignment ID로 다른 학습자 데이터를 덮어쓸 수 없다", async () => {
+  setCurrentLearnerId("learner-a");
+  await saveWorkbookAssignment(createWorkbookAssignment({ assignmentId: "shared-id", learnerId: "learner-a", workbookId: "w", editionVersion: 1 }));
+  setCurrentLearnerId("learner-b");
+  await assert.rejects(() => saveWorkbookAssignment(createWorkbookAssignment({ assignmentId: "shared-id", learnerId: "learner-b", workbookId: "w", editionVersion: 1 })));
 });
 
 test("F13-R3 특정 학습자 초기화는 다른 학습자 Assignment를 보존한다", async () => {
@@ -269,6 +295,7 @@ test("F13-R3 세션 생성은 문제집 문맥을 일회성으로 병합한다",
 test("F13-R3 페이지 이동 전 저장 실패 시 이동을 중단한다", () => {
   const source = fs.readFileSync(path.join(appRoot, "js", "workbookView.js"), "utf8");
   assert.match(source, /await beforePageChange\(\)/);
+  assert.match(source, /const assignment = await resolveSelectedAssignment\(\)/);
   assert.match(source, /저장에 실패하여 페이지를 이동하지 않았습니다/);
 });
 

@@ -229,7 +229,7 @@ export async function renderWorkbookReaderView() {
   const root = documentRef?.querySelector("#workbookReaderContent");
   const navigator = documentRef?.querySelector("#workbookPageNavigator");
   if (!root || !navigator) return;
-  const assignment = currentAssignment || await resolveSelectedAssignment();
+  const assignment = await resolveSelectedAssignment();
   if (!assignment || !currentCatalogItem) {
     root.innerHTML = "<p>문제집을 찾을 수 없습니다.</p>";
     return;
