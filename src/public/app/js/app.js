@@ -77,6 +77,11 @@ import { generateUnitConversionActivities } from "./measurementUnitGenerator.js"
 import { selectKoreanActivities } from "./koreanActivitySelector.js";
 import { selectEnglishActivities } from "./englishActivitySelector.js";
 
+if (typeof window !== "undefined") {
+  window.__mathCanvasModuleStarted = true;
+  window.sessionStorage?.removeItem("math_canvas_sw_module_recovery");
+}
+
 // 앱 전역 인터랙션 가드 초기화
 const interactionGuard = setupInteractionGuard(typeof document !== "undefined" ? document : null);
 const modalManager = setupModalManager({ documentRef: typeof document !== "undefined" ? document : null, interactionGuard });
@@ -1759,7 +1764,7 @@ function renderProblemStageContent(q, options = {}) {
 // ----------------------------------------------------
 function startSessionWithQuestions(questions, config) {
   if (!questions || questions.length === 0) return;
-  const workbookContext = consumeActiveWorkbookContext();
+  const workbookContext = consumeActiveWorkbookContext(undefined, { launchTarget: getCurrentRoute() });
   const effectiveConfig = workbookContext ? { ...config, ...workbookContext } : config;
   lastSessionConfig = effectiveConfig;
   currentDraftCreatedAt = Date.now();

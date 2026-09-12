@@ -263,6 +263,49 @@ test("F13-R3 문제집 세션 문맥은 한 번만 소비한다", () => {
   assert.equal(consumeActiveWorkbookContext(storage), null);
 });
 
+test("F13-R3 문제집 문맥은 실행 대상이 다르거나 만료되면 폐기한다", () => {
+  const now = Date.now();
+  const values = new Map([["math_canvas_workbook_context", JSON.stringify({
+    workbookPageId: "p1",
+    launchTarget: "/math/arithmetic",
+    createdAt: now
+  })]]);
+  const storage = {
+    getItem: (key) => values.get(key) || null,
+    removeItem: (key) => values.delete(key)
+  };
+  assert.equal(consumeActiveWorkbookContext(storage, { launchTarget: "/korean/core" }), null);
+  values.set("math_canvas_workbook_context", JSON.stringify({
+    workbookPageId: "p1",
+    launchTarget: "/math/arithmetic",
+    createdAt: now - 60_000
+  }));
+  assert.equal(consumeActiveWorkbookContext(storage, { launchTarget: "/math/arithmetic", maxAgeMs: 1000 }), null);
+});
+
+test("F13-R3 백업 복원은 잘못되거나 충돌하는 Assignment를 데이터 삭제 전에 거절한다", async () => {
+  setCurrentLearnerId("learner-a");
+  const existing = createWorkbookAssignment({ learnerId: "learner-a", workbookId: "w", editionVersion: 1 });
+  await saveWorkbookAssignment(existing);
+  const backup = await exportAllData();
+  backup.data.workbookAssignments = [
+    { ...existing, assignmentId: "collision" },
+    { ...existing, assignmentId: "collision", learnerId: "learner-b" }
+  ];
+  assert.equal(validateBackupData(backup).isValid, false);
+  await assert.rejects(() => importBackupData(backup, { mode: "replace" }));
+  assert.equal((await getWorkbookAssignments({ learnerId: "learner-a" })).length, 1);
+});
+
+test("F13-R3 모듈 계약 불일치 시 서비스 워커 복구 경로를 제공한다", () => {
+  const html = fs.readFileSync(path.join(appRoot, "index.html"), "utf8");
+  const source = fs.readFileSync(path.join(appRoot, "js", "app.js"), "utf8");
+  assert.match(html, /math_canvas_sw_module_recovery/);
+  assert.match(html, /controllerchange/);
+  assert.match(html, /SKIP_WAITING/);
+  assert.match(source, /__mathCanvasModuleStarted = true/);
+});
+
 test("F13-R3 문제집 라우트는 학습자 보호 라우트다", () => {
   setCurrentLearnerId(null);
   for (const route of [ROUTES.BOOKSHELF, ROUTES.WORKBOOK_DETAIL, ROUTES.WORKBOOK_READER]) {

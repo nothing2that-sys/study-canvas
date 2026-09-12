@@ -48,11 +48,20 @@ export function getActiveWorkbookContext(storage = typeof sessionStorage !== "un
   return readJson(storage, CONTEXT_KEY);
 }
 
-export function consumeActiveWorkbookContext(storage = typeof sessionStorage !== "undefined" ? sessionStorage : null) {
+export function consumeActiveWorkbookContext(
+  storage = typeof sessionStorage !== "undefined" ? sessionStorage : null,
+  options = {}
+) {
   const context = readJson(storage, CONTEXT_KEY);
   try {
     storage?.removeItem(CONTEXT_KEY);
   } catch {}
+  if (!context) return null;
+  const expectedLaunchTarget = String(options.launchTarget || "").trim();
+  if (expectedLaunchTarget && String(context.launchTarget || "") !== expectedLaunchTarget) return null;
+  const maxAgeMs = Math.max(0, Number(options.maxAgeMs) || 30 * 60 * 1000);
+  const createdAt = Number(context.createdAt);
+  if (createdAt > 0 && Date.now() - createdAt > maxAgeMs) return null;
   return context;
 }
 
@@ -285,6 +294,7 @@ export async function renderWorkbookReaderView() {
         workbookAssignmentId: currentAssignment.assignmentId,
         workbookEditionVersion: currentAssignment.editionVersion,
         workbookPageId: page.pageId,
+        launchTarget: button.dataset.launchTarget,
         createdAt: Date.now()
       });
       navigate(button.dataset.launchTarget);

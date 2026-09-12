@@ -6,6 +6,7 @@
  */
 
 import { getDB, getAllSessions, getRecentAttempts, getMistakeQuestions, getDraftSession, getWorkbookAssignments, clearAllData } from "./storage.js";
+import { normalizeWorkbookAssignment } from "./workbookEngine.js";
 
 export const BACKUP_FORMAT_VERSION = "1.0";
 
@@ -105,6 +106,16 @@ export function validateBackupData(backup) {
   const strokes = Array.isArray(backup.data.strokes) ? backup.data.strokes : [];
   const drafts = Array.isArray(backup.data.drafts) ? backup.data.drafts : [];
   const workbookAssignments = Array.isArray(backup.data.workbookAssignments) ? backup.data.workbookAssignments : [];
+  const assignmentIds = new Set();
+  try {
+    workbookAssignments.forEach((assignment) => {
+      const normalized = normalizeWorkbookAssignment(assignment);
+      if (assignmentIds.has(normalized.assignmentId)) throw new Error("중복된 문제집 Assignment ID가 있습니다.");
+      assignmentIds.add(normalized.assignmentId);
+    });
+  } catch (error) {
+    return { isValid: false, error: `문제집 Assignment 데이터가 올바르지 않습니다: ${error.message}` };
+  }
 
   let oldestDate = null;
   let newestDate = null;
@@ -156,6 +167,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
   }
 
   const { sessions, attempts, mistakes, stageProgress, strokes, drafts = [], workbookAssignments = [] } = backup.data;
+  const normalizedWorkbookAssignments = workbookAssignments.map((assignment) => normalizeWorkbookAssignment(assignment));
 
   if (db.isMemory) {
     (sessions || []).forEach((s) => db.sessions.set(s.id, s));
@@ -167,7 +179,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
       if (k) db.strokes.set(k, st.strokes || st);
     });
     (drafts || []).forEach((draft) => db.draftSessions.set("current_draft", { ...draft, id: "current_draft" }));
-    (workbookAssignments || []).forEach((assignment) => db.workbookAssignments.set(assignment.assignmentId, assignment));
+    normalizedWorkbookAssignments.forEach((assignment) => db.workbookAssignments.set(assignment.assignmentId, assignment));
 
     return {
       success: true,
@@ -197,7 +209,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
     (stageProgress || []).forEach((p) => progressStore.put(p));
     (strokes || []).forEach((st) => strokeStore.put(st));
     (drafts || []).forEach((draft) => draftStore.put({ ...draft, id: "current_draft" }));
-    (workbookAssignments || []).forEach((assignment) => workbookStore.put(assignment));
+    normalizedWorkbookAssignments.forEach((assignment) => workbookStore.put(assignment));
 
     tx.oncomplete = () => {
       resolve({

@@ -976,6 +976,39 @@
       </div>
     </dialog>
 
+    <script>
+      (() => {
+        const recoveryKey = "math_canvas_sw_module_recovery";
+        window.__mathCanvasModuleStarted = false;
+        if (!("serviceWorker" in navigator)) return;
+        let recoveryScheduled = false;
+        let recoveryReloading = false;
+        const scheduleRecovery = (worker) => {
+          if (!worker || recoveryScheduled) return;
+          recoveryScheduled = true;
+          setTimeout(() => {
+            recoveryScheduled = false;
+            if (window.__mathCanvasModuleStarted || !navigator.serviceWorker.controller) return;
+            worker.postMessage({ type: "SKIP_WAITING" });
+          }, 2500);
+        };
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (window.__mathCanvasModuleStarted || recoveryReloading || sessionStorage.getItem(recoveryKey)) return;
+          recoveryReloading = true;
+          sessionStorage.setItem(recoveryKey, "1");
+          location.reload();
+        });
+        navigator.serviceWorker.register("./service-worker.js").then((registration) => {
+          scheduleRecovery(registration.waiting);
+          registration.addEventListener("updatefound", () => {
+            const worker = registration.installing;
+            worker?.addEventListener("statechange", () => {
+              if (worker.state === "installed") scheduleRecovery(registration.waiting || worker);
+            });
+          });
+        }).catch(() => {});
+      })();
+    </script>
     <script type="module" src="./js/app.js?v=20260912T025809841Z-1ea3507"></script>
   </body>
 </html>
