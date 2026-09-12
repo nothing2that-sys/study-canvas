@@ -35,11 +35,11 @@ test("F13-R2: iPad pen-only canvas keeps writable touch-action none", () => {
   instance.destroy();
 });
 
-test("F13-R2: pointerrawupdate support replaces pointermove without duplicate stream", () => {
+test("F13-R3: iPad uses pointermove and coalesced events even when pointerrawupdate exists", () => {
   const canvas = createMockCanvas({ rawUpdate: true });
   const instance = createDrawingCanvas(canvas, { profile: InputProfile.IPAD_PEN_ONLY });
-  assert.equal(typeof canvas._listeners.pointerrawupdate, "function");
-  assert.equal(canvas._listeners.pointermove, undefined);
+  assert.equal(typeof canvas._listeners.pointermove, "function");
+  assert.equal(canvas._listeners.pointerrawupdate, undefined);
   instance.destroy();
 });
 
@@ -53,7 +53,7 @@ test("F13-R2: delayed previous Pencil lifecycle does not swallow next stroke", (
   instance.destroy();
 });
 
-test("F13-R2: Scribble commit refresh removes its compositor class on next frame", () => {
+test("F13-R3: Scribble commit refresh keeps one paint frame before removing its compositor class", () => {
   const classes = new Set();
   const input = {
     offsetWidth: 240,
@@ -62,20 +62,28 @@ test("F13-R2: Scribble commit refresh removes its compositor class on next frame
       remove: (name) => classes.delete(name)
     }
   };
-  let callback = null;
-  assert.equal(refreshScribbleCommitSurface(input, (fn) => { callback = fn; }), true);
+  const callbacks = [];
+  assert.equal(refreshScribbleCommitSurface(input, (fn) => { callbacks.push(fn); }), true);
   assert.equal(classes.has("scribble-commit-refresh"), true);
-  callback();
+  callbacks.shift()();
+  assert.equal(classes.has("scribble-commit-refresh"), true);
+  callbacks.shift()();
   assert.equal(classes.has("scribble-commit-refresh"), false);
 });
 
-test("F13-R2: quick/detail grading and canonical question ID fixes are wired", () => {
+test("F13-R3: evidence-first grading navigator and canonical question ID fixes are wired", () => {
   const app = fs.readFileSync(new URL("../public/app/js/app.js", import.meta.url), "utf8");
   const css = fs.readFileSync(new URL("../public/app/css/app.css", import.meta.url), "utf8");
+  const html = fs.readFileSync(new URL("../public/app/index.html", import.meta.url), "utf8");
   assert.match(app, /function resolveSessionQuestionId\(rawQuestionId\)/);
   assert.match(app, /const qId = resolveSessionQuestionId\(btn\.dataset\.id\)/);
-  assert.match(app, /const canvasQuestions = gradingViewMode === "detail"/);
-  assert.match(css, /\.grading-grid\.view-quick \.grading-comparison-grid/);
+  assert.match(app, /const canvasQuestions = questions\.filter/);
+  assert.match(app, /function renderGradingQuestionNavigator/);
+  assert.match(app, /refreshScribbleCommitSurface\(inputEl\)/);
+  assert.doesNotMatch(app, /focusNextUngraded\(qId\)/);
+  assert.match(html, /id="gradingQuestionNavigator"/);
+  assert.match(html, /id="gradingExitBtn"/);
+  assert.doesNotMatch(css, /\.grading-grid\.view-quick/);
   assert.match(css, /\.worksheet-card\.response-surface-text \.card-problem-body[\s\S]*?touch-action:\s*auto/);
 });
 

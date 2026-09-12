@@ -44,7 +44,8 @@ test("Phase F0: 제출과 보호자 채점의 기존 계약을 기준선으로 �
   assert.match(sessionSource, /function getGradingStatus\(/);
   assert.match(sessionSource, /allGraded:/);
   assert.match(sessionSource, /아직 채점되지 않은 문제가/);
-  assert.match(appSource, /focusNextUngraded/);
+  assert.match(appSource, /renderGradingQuestionNavigator/);
+  assert.match(appSource, /finishGradingBtn\.disabled = !status\.allGraded/);
 });
 
 test("Phase F0: 학생 필기와 보호자 채점 필기 레이어를 분리한다", () => {

@@ -188,13 +188,14 @@ test("Phase F5: 11. 전체 판정 후에만 GRADED 상태와 100% 진행률을 �
   assert.equal(updated.gradingProgress.progressPercent, 100);
 });
 
-test("Phase F5: 12. Production UI에 시작 확인·빠른/상세·3상태 판정이 연결된다", () => {
+test("Phase F5: 12. Production UI에 시작 확인·근거 상세·문제 탐색·3상태 판정이 연결된다", () => {
   const html = fs.readFileSync(new URL("../public/app/index.html", import.meta.url), "utf8");
   const js = fs.readFileSync(new URL("../public/app/js/app.js", import.meta.url), "utf8");
   assert.match(html, /id="parentGradingStartPanel"/);
   assert.match(html, /id="startParentGradingBtn"/);
-  assert.match(html, /id="gradingQuickViewBtn"/);
-  assert.match(html, /id="gradingDetailViewBtn"/);
+  assert.match(html, /id="gradingQuestionNavigator"/);
+  assert.match(html, /id="gradingExitBtn"/);
+  assert.doesNotMatch(html, /id="gradingQuickViewBtn"/);
   assert.match(js, /normalizeGradeDecision/);
   assert.match(js, /startSubmissionGrading/);
   assert.match(js, /GradeDecision.RETRY/);

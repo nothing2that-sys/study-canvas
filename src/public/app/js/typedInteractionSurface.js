@@ -29,9 +29,11 @@ export function refreshScribbleCommitSurface(inputElement, scheduleFrame = globa
     ? scheduleFrame
     : (callback) => globalThis.setTimeout(callback, 0);
   schedule(() => {
-    //+_+// iPadOS Scribble 변환 직후 입력 레이어를 다시 합성해 변환 전 Pencil 잔상을 제거한다.
+    //+_+// iPadOS Scribble 변환 프레임을 먼저 합성한 뒤 다음 프레임에 임시 레이어를 해제해 Pencil 잔상을 제거한다.
     void inputElement.offsetWidth;
-    inputElement.classList.remove("scribble-commit-refresh");
+    schedule(() => {
+      inputElement.classList.remove("scribble-commit-refresh");
+    });
   });
   return true;
 }

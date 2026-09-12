@@ -267,8 +267,12 @@ const gradedWrongText = document.querySelector("#gradedWrongText");
 const gradedRetryText = document.querySelector("#gradedRetryText");
 const parentGradingStartPanel = document.querySelector("#parentGradingStartPanel");
 const startParentGradingBtn = document.querySelector("#startParentGradingBtn");
-const gradingQuickViewBtn = document.querySelector("#gradingQuickViewBtn");
-const gradingDetailViewBtn = document.querySelector("#gradingDetailViewBtn");
+const gradingExitBtn = document.querySelector("#gradingExitBtn");
+const gradingQuestionNavigator = document.querySelector("#gradingQuestionNavigator");
+const gradingQuestionChips = document.querySelector("#gradingQuestionChips");
+const gradingQuestionPosition = document.querySelector("#gradingQuestionPosition");
+const gradingPrevQuestionBtn = document.querySelector("#gradingPrevQuestionBtn");
+const gradingNextQuestionBtn = document.querySelector("#gradingNextQuestionBtn");
 const toggleAnswersBtn = document.querySelector("#toggleAnswersBtn");
 const toggleAnswersText = document.querySelector("#toggleAnswersText");
 const gradeAllCorrectBtn = document.querySelector("#gradeAllCorrectBtn");
@@ -302,7 +306,7 @@ let hideAnswersInGrading = false;
 let currentDraftCreatedAt = Date.now();
 let currentGradingQuestionId = null;
 let currentSubmission = null;
-let gradingViewMode = "quick";
+let gradingViewMode = "detail";
 
 // 캔버스 필기 상태
 let currentPenColor = "#173f35";
@@ -1916,6 +1920,7 @@ function renderCurrentWorksheetPage() {
           } catch (err) {
             console.warn("[app] 학생 응답 변경 거절 (Session Locked):", err);
           }
+          refreshScribbleCommitSurface(inputEl);
         });
         inputEl.addEventListener("change", (e) => {
           try {
@@ -2224,7 +2229,7 @@ async function handleSubmitPractice() {
   //+_+// Phase F5: 학생 제출 직후에는 PARENT_GRADING_PENDING을 유지하고 보호자의 명시적 시작을 기다린다.
   switchView(gradingView);
   hideAnswersInGrading = false;
-  gradingViewMode = "quick";
+  gradingViewMode = "detail";
   if (parentGradingStartPanel) parentGradingStartPanel.hidden = false;
   if (gradingGrid) gradingGrid.hidden = true;
   if (finishGradingBtn?.parentElement) finishGradingBtn.parentElement.hidden = true;
@@ -2275,15 +2280,17 @@ function renderGradingView() {
   gradingCanvasInstances.forEach((instance) => instance.destroy());
   gradingCanvasInstances = [];
   const questions = currentSession.questions;
-  const activeGrade = questions.find((question) => question.id === currentGradingQuestionId)?.grade;
-  if (gradingViewMode === "quick" && normalizeGradeDecision(activeGrade?.decision ?? activeGrade?.isCorrect)) currentGradingQuestionId = null;
+  gradingViewMode = "detail";
+  if (!questions.some((question) => question.id === currentGradingQuestionId)) {
+    currentGradingQuestionId = questions[0]?.id || null;
+  }
 
   toggleAnswersText.textContent = hideAnswersInGrading ? "정답 전체 보이기" : "정답 전체 숨기기";
 
   // 워크시트와 100% 동일한 열 수(cols)와 밀도 클래스 동기화 (좌우 비율 완벽 보존)
   if (gradingGrid) {
-    gradingGrid.classList.toggle("view-detail", gradingViewMode === "detail");
-    gradingGrid.classList.toggle("view-quick", gradingViewMode === "quick");
+    gradingGrid.classList.add("view-detail");
+    gradingGrid.classList.remove("view-quick");
     const pSize = Number(currentSession.pageSize) || 4;
     const cols = currentSession.cols || (pSize <= 2 ? pSize : 2);
     gradingGrid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
@@ -2301,11 +2308,6 @@ function renderGradingView() {
       gradingGrid.classList.add("density-2x5");
     }
   }
-  gradingQuickViewBtn?.classList.toggle("active", gradingViewMode === "quick");
-  gradingDetailViewBtn?.classList.toggle("active", gradingViewMode === "detail");
-  gradingQuickViewBtn?.setAttribute("aria-selected", String(gradingViewMode === "quick"));
-  gradingDetailViewBtn?.setAttribute("aria-selected", String(gradingViewMode === "detail"));
-
   gradingGrid.replaceChildren(...questions.map((q, idx) => {
     const card = document.createElement("div");
     card.className = "grading-card";
@@ -2373,8 +2375,6 @@ function renderGradingView() {
         </button>
       </div>
 
-      <button type="button" class="chip-action-btn grading-card-detail-btn" data-detail-id="${q.id}">상세 보기</button>
-
       <details class="grading-explanation">
         <summary>오답 풀이 단계를 확인하기</summary>
         <p>${(q.gradingReference?.explanation || q.explanation) ? escapeHtml(q.gradingReference?.explanation || q.explanation) : (q.operandA !== undefined ? `${Number(q.operandA).toLocaleString()} ${symbol} ${Number(q.operandB).toLocaleString()}의 정답은 <strong>${answerFormatted}</strong>입니다. 위 모범 풀이에서 자리 맞춤과 중간 계산을 순서대로 비교해 보세요.` : `정답: <strong>${answerFormatted}</strong>`)}</p>
@@ -2399,6 +2399,8 @@ function renderGradingView() {
     return card;
   }));
 
+  renderGradingQuestionNavigator();
+
   // 채점 뷰에서 학생 필기 캔버스 복원 및 채점자 빨간 펜 필기 활성화
   requestAnimationFrame(() => {
     if (renderRevision !== gradingRenderRevision) return;
@@ -2407,9 +2409,7 @@ function renderGradingView() {
 
     const createdGradingInstances = [];
     //+_+// 빠른 채점은 판정 목록만 렌더링하고, 상세 채점에서 현재 한 문제의 비교·빨간펜 캔버스만 활성화한다.
-    const canvasQuestions = gradingViewMode === "detail"
-      ? questions.filter((question) => question.id === currentGradingQuestionId)
-      : [];
+    const canvasQuestions = questions.filter((question) => question.id === currentGradingQuestionId);
     canvasQuestions.forEach((q) => {
       const gCanvasEl = document.querySelector(`#gradingCanvas_${q.id}`);
       if (gCanvasEl) {
@@ -2452,6 +2452,40 @@ function renderGradingView() {
   updateGradingStatusUI();
 }
 
+function renderGradingQuestionNavigator() {
+  if (!currentSession || !gradingQuestionNavigator || !gradingQuestionChips) return;
+  const questions = currentSession.questions;
+  const currentIndex = Math.max(0, questions.findIndex((question) => question.id === currentGradingQuestionId));
+  gradingQuestionNavigator.hidden = questions.length === 0;
+  gradingQuestionPosition.textContent = `${currentIndex + 1} / ${questions.length}`;
+  gradingPrevQuestionBtn.disabled = currentIndex <= 0;
+  gradingNextQuestionBtn.disabled = currentIndex >= questions.length - 1;
+  gradingQuestionChips.replaceChildren(...questions.map((question, index) => {
+    const button = document.createElement("button");
+    const grade = gradingResultsMap.get(question.id) || question.grade;
+    const decision = normalizeGradeDecision(grade?.decision ?? grade?.isCorrect);
+    button.type = "button";
+    button.className = `grading-question-chip ${decision ? "is-graded" : "is-ungraded"}`;
+    button.textContent = String(index + 1);
+    button.dataset.questionId = String(question.id);
+    button.setAttribute("aria-label", `${index + 1}번 문제${decision ? " 채점됨" : " 미채점"}`);
+    button.setAttribute("aria-current", String(question.id) === String(currentGradingQuestionId) ? "page" : "false");
+    return button;
+  }));
+}
+
+function moveGradingQuestion(offset) {
+  if (!currentSession) return;
+  const questions = currentSession.questions;
+  const currentIndex = Math.max(0, questions.findIndex((question) => question.id === currentGradingQuestionId));
+  const nextIndex = Math.max(0, Math.min(questions.length - 1, currentIndex + offset));
+  if (nextIndex === currentIndex) return;
+  currentGradingQuestionId = questions[nextIndex].id;
+  renderGradingView();
+  triggerDraftSave();
+  persistCurrentGradingProgress().catch((error) => console.error("채점 문제 위치 저장 실패:", error));
+}
+
 function updateGradingStatusUI() {
   if (!currentSession) return;
   const status = currentSession.getGradingStatus();
@@ -2472,29 +2506,6 @@ function updateGradingStatusUI() {
       ? "모든 문제의 채점이 완료되었습니다. 결과를 확인할 수 있습니다."
       : `미채점 ${remaining}문제가 남았습니다.`;
   }
-}
-
-function focusNextUngraded(currentId) {
-  if (!currentSession) return;
-  const questions = currentSession.questions;
-  const startIndex = Math.max(0, questions.findIndex((question) => question.id === currentId));
-  const ordered = [...questions.slice(startIndex + 1), ...questions.slice(0, startIndex + 1)];
-  const next = ordered.find((question) => {
-    const grade = gradingResultsMap.get(question.id) || question.grade;
-    return !normalizeGradeDecision(grade?.decision ?? grade?.isCorrect);
-  });
-  currentGradingQuestionId = next?.id || (gradingViewMode === "detail" ? currentId : null);
-  document.querySelectorAll(".grading-card[aria-current]").forEach((card) => card.removeAttribute("aria-current"));
-  if (!next) {
-    if (currentGradingQuestionId) {
-      document.querySelector(`#gradingCard_${currentGradingQuestionId}`)?.setAttribute("aria-current", "step");
-    }
-    return;
-  }
-  const card = document.querySelector(`#gradingCard_${next.id}`);
-  card?.setAttribute("aria-current", "step");
-  card?.scrollIntoView({ behavior: getPreferredScrollBehavior(), block: "center" });
-  card?.querySelector(".grade-btn")?.focus({ preventScroll: true });
 }
 
 // 개별 문제 채점 클릭
@@ -2532,7 +2543,7 @@ function handleGradeClick(event) {
   }
 
   updateGradingStatusUI();
-  focusNextUngraded(qId);
+  renderGradingQuestionNavigator();
   persistCurrentGradingProgress().catch((error) => console.error("보호자 판정 저장 실패:", error));
 }
 
@@ -2569,7 +2580,7 @@ function handleRedChipClick(event) {
       if (stateLabel) stateLabel.textContent = decision === GradeDecision.CORRECT ? "채점됨: 맞음" : decision === GradeDecision.WRONG ? "채점됨: 틀림" : "채점됨: 다시 풀기";
     }
     updateGradingStatusUI();
-    if (decision) focusNextUngraded(qId);
+    if (decision) renderGradingQuestionNavigator();
     persistCurrentGradingProgress().catch((error) => console.error("보호자 코멘트 저장 실패:", error));
   }
 }
@@ -2613,21 +2624,36 @@ function handleToggleAnswers() {
   persistCurrentGradingProgress().catch((error) => console.error("보호자 보기 상태 저장 실패:", error));
 }
 
-function setGradingViewMode(mode, questionId = null) {
-  gradingViewMode = mode === "detail" ? "detail" : "quick";
-  if (questionId) currentGradingQuestionId = questionId;
-  if (gradingViewMode === "detail" && !currentGradingQuestionId) {
-    currentGradingQuestionId = currentSession?.questions?.[0]?.id || null;
-  }
+function selectGradingQuestion(questionId) {
+  if (!currentSession) return;
+  const resolvedQuestionId = resolveSessionQuestionId(questionId);
+  if (!currentSession.questions.some((question) => question.id === resolvedQuestionId)) return;
+  gradingViewMode = "detail";
+  currentGradingQuestionId = resolvedQuestionId;
   renderGradingView();
   triggerDraftSave();
-  persistCurrentGradingProgress().catch((error) => console.error("채점 보기 방식 저장 실패:", error));
+  persistCurrentGradingProgress().catch((error) => console.error("채점 문제 위치 저장 실패:", error));
 }
 
-function handleGradingCardDetail(event) {
-  const detailButton = event.target.closest("[data-detail-id]");
-  if (!detailButton) return;
-  setGradingViewMode("detail", resolveSessionQuestionId(detailButton.dataset.detailId));
+async function handleLeaveGrading() {
+  if (!currentSession || currentSession.state !== SessionState.GRADING_ACTIVE) return;
+  try {
+    await persistCurrentGradingProgress();
+    await flushDraftSave();
+  } catch (error) {
+    alert("채점 진행 상태 저장에 실패했습니다. 다시 시도해 주세요.");
+    return;
+  }
+  gradingCanvasInstances.forEach((instance) => instance.destroy());
+  gradingCanvasInstances = [];
+  gradingRenderRevision += 1;
+  currentSession = null;
+  currentSubmission = null;
+  questionStrokesMap.clear();
+  questionResponseRecordsMap.clear();
+  gradingStrokesMap.clear();
+  gradingResultsMap.clear();
+  navigate(ROUTES.HOME);
 }
 
 // 채점 완료 및 최종 성적표 보기 (IndexedDB 영구 저장 및 finalizeSubmissionGrading 결과 확정)
@@ -3007,7 +3033,6 @@ if (gradingGrid) {
   gradingGrid.addEventListener("click", (e) => {
     handleGradeClick(e);
     handleRedChipClick(e);
-    handleGradingCardDetail(e);
   });
   gradingGrid.addEventListener("input", handleRedPenInput);
 }
@@ -3021,8 +3046,14 @@ if (startParentGradingBtn) startParentGradingBtn.addEventListener("click", () =>
     alert("보호자 채점을 시작하지 못했습니다. 다시 시도해 주세요.");
   });
 });
-if (gradingQuickViewBtn) gradingQuickViewBtn.addEventListener("click", () => setGradingViewMode("quick"));
-if (gradingDetailViewBtn) gradingDetailViewBtn.addEventListener("click", () => setGradingViewMode("detail"));
+if (gradingExitBtn) gradingExitBtn.addEventListener("click", () => handleLeaveGrading());
+if (gradingPrevQuestionBtn) gradingPrevQuestionBtn.addEventListener("click", () => moveGradingQuestion(-1));
+if (gradingNextQuestionBtn) gradingNextQuestionBtn.addEventListener("click", () => moveGradingQuestion(1));
+if (gradingQuestionChips) gradingQuestionChips.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-question-id]");
+  if (!button) return;
+  selectGradingQuestion(button.dataset.questionId);
+});
 
 if (abortSessionBtn) abortSessionBtn.addEventListener("click", handleAbortSession);
 if (homeBrandLink) {
@@ -3387,7 +3418,7 @@ function restoreSessionFromDraft(draft) {
     draft,
     onGradingActive: () => {
       hideAnswersInGrading = Boolean(draft.answersHidden);
-      gradingViewMode = draft.gradingViewMode === "detail" ? "detail" : "quick";
+      gradingViewMode = "detail";
       currentGradingQuestionId = draft.currentGradingQuestionId || null;
       questionTimer.stop();
       switchView(gradingView, false);
@@ -3424,7 +3455,7 @@ function restoreSessionFromSubmission(submission) {
   currentSession.startSubmitting();
   currentSession.submitPractice(submission.totalSolveTimeMs || 0, submission.perQuestionElapsedMs || {});
   currentSession.setPendingGrading();
-  gradingViewMode = submission.gradingViewMode === "detail" ? "detail" : "quick";
+  gradingViewMode = "detail";
   currentGradingQuestionId = submission.currentGradingQuestionId || null;
   hideAnswersInGrading = Boolean(submission.answersHidden);
   questionTimer.stop();

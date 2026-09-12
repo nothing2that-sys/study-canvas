@@ -693,6 +693,7 @@
                 <h2>풀이가 완료되었습니다! 채점을 진행해 주세요</h2>
                 <p>각 문제의 정답을 확인하고 [맞음] 또는 [틀림]을 선택하세요.</p>
               </div>
+              <button class="chip-action-btn grading-exit-btn" id="gradingExitBtn" type="button">채점 나가기</button>
             </div>
             <div class="grading-toolbar">
               <div class="grading-status-badge" role="status" aria-live="polite">
@@ -706,10 +707,6 @@
                 <button type="button" id="retryGradingDraftSaveBtn" hidden>다시 시도</button>
               </div>
               <div class="grading-quick-actions">
-                <div class="grading-view-tabs" role="tablist" aria-label="채점 보기 방식">
-                  <button class="chip-action-btn active" id="gradingQuickViewBtn" type="button" role="tab" aria-selected="true">빠른 채점</button>
-                  <button class="chip-action-btn" id="gradingDetailViewBtn" type="button" role="tab" aria-selected="false">상세 채점</button>
-                </div>
                 <button class="chip-action-btn" id="toggleAnswersBtn" type="button">
                   <span id="toggleAnswersText">정답 전체 숨기기</span>
                 </button>
@@ -719,6 +716,13 @@
               </div>
             </div>
           </section>
+
+          <nav class="grading-question-navigator" id="gradingQuestionNavigator" aria-label="채점 문제 이동" hidden>
+            <button class="chip-action-btn" id="gradingPrevQuestionBtn" type="button">← 이전 문제</button>
+            <div class="grading-question-chips" id="gradingQuestionChips" aria-label="문제 번호"></div>
+            <span class="grading-question-position" id="gradingQuestionPosition"></span>
+            <button class="chip-action-btn" id="gradingNextQuestionBtn" type="button">다음 문제 →</button>
+          </nav>
 
           <!-- 채점 문제 카드 그리드 -->
           <div class="grading-container">

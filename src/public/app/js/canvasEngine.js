@@ -732,9 +732,8 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   addManagedListener(canvasElement, "pointerdown", onPointerDown, { passive: false });
-  //+_+// 지원 브라우저에서는 합성 pointermove보다 먼저 오는 raw update를 단독 사용해 고속 Pencil 좌표 지연과 중복 수집을 줄인다.
-  const moveEventType = "onpointerrawupdate" in canvasElement ? "pointerrawupdate" : "pointermove";
-  addManagedListener(canvasElement, moveEventType, onPointerMove, { passive: false });
+  //+_+// iPad Safari에서는 pointerrawupdate 단독 경로가 일부 Pencil 좌표를 전달하지 않으므로 검증된 pointermove와 coalesced events를 사용한다.
+  addManagedListener(canvasElement, "pointermove", onPointerMove, { passive: false });
   addManagedListener(canvasElement, "pointerup", onPointerUp, { passive: false });
   addManagedListener(canvasElement, "pointercancel", onPointerCancel, { passive: false });
   addManagedListener(canvasElement, "lostpointercapture", onLostPointerCapture, { passive: false });
