@@ -7,6 +7,7 @@ import { getDraft, getAllSubmissions, getAllReviewItems } from "./data/learningQ
 import { getWorkbookCatalog, getWorkbookCatalogItem } from "./workbookCatalog.js";
 import { navigate, ROUTES } from "./platform/appRouter.js";
 import { escapeHtml } from "./sessionEngine.js";
+import { evaluateContentEligibility } from "./contentEligibility.js";
 
 const SELECTION_KEY = "math_canvas_workbook_selection";
 const CONTEXT_KEY = "math_canvas_workbook_context";
@@ -65,10 +66,22 @@ export function consumeActiveWorkbookContext(
   return context;
 }
 
-async function ensureAssignments(learnerId) {
+function isWorkbookVisible(definition, learner) {
+  if (definition.legacyUnclassified) return true;
+  return evaluateContentEligibility({ learner, policy: learner.guardianPolicy, content: definition, requestedMode: "NEW" }).eligible;
+}
+
+function workbookScopeLabel(definition) {
+  if (definition.legacyUnclassified) return "학년 미분류 기존 콘텐츠";
+  const difficulty = { FOUNDATION: "기초", STANDARD: "표준", ADVANCED: "심화" }[definition.difficulty] || definition.difficulty;
+  return `${definition.gradeLevel}학년 · ${difficulty}`;
+}
+
+async function ensureAssignments(learnerId, learner = null) {
   const existing = await getWorkbookAssignments({ learnerId });
   const byWorkbook = new Map(existing.map((item) => [item.workbookId, item]));
-  for (const catalogItem of getWorkbookCatalog()) {
+  const visibleCatalog = getWorkbookCatalog().filter((item) => !learner || isWorkbookVisible(item.definition, learner));
+  for (const catalogItem of visibleCatalog) {
     const workbookId = catalogItem.definition.workbookId;
     if (!byWorkbook.has(workbookId)) {
       const assignment = createWorkbookAssignment({
@@ -79,7 +92,8 @@ async function ensureAssignments(learnerId) {
       byWorkbook.set(workbookId, await saveWorkbookAssignment(assignment, { learnerId }));
     }
   }
-  return [...byWorkbook.values()];
+  const visibleIds = new Set(visibleCatalog.map((item) => item.definition.workbookId));
+  return [...byWorkbook.values()].filter((assignment) => visibleIds.has(assignment.workbookId));
 }
 
 function subjectLabel(subjectId) {
@@ -127,7 +141,7 @@ async function selectAssignment(assignment) {
 async function resolveSelectedAssignment() {
   const learner = await getActiveLearner();
   if (!learner) return null;
-  const assignments = await ensureAssignments(learner.id);
+  const assignments = await ensureAssignments(learner.id, learner);
   const selection = getSelection();
   const selected = assignments.find((item) => item.assignmentId === selection.assignmentId) || assignments[0] || null;
   if (selected) {
@@ -145,7 +159,7 @@ export async function renderBookshelfView() {
     root.innerHTML = "<p>학습자를 먼저 선택해 주세요.</p>";
     return;
   }
-  const assignments = await ensureAssignments(learner.id);
+  const assignments = await ensureAssignments(learner.id, learner);
   const cards = await Promise.all(assignments.map(async (assignment) => {
     const item = getWorkbookCatalogItem(assignment.workbookId);
     if (!item) return "";
@@ -156,7 +170,7 @@ export async function renderBookshelfView() {
         <div class="workbook-cover-subject">${escapeHtml(subjectLabel(item.definition.subjectId))}</div>
         <h2>${escapeHtml(item.definition.title)}</h2>
         <p>${escapeHtml(item.definition.description)}</p>
-        <span class="workbook-legacy-label">학년 미분류 기존 콘텐츠</span>
+        <span class="workbook-legacy-label">${escapeHtml(workbookScopeLabel(item.definition))}</span>
         <div class="workbook-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${progress.percent}">
           <i style="width:${progress.percent}%"></i>
         </div>
@@ -191,7 +205,7 @@ export async function renderWorkbookDetailView() {
       <span>${escapeHtml(subjectLabel(definition.subjectId))}</span>
       <h1>${escapeHtml(definition.title)}</h1>
       <p>${escapeHtml(definition.description)}</p>
-      <b>학년 미분류 기존 콘텐츠</b>
+      <b>${escapeHtml(workbookScopeLabel(definition))}</b>
     </div>
     <div class="workbook-detail-body">
       <div class="workbook-detail-actions">

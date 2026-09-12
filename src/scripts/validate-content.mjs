@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { validateVocabularyCatalog } from "../public/app/js/englishVocabularyStudy.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -542,6 +543,27 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
               recordError(`activities.json: Production 활성 스킬 ${sId}의 APPROVED 문제 수가 부족합니다 (현재: ${count}, 필요: ${DEFAULT_PROBLEM_COUNT})`);
             }
           }
+        }
+      }
+    }
+
+    //+_+// Phase F14: 학년별 영단어 카탈로그 검증
+    const wordsRel = manifest.files?.words;
+    if (wordsRel) {
+      const wordsPath = path.resolve(packageDir, wordsRel);
+      const wordsCatalog = readJsonFile(wordsPath);
+      if (wordsCatalog) {
+        try {
+          const vocabularyResult = validateVocabularyCatalog(wordsCatalog);
+          if (vocabularyResult.packageId !== manifestPkgId) recordError(`words.json: packageId 불일치 (${manifestPkgId})`);
+          if (vocabularyResult.packageVersion !== manifestPkgVer) recordError(`words.json: packageVersion 불일치 (${manifestPkgId})`);
+          const gradeCounts = new Map();
+          for (const word of vocabularyResult.words) gradeCounts.set(word.gradeLevel, (gradeCounts.get(word.gradeLevel) || 0) + 1);
+          for (const grade of [3, 4, 5, 6]) {
+            if ((gradeCounts.get(grade) || 0) < 12) recordError(`words.json: ${grade}학년 APPROVED 단어가 12개보다 적습니다.`);
+          }
+        } catch (error) {
+          recordError(`words.json: ${error.message}`);
         }
       }
     }

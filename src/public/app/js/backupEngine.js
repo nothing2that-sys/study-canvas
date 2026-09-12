@@ -5,8 +5,9 @@
  * - JSON Import (버전 검증, Preview, Replace vs Merge 모드, 무결성 검증)
  */
 
-import { getDB, getAllSessions, getRecentAttempts, getMistakeQuestions, getDraftSession, getWorkbookAssignments, clearAllData } from "./storage.js";
+import { getDB, getAllSessions, getRecentAttempts, getMistakeQuestions, getDraftSession, getWorkbookAssignments, getVocabularyMemoryStates, clearAllData } from "./storage.js";
 import { normalizeWorkbookAssignment } from "./workbookEngine.js";
+import { normalizeVocabularyMemoryState } from "./englishVocabularyStudy.js";
 
 export const BACKUP_FORMAT_VERSION = "1.0";
 
@@ -20,6 +21,7 @@ export async function exportAllData() {
   const mistakes = await getMistakeQuestions();
   const currentDraft = await getDraftSession();
   const workbookAssignments = await getWorkbookAssignments({ allLearners: true });
+  const vocabularyMemoryStates = await getVocabularyMemoryStates({ allLearners: true });
 
   let stageProgress = [];
   let strokes = [];
@@ -67,6 +69,7 @@ export async function exportAllData() {
       stageProgressCount: stageProgress.length,
       strokeCount: strokes.length,
       workbookAssignmentCount: workbookAssignments.length,
+      vocabularyMemoryStateCount: vocabularyMemoryStates.length,
       draftCount: currentDraft ? 1 : 0
     },
     data: {
@@ -76,6 +79,7 @@ export async function exportAllData() {
       stageProgress,
       strokes,
       workbookAssignments,
+      vocabularyMemoryStates,
       drafts: currentDraft ? [currentDraft] : []
     }
   };
@@ -106,6 +110,7 @@ export function validateBackupData(backup) {
   const strokes = Array.isArray(backup.data.strokes) ? backup.data.strokes : [];
   const drafts = Array.isArray(backup.data.drafts) ? backup.data.drafts : [];
   const workbookAssignments = Array.isArray(backup.data.workbookAssignments) ? backup.data.workbookAssignments : [];
+  const vocabularyMemoryStates = Array.isArray(backup.data.vocabularyMemoryStates) ? backup.data.vocabularyMemoryStates : [];
   const assignmentIds = new Set();
   try {
     workbookAssignments.forEach((assignment) => {
@@ -115,6 +120,16 @@ export function validateBackupData(backup) {
     });
   } catch (error) {
     return { isValid: false, error: `문제집 Assignment 데이터가 올바르지 않습니다: ${error.message}` };
+  }
+  const vocabularyStateIds = new Set();
+  try {
+    vocabularyMemoryStates.forEach((state) => {
+      const normalized = normalizeVocabularyMemoryState(state);
+      if (vocabularyStateIds.has(normalized.id)) throw new Error("중복된 영단어 기억 상태 ID가 있습니다.");
+      vocabularyStateIds.add(normalized.id);
+    });
+  } catch (error) {
+    return { isValid: false, error: `영단어 기억 상태 데이터가 올바르지 않습니다: ${error.message}` };
   }
 
   let oldestDate = null;
@@ -140,6 +155,7 @@ export function validateBackupData(backup) {
       stageProgressCount: stageProgress.length,
       strokeCount: strokes.length,
       workbookAssignmentCount: workbookAssignments.length,
+      vocabularyMemoryStateCount: vocabularyMemoryStates.length,
       draftCount: drafts.length,
       dateRange: oldestDate && newestDate
         ? `${new Date(oldestDate).toLocaleDateString("ko-KR")} ~ ${new Date(newestDate).toLocaleDateString("ko-KR")}`
@@ -166,8 +182,9 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
     await clearAllData();
   }
 
-  const { sessions, attempts, mistakes, stageProgress, strokes, drafts = [], workbookAssignments = [] } = backup.data;
+  const { sessions, attempts, mistakes, stageProgress, strokes, drafts = [], workbookAssignments = [], vocabularyMemoryStates = [] } = backup.data;
   const normalizedWorkbookAssignments = workbookAssignments.map((assignment) => normalizeWorkbookAssignment(assignment));
+  const normalizedVocabularyMemoryStates = vocabularyMemoryStates.map((state) => normalizeVocabularyMemoryState(state));
 
   if (db.isMemory) {
     (sessions || []).forEach((s) => db.sessions.set(s.id, s));
@@ -180,6 +197,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
     });
     (drafts || []).forEach((draft) => db.draftSessions.set("current_draft", { ...draft, id: "current_draft" }));
     normalizedWorkbookAssignments.forEach((assignment) => db.workbookAssignments.set(assignment.assignmentId, assignment));
+    normalizedVocabularyMemoryStates.forEach((state) => db.vocabularyMemoryStates.set(state.id, state));
 
     return {
       success: true,
@@ -189,12 +207,13 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
       importedMistakes: (mistakes || []).length,
       importedStrokes: (strokes || []).length,
       importedDrafts: (drafts || []).length,
-        importedWorkbookAssignments: (workbookAssignments || []).length
+        importedWorkbookAssignments: (workbookAssignments || []).length,
+        importedVocabularyMemoryStates: (vocabularyMemoryStates || []).length
     };
   }
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "workbookAssignments"], "readwrite");
+    const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "workbookAssignments", "vocabularyMemoryStates"], "readwrite");
     const sessionStore = tx.objectStore("sessions");
     const attemptStore = tx.objectStore("attempts");
     const mistakeStore = tx.objectStore("mistakes");
@@ -202,6 +221,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
     const strokeStore = tx.objectStore("strokes");
     const draftStore = tx.objectStore("draftSessions");
     const workbookStore = tx.objectStore("workbookAssignments");
+    const vocabularyStore = tx.objectStore("vocabularyMemoryStates");
 
     (sessions || []).forEach((s) => sessionStore.put(s));
     (attempts || []).forEach((a) => attemptStore.put(a));
@@ -210,6 +230,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
     (strokes || []).forEach((st) => strokeStore.put(st));
     (drafts || []).forEach((draft) => draftStore.put({ ...draft, id: "current_draft" }));
     normalizedWorkbookAssignments.forEach((assignment) => workbookStore.put(assignment));
+    normalizedVocabularyMemoryStates.forEach((state) => vocabularyStore.put(state));
 
     tx.oncomplete = () => {
       resolve({
@@ -220,7 +241,8 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
         importedMistakes: (mistakes || []).length,
         importedStrokes: (strokes || []).length,
         importedDrafts: (drafts || []).length,
-        importedWorkbookAssignments: (workbookAssignments || []).length
+        importedWorkbookAssignments: (workbookAssignments || []).length,
+        importedVocabularyMemoryStates: (vocabularyMemoryStates || []).length
       });
     };
 

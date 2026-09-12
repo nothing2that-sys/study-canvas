@@ -1,5 +1,6 @@
 import { normalizeDraft } from "./draftEngine.js";
 import { normalizeWorkbookAssignment } from "./workbookEngine.js";
+import { isVocabularyReviewDue, normalizeVocabularyMemoryState } from "./englishVocabularyStudy.js";
 import { getGradingProgress, normalizeGradeDecision, createGradeDecision } from "./parentGrading.js";
 import { createSession } from "./sessionEngine.js";
 import {
@@ -17,8 +18,8 @@ import {
  */
 
 const DB_NAME = "math_canvas_pro_db";
-//+_+// Phase F13-R3: 학습자별 workbookAssignments Store 추가
-export const DB_VERSION = 7;
+//+_+// Phase F14: 학습자별 vocabularyMemoryStates Store 추가
+export const DB_VERSION = 8;
 
 //+_+// 기존 레거시 데이터 및 미지정 데이터용 기본 학습자 식별자
 export const DEFAULT_LEGACY_LEARNER_ID = "legacy_default_learner";
@@ -290,6 +291,25 @@ export function getDB() {
           }
         }
       }
+
+      //+_+// 12. vocabularyMemoryStates store
+      if (!db.objectStoreNames.contains("vocabularyMemoryStates")) {
+        const vocabularyStore = db.createObjectStore("vocabularyMemoryStates", { keyPath: "id" });
+        vocabularyStore.createIndex("learnerId", "learnerId", { unique: false });
+        vocabularyStore.createIndex("wordId", "wordId", { unique: false });
+        vocabularyStore.createIndex("memoryStatus", "memoryStatus", { unique: false });
+        vocabularyStore.createIndex("dueAt", "dueAt", { unique: false });
+      } else {
+        const vocabularyStore = request.transaction.objectStore("vocabularyMemoryStates");
+        for (const [indexName, keyPath] of [
+          ["learnerId", "learnerId"],
+          ["wordId", "wordId"],
+          ["memoryStatus", "memoryStatus"],
+          ["dueAt", "dueAt"]
+        ]) {
+          if (!vocabularyStore.indexNames.contains(indexName)) vocabularyStore.createIndex(indexName, keyPath, { unique: false });
+        }
+      }
     };
 
     request.onsuccess = (event) => {
@@ -319,7 +339,8 @@ let memoryStore = {
   submissions: new Map(),
   progressAggregates: new Map(),
   reviewItems: new Map(),
-  workbookAssignments: new Map()
+  workbookAssignments: new Map(),
+  vocabularyMemoryStates: new Map()
 };
 
 function createMemoryFallbackDB() {
@@ -335,7 +356,8 @@ function createMemoryFallbackDB() {
     submissions: memoryStore.submissions,
     progressAggregates: memoryStore.progressAggregates,
     reviewItems: memoryStore.reviewItems,
-    workbookAssignments: memoryStore.workbookAssignments
+    workbookAssignments: memoryStore.workbookAssignments,
+    vocabularyMemoryStates: memoryStore.vocabularyMemoryStates
   };
 }
 
@@ -1473,6 +1495,79 @@ export async function getWorkbookAssignments(options = {}) {
     .map((item) => ({ ...item }));
 }
 
+//+_+// ============================================================================
+//+_+// 7. Phase F14: 학습자별 영단어 기억 상태 API
+//+_+// ============================================================================
+
+function resolveVocabularyMemoryOwner(options = {}) {
+  if (options.allLearners === true) return null;
+  const learnerId = options.learnerId || getCurrentLearnerId();
+  if (!learnerId) throw new Error("영단어 기억 상태 조회에는 활성 학습자가 필요합니다.");
+  return String(learnerId);
+}
+
+export async function saveVocabularyMemoryState(input, options = {}) {
+  const state = normalizeVocabularyMemoryState(input);
+  const expectedLearnerId = resolveVocabularyMemoryOwner(options);
+  if (expectedLearnerId && state.learnerId !== expectedLearnerId) throw new Error("다른 학습자의 영단어 기억 상태는 저장할 수 없습니다.");
+  const db = await getDB();
+  const existing = db.isMemory
+    ? db.vocabularyMemoryStates.get(state.id)
+    : await new Promise((resolve, reject) => {
+      const tx = db.transaction("vocabularyMemoryStates", "readonly");
+      const request = tx.objectStore("vocabularyMemoryStates").get(state.id);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = (event) => reject(event.target.error);
+    });
+  if (existing && existing.learnerId !== state.learnerId) throw new Error("다른 학습자가 소유한 영단어 기억 상태를 덮어쓸 수 없습니다.");
+  if (db.isMemory) {
+    db.vocabularyMemoryStates.set(state.id, state);
+    return { ...state };
+  }
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("vocabularyMemoryStates", "readwrite");
+    tx.objectStore("vocabularyMemoryStates").put(state);
+    tx.oncomplete = () => resolve({ ...state });
+    tx.onerror = (event) => reject(event.target.error);
+  });
+}
+
+export async function getVocabularyMemoryState(wordId, options = {}) {
+  const learnerId = resolveVocabularyMemoryOwner(options);
+  if (!learnerId) throw new Error("단일 영단어 기억 상태 조회에는 학습자가 필요합니다.");
+  const id = `${learnerId}:${String(wordId || "").trim()}`;
+  const db = await getDB();
+  if (db.isMemory) {
+    const state = db.vocabularyMemoryStates.get(id);
+    return state ? { ...state } : null;
+  }
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("vocabularyMemoryStates", "readonly");
+    const request = tx.objectStore("vocabularyMemoryStates").get(id);
+    request.onsuccess = () => resolve(request.result ? { ...request.result } : null);
+    request.onerror = (event) => reject(event.target.error);
+  });
+}
+
+export async function getVocabularyMemoryStates(options = {}) {
+  const expectedLearnerId = resolveVocabularyMemoryOwner(options);
+  const db = await getDB();
+  const states = db.isMemory
+    ? Array.from(db.vocabularyMemoryStates.values())
+    : await new Promise((resolve, reject) => {
+      const tx = db.transaction("vocabularyMemoryStates", "readonly");
+      const request = tx.objectStore("vocabularyMemoryStates").getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = (event) => reject(event.target.error);
+    });
+  return states
+    .filter((state) => !expectedLearnerId || state.learnerId === expectedLearnerId)
+    .filter((state) => !options.memoryStatus || state.memoryStatus === String(options.memoryStatus).toUpperCase())
+    .filter((state) => options.dueOnly !== true || isVocabularyReviewDue(state, options.now || Date.now()))
+    .sort((left, right) => (Number(left.dueAt) || Number.MAX_SAFE_INTEGER) - (Number(right.dueAt) || Number.MAX_SAFE_INTEGER) || left.id.localeCompare(right.id))
+    .map((state) => ({ ...state }));
+}
+
 /**
  * 저장소 초기화 (특정 learnerId 지정 시 해당 학습자 데이터만 초기화, 미지정 시 전체 초기화)
  */
@@ -1510,13 +1605,16 @@ export async function clearAllData(options = {}) {
       for (const [key, assignment] of db.workbookAssignments.entries()) {
         if (assignment.learnerId === targetLearnerId) db.workbookAssignments.delete(key);
       }
+      for (const [key, state] of db.vocabularyMemoryStates.entries()) {
+        if (state.learnerId === targetLearnerId) db.vocabularyMemoryStates.delete(key);
+      }
       const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
       db.draftSessions.delete(draftKey);
       return true;
     }
 
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems", "workbookAssignments"], "readwrite");
+      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems", "workbookAssignments", "vocabularyMemoryStates"], "readwrite");
       // sessions
       const sessionStore = tx.objectStore("sessions");
       sessionStore.openCursor().onsuccess = (e) => {
@@ -1607,6 +1705,16 @@ export async function clearAllData(options = {}) {
         }
       };
 
+      //+_+// vocabularyMemoryStates
+      const vocabularyStore = tx.objectStore("vocabularyMemoryStates");
+      vocabularyStore.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if (cursor.value.learnerId === targetLearnerId) cursor.delete();
+          cursor.continue();
+        }
+      };
+
       tx.oncomplete = () => resolve(true);
       tx.onerror = (e) => reject(e.target.error);
     });
@@ -1627,11 +1735,12 @@ export async function clearAllData(options = {}) {
     db.progressAggregates.clear();
     db.reviewItems.clear();
     db.workbookAssignments.clear();
+    db.vocabularyMemoryStates.clear();
     return true;
   }
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(["learnerProfiles", "sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems", "workbookAssignments"], "readwrite");
+    const tx = db.transaction(["learnerProfiles", "sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems", "workbookAssignments", "vocabularyMemoryStates"], "readwrite");
     tx.objectStore("learnerProfiles").clear();
     tx.objectStore("sessions").clear();
     tx.objectStore("attempts").clear();
@@ -1643,6 +1752,7 @@ export async function clearAllData(options = {}) {
     tx.objectStore("progressAggregates").clear();
     tx.objectStore("reviewItems").clear();
     tx.objectStore("workbookAssignments").clear();
+    tx.objectStore("vocabularyMemoryStates").clear();
     tx.oncomplete = () => resolve(true);
     tx.onerror = (e) => reject(e.target.error);
   });

@@ -41,7 +41,7 @@ import { bootstrapApp } from "./platform/appBootstrap.js";
 import { navigate, replace, ROUTES, initRouter, addRouteListener, getCurrentRoute, resolveGuardedPath } from "./platform/appRouter.js";
 import { initAppShell, updateShellHeader, renderRouteView } from "./platform/appShell.js";
 import { initLearnerView, renderLearnerSelectView, renderLearnerHomeView, renderSubjectHomeView } from "./learners/learnerView.js";
-import { initWorkbookView, renderWorkbookRoute, consumeActiveWorkbookContext } from "./workbookView.js";
+import { initWorkbookView, renderWorkbookRoute, consumeActiveWorkbookContext, getActiveWorkbookContext } from "./workbookView.js";
 import { playCorrectSound, playWrongSound, playFanfareSound, playClickSound, toggleSound, isSoundMuted } from "./sound.js";
 import { launchConfetti } from "./confetti.js";
 import { applyTheme, cycleTheme, getCurrentTheme, getThemeInfo } from "./theme.js";
@@ -76,6 +76,7 @@ import { loadPackage, loadPackageResource } from "./contentPackageLoader.js";
 import { generateUnitConversionActivities } from "./measurementUnitGenerator.js";
 import { selectKoreanActivities } from "./koreanActivitySelector.js";
 import { selectEnglishActivities } from "./englishActivitySelector.js";
+import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
 if (typeof window !== "undefined") {
   window.__mathCanvasModuleStarted = true;
@@ -3996,6 +3997,7 @@ let currentEnglishDomain = "vocabulary";
 
 export async function renderEnglishLandingView() {
   const container = document.querySelector("#englishSkillsContainer");
+  const vocabularyContainer = document.querySelector("#englishVocabularyStudyPanel");
   const tabs = document.querySelectorAll("#englishDomainTabs .english-tab-btn");
   if (!container) return;
 
@@ -4006,6 +4008,28 @@ export async function renderEnglishLandingView() {
     console.warn("[app] english-core-v1 로드 실패:", err);
     container.innerHTML = `<p class="error-msg">영어 패키지를 불러올 수 없습니다: ${escapeHtml(err.message)}</p>`;
     return;
+  }
+
+  if (vocabularyContainer) {
+    try {
+      const learner = await getActiveLearner();
+      if (learner) {
+        const workbookContext = getActiveWorkbookContext();
+        const workbookGradeMatch = String(workbookContext?.workbookId || "").match(/english-vocabulary-review-g([3-6])$/);
+        const workbookTopicMatch = String(workbookContext?.workbookPageId || "").match(/^english-vocab-g[3-6]-(.+)$/);
+        await initEnglishVocabularyStudy({
+          container: vocabularyContainer,
+          learner,
+          onStartCheck: startEnglishVocabularyCheckSession,
+          onPracticeStart: () => consumeActiveWorkbookContext(sessionStorage, { launchTarget: "/english/core" }),
+          initialGradeLevel: workbookGradeMatch ? Number(workbookGradeMatch[1]) : null,
+          initialTopicId: workbookTopicMatch ? workbookTopicMatch[1] : "ALL"
+        });
+      }
+    } catch (err) {
+      console.warn("[app] english-vocabulary-v1 로드 실패:", err);
+      vocabularyContainer.innerHTML = `<p class="error-msg">영단어 학습을 불러올 수 없습니다: ${escapeHtml(err.message)}</p>`;
+    }
   }
 
   tabs.forEach((tab) => {
@@ -4099,6 +4123,28 @@ export function startEnglishPracticeSession(skill, allActivities, manifest) {
   };
 
   startSessionWithQuestions(activities, sessionConfig);
+}
+
+//+_+// Phase F14 공식 확인 학습은 기존 제출과 보호자 채점 수명주기를 사용한다
+export function startEnglishVocabularyCheckSession({ activities, gradeLevel, topicId = "ALL" } = {}) {
+  if (!Array.isArray(activities) || activities.length === 0) throw new Error("확인 학습 문제가 필요합니다.");
+  const stageId = `EN_VOCAB_CHECK_G${gradeLevel}`;
+  startSessionWithQuestions(activities, {
+    subjectId: "english",
+    courseId: "english-core",
+    moduleId: "english-core",
+    unitId: "vocabulary",
+    skillId: stageId,
+    stageId,
+    macroLevelId: stageId,
+    difficulty: String(activities[0]?.difficulty || "STANDARD"),
+    problemCount: activities.length,
+    pageSize: 4,
+    mathFormat: "horizontal",
+    sessionPurpose: "VOCABULARY_CHECK",
+    vocabularyGradeLevel: Number(gradeLevel),
+    vocabularyTopicId: String(topicId || "ALL")
+  });
 }
 
 //+_+// Phase F11 Rework 1: Production Draft 복원 및 라우트 동기화 Facade

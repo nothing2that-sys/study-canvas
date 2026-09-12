@@ -4976,6 +4976,215 @@ body.theme-midnight .active-learner-pill {
   opacity: 0.9;
 }
 
+.vocabulary-study-section {
+  margin: 1rem 0 1.5rem;
+  padding: 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--primary, #4f46e5) 24%, transparent);
+  border-radius: 20px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--primary, #4f46e5) 8%, var(--surface, #fff)), var(--surface, #fff));
+}
+
+.vocabulary-study-heading,
+.vocabulary-study-toolbar,
+.vocabulary-study-actions,
+.vocabulary-card-head,
+.vocabulary-rating-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.vocabulary-study-heading {
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.vocabulary-study-heading h2,
+.vocabulary-study-heading p {
+  margin: 0;
+}
+
+.vocabulary-study-heading > p {
+  max-width: 30rem;
+  color: var(--text-muted, #64748b);
+  font-size: 0.9rem;
+}
+
+.vocabulary-study-toolbar {
+  flex-wrap: wrap;
+}
+
+.vocabulary-study-toolbar label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.vocabulary-study-toolbar select,
+.vocabulary-text-response input {
+  min-height: 48px;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  color: var(--text, #0f172a);
+  font: inherit;
+}
+
+.vocabulary-due-summary {
+  margin-left: auto;
+  padding: 0.55rem 0.75rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary, #4f46e5) 12%, transparent);
+  font-weight: 700;
+}
+
+.vocabulary-study-actions {
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.vocabulary-primary-btn,
+.vocabulary-secondary-btn,
+.vocabulary-choice-grid button,
+.vocabulary-rating-controls button {
+  min-height: 48px;
+  padding: 0.7rem 1rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.vocabulary-primary-btn {
+  background: var(--primary, #4f46e5);
+  color: #fff;
+}
+
+.vocabulary-secondary-btn,
+.vocabulary-choice-grid button,
+.vocabulary-rating-controls button {
+  border-color: var(--border, #cbd5e1);
+  background: var(--surface, #fff);
+  color: var(--text, #0f172a);
+}
+
+.vocabulary-primary-btn:disabled,
+.vocabulary-secondary-btn:disabled,
+.vocabulary-study-toolbar select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.vocabulary-practice-stage {
+  margin-top: 1.25rem;
+}
+
+.vocabulary-card-head {
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  color: var(--text-muted, #64748b);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.vocabulary-study-card {
+  padding: clamp(1.25rem, 4vw, 2.5rem);
+  border: 1px solid var(--border, #cbd5e1);
+  border-radius: 18px;
+  background: var(--surface, #fff);
+  text-align: center;
+  box-shadow: 0 14px 35px rgb(15 23 42 / 8%);
+}
+
+.vocabulary-card-topic {
+  margin: 0 0 0.5rem;
+  color: var(--primary, #4f46e5);
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.vocabulary-study-card h3 {
+  margin: 0 0 1.25rem;
+  font-size: clamp(1.35rem, 4vw, 2rem);
+}
+
+.vocabulary-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.vocabulary-text-response {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.65rem;
+  text-align: left;
+}
+
+.vocabulary-text-response label {
+  grid-column: 1 / -1;
+  font-weight: 700;
+}
+
+.vocabulary-practice-feedback,
+.vocabulary-session-complete {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, #22c55e 10%, var(--surface, #fff));
+}
+
+.vocabulary-practice-feedback p,
+.vocabulary-session-complete p {
+  margin: 0.35rem 0;
+}
+
+.vocabulary-rating-controls {
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.vocabulary-rating-controls p {
+  flex-basis: 100%;
+  margin: 0;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .vocabulary-study-heading {
+    display: grid;
+  }
+
+  .vocabulary-due-summary {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .vocabulary-choice-grid,
+  .vocabulary-text-response {
+    grid-template-columns: 1fr;
+  }
+
+  .vocabulary-primary-btn,
+  .vocabulary-secondary-btn,
+  .vocabulary-rating-controls button {
+    flex: 1 1 45%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vocabulary-study-card,
+  .vocabulary-primary-btn,
+  .vocabulary-secondary-btn {
+    transition: none;
+  }
+}
+
 
 .workbook-shelf-cta {
   margin-top: 1rem;

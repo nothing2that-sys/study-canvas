@@ -183,6 +183,8 @@ export function normalizeLearningActivity(input) {
       sourceId,
       license,
       attribution: input.sourceMetadata.attribution ? String(input.sourceMetadata.attribution).trim() : null,
+      retrievedAt: input.sourceMetadata.retrievedAt ? String(input.sourceMetadata.retrievedAt).trim() : null,
+      reviewer: input.sourceMetadata.reviewer ? String(input.sourceMetadata.reviewer).trim() : null,
       reviewStatus: rawReviewStatus
     };
   }
@@ -202,6 +204,7 @@ export function normalizeLearningActivity(input) {
     expectedAnswer: input.expectedAnswer !== undefined ? String(input.expectedAnswer) : null,
     choices,
     explanation: input.explanation ? String(input.explanation) : "",
+    gradingReference: input.gradingReference && typeof input.gradingReference === "object" ? { ...input.gradingReference } : null,
     contentRef,
     sourceMetadata,
     gradeLevel: normalizeSchoolGrade(input.gradeLevel, { allowUnset: true }),

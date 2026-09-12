@@ -75,7 +75,10 @@ export function normalizeWorkbookDefinition(input = {}) {
     semester,
     difficulty,
     status: String(input.status || "ACTIVE").trim().toUpperCase(),
-    legacyUnclassified
+    legacyUnclassified,
+    curriculumVersion: input.curriculumVersion ? String(input.curriculumVersion).trim() : null,
+    achievementStandardIds: Array.isArray(input.achievementStandardIds) ? input.achievementStandardIds.map(String) : [],
+    reviewStatus: input.reviewStatus ? String(input.reviewStatus).trim().toUpperCase() : null
   });
 }
 

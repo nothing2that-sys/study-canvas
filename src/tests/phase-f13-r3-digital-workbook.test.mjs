@@ -179,8 +179,8 @@ test("F13-R3 미해결 복습은 PageProgress 최우선 상태다", () => {
   }), PageProgressStatus.REVIEW_DUE);
 });
 
-test("F13-R3 DB_VERSION 7과 Assignment 저장소 인덱스를 사용한다", async () => {
-  assert.equal(DB_VERSION, 7);
+test("F13-R3 DB_VERSION 7 이상과 Assignment 저장소 인덱스를 유지한다", async () => {
+  assert.ok(DB_VERSION >= 7);
   const assignments = await getWorkbookAssignments({ allLearners: true });
   assert.deepEqual(assignments, []);
   const db = await getDB();
@@ -246,7 +246,11 @@ test("F13-R3 Assignment는 백업과 복원 왕복에서 보존된다", async ()
 test("F13-R3 카탈로그는 기존 콘텐츠를 학년 미분류로 유지한다", () => {
   const catalog = getWorkbookCatalog();
   assert.ok(catalog.length >= 4);
-  assert.equal(catalog.every((item) => item.definition.gradeLevel === null && item.definition.legacyUnclassified), true);
+  const legacyCatalog = catalog.filter((item) => item.definition.legacyUnclassified);
+  assert.equal(legacyCatalog.length, 4);
+  assert.equal(legacyCatalog.every((item) => item.definition.gradeLevel === null), true);
+  const reviewedCatalog = catalog.filter((item) => !item.definition.legacyUnclassified);
+  assert.equal(reviewedCatalog.every((item) => item.definition.gradeLevel >= 1 && item.definition.reviewStatus === "APPROVED"), true);
   assert.equal(catalog.some((item) => item.definition.subjectId === "math"), true);
   assert.equal(catalog.some((item) => item.definition.subjectId === "korean"), true);
   assert.equal(catalog.some((item) => item.definition.subjectId === "english"), true);

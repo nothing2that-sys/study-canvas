@@ -90,6 +90,118 @@ const rawCatalog = [
         { pageId: "english-core-contents", pageNumber: 1, unitId: "english-core", title: "영어 핵심 차례", launchTarget: "/english/core" }
       ]
     }
+  },
+  {
+    definition: {
+      workbookId: "english-vocabulary-review-g3",
+      type: "REVIEW",
+      subjectId: "english",
+      courseId: "english-core",
+      title: "3학년 영단어 복습장",
+      description: "학교, 가족과 일상 단어를 예정일에 맞춰 반복해요.",
+      gradeLevel: 3,
+      semester: "ALL",
+      difficulty: "FOUNDATION",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["PROJECT-EN-G3-VOCAB"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "english-vocabulary-review-g3",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "english-vocabulary-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "english-vocab-g3-school", pageNumber: 1, unitId: "school", title: "학교", launchTarget: "/english/core" },
+        { pageId: "english-vocab-g3-family", pageNumber: 2, unitId: "family", title: "가족", launchTarget: "/english/core" },
+        { pageId: "english-vocab-g3-daily", pageNumber: 3, unitId: "daily", title: "일상", launchTarget: "/english/core" }
+      ]
+    }
+  },
+  {
+    definition: {
+      workbookId: "english-vocabulary-review-g4",
+      type: "REVIEW",
+      subjectId: "english",
+      courseId: "english-core",
+      title: "4학년 영단어 복습장",
+      description: "날씨, 음식과 장소 단어를 예정일에 맞춰 반복해요.",
+      gradeLevel: 4,
+      semester: "ALL",
+      difficulty: "FOUNDATION",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["PROJECT-EN-G4-VOCAB"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "english-vocabulary-review-g4",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "english-vocabulary-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "english-vocab-g4-weather", pageNumber: 1, unitId: "weather", title: "날씨", launchTarget: "/english/core" },
+        { pageId: "english-vocab-g4-food", pageNumber: 2, unitId: "food", title: "음식", launchTarget: "/english/core" },
+        { pageId: "english-vocab-g4-places", pageNumber: 3, unitId: "places", title: "장소", launchTarget: "/english/core" }
+      ]
+    }
+  },
+  {
+    definition: {
+      workbookId: "english-vocabulary-review-g5",
+      type: "REVIEW",
+      subjectId: "english",
+      courseId: "english-core",
+      title: "5학년 영단어 복습장",
+      description: "취미, 건강과 자연 단어를 예정일에 맞춰 반복해요.",
+      gradeLevel: 5,
+      semester: "ALL",
+      difficulty: "STANDARD",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["PROJECT-EN-G5-VOCAB"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "english-vocabulary-review-g5",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "english-vocabulary-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "english-vocab-g5-hobbies", pageNumber: 1, unitId: "hobbies", title: "취미", launchTarget: "/english/core" },
+        { pageId: "english-vocab-g5-health", pageNumber: 2, unitId: "health", title: "건강", launchTarget: "/english/core" },
+        { pageId: "english-vocab-g5-nature", pageNumber: 3, unitId: "nature", title: "자연", launchTarget: "/english/core" }
+      ]
+    }
+  },
+  {
+    definition: {
+      workbookId: "english-vocabulary-review-g6",
+      type: "REVIEW",
+      subjectId: "english",
+      courseId: "english-core",
+      title: "6학년 영단어 복습장",
+      description: "기술, 환경과 사회 단어를 예정일에 맞춰 반복해요.",
+      gradeLevel: 6,
+      semester: "ALL",
+      difficulty: "STANDARD",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["PROJECT-EN-G6-VOCAB"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "english-vocabulary-review-g6",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "english-vocabulary-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "english-vocab-g6-technology", pageNumber: 1, unitId: "technology", title: "기술", launchTarget: "/english/core" },
+        { pageId: "english-vocab-g6-environment", pageNumber: 2, unitId: "environment", title: "환경", launchTarget: "/english/core" },
+        { pageId: "english-vocab-g6-society", pageNumber: 3, unitId: "society", title: "사회", launchTarget: "/english/core" }
+      ]
+    }
   }
 ];
 
