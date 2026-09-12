@@ -318,7 +318,8 @@ const questionResponseRecordsMap = new Map();
 const gradingStrokesMap = new Map();
 const gradingResultsMap = new Map();
 let activeCanvasInstances = new Map(); // questionId -> canvas instance
-let gradingCanvasInstances = [];
+let gradingCanvasInstances = new Map();
+let gradingCanvasObserver = null;
 let gradingRenderRevision = 0;
 let lastActiveCanvasId = null;
 
@@ -2238,11 +2239,12 @@ async function handleSubmitPractice() {
 async function handleStartParentGrading() {
   if (!currentSession || currentSession.state !== SessionState.PARENT_GRADING_PENDING) return;
   const activeLId = getActiveLearnerId();
-  currentSession.startGrading();
   currentSubmission = await startSubmissionGrading(
     currentSubmission?.id || `sub_${currentSession.id}`,
     { learnerId: activeLId, gradingViewMode, currentGradingQuestionId }
   );
+  currentSession.startGrading();
+  applyPersistedGradesToCurrentSession();
   if (parentGradingStartPanel) parentGradingStartPanel.hidden = true;
   if (gradingGrid) gradingGrid.hidden = false;
   if (finishGradingBtn?.parentElement) finishGradingBtn.parentElement.hidden = false;
@@ -2268,6 +2270,17 @@ async function persistCurrentGradingProgress(options = {}) {
   return currentSubmission;
 }
 
+function applyPersistedGradesToCurrentSession() {
+  if (!currentSession || currentSession.state !== SessionState.GRADING_ACTIVE) return;
+  [...gradingResultsMap.entries()].forEach(([rawQuestionId, grade]) => {
+    const questionId = resolveSessionQuestionId(rawQuestionId);
+    if (!grade || (!grade.decision && typeof grade.isCorrect !== "boolean")) return;
+    const result = currentSession.gradeQuestion(questionId, grade.decision ?? grade.isCorrect, grade.comment || "");
+    if (questionId !== rawQuestionId) gradingResultsMap.delete(rawQuestionId);
+    gradingResultsMap.set(result.questionId, result.gradeData);
+  });
+}
+
 // ----------------------------------------------------
 // 채점자 평가 모드 흐름 (학생 필기 보존 & 정답 오버레이 & 빨간 펜 코멘트)
 // ----------------------------------------------------
@@ -2278,7 +2291,9 @@ function renderGradingView() {
   if (finishGradingBtn?.parentElement) finishGradingBtn.parentElement.hidden = false;
   const renderRevision = ++gradingRenderRevision;
   gradingCanvasInstances.forEach((instance) => instance.destroy());
-  gradingCanvasInstances = [];
+  gradingCanvasInstances.clear();
+  gradingCanvasObserver?.disconnect();
+  gradingCanvasObserver = null;
   const questions = currentSession.questions;
   gradingViewMode = "detail";
   if (!questions.some((question) => question.id === currentGradingQuestionId)) {
@@ -2291,9 +2306,7 @@ function renderGradingView() {
   if (gradingGrid) {
     gradingGrid.classList.add("view-detail");
     gradingGrid.classList.remove("view-quick");
-    const pSize = Number(currentSession.pageSize) || 4;
-    const cols = currentSession.cols || (pSize <= 2 ? pSize : 2);
-    gradingGrid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    gradingGrid.style.gridTemplateColumns = "minmax(0, 1fr)";
 
     gradingGrid.classList.remove("density-1x1", "density-1x2", "density-2x2", "density-2x3", "density-2x5");
     if (pSize === 1) {
@@ -2313,7 +2326,7 @@ function renderGradingView() {
     card.className = "grading-card";
     card.id = `gradingCard_${q.id}`;
 
-    const currentGrade = gradingResultsMap.get(q.id) || q.grade;
+    const currentGrade = gradingResultsMap.get(q.id) || gradingResultsMap.get(String(q.id)) || q.grade;
     const decision = normalizeGradeDecision(currentGrade?.decision ?? currentGrade?.isCorrect);
     const isGraded = Boolean(decision);
     if (isGraded) {
@@ -2330,6 +2343,7 @@ function renderGradingView() {
       : String(q.expectedAnswer || "");
     const commentValue = currentGrade?.comment || "";
     const cardLevel = escapeHtml(String(q.level || q.skillId || "연습"));
+    const isCanvasResponse = usesDrawingCanvas(q);
     card.innerHTML = `
       <div class="card-header">
         <span class="card-order">${idx + 1}번 문제</span>
@@ -2345,8 +2359,8 @@ function renderGradingView() {
           <div class="card-problem-body student-body" id="gradingStudentBody_${q.id}">
             <div class="problem-canvas-stage">
               <span class="red-pen-guide-tag">✏️ 빨간펜 첨삭 영역</span>
-              ${renderProblemStageContent(q, { showGuides: false })}
-              <canvas class="drawing-canvas grading-red-pen-canvas" id="gradingCanvas_${q.id}" title="빨간 펜으로 직접 첨삭(동그라미, 밑줄 등)을 작성하세요"></canvas>
+              ${renderProblemStageContent(q, { showGuides: false, readOnly: true, responseSnapshots: currentSubmission?.responseSnapshots })}
+              ${isCanvasResponse ? `<canvas class="drawing-canvas grading-red-pen-canvas" id="gradingCanvas_${q.id}" data-question-id="${q.id}" title="빨간 펜으로 직접 첨삭을 작성하세요"></canvas>` : ""}
             </div>
           </div>
         </div>
@@ -2407,14 +2421,14 @@ function renderGradingView() {
     // 1. 먼저 autoFitProblemStages를 실행하여 수식 그리드의 transform scale을 확정
     autoFitProblemStages();
 
-    const createdGradingInstances = [];
-    //+_+// 빠른 채점은 판정 목록만 렌더링하고, 상세 채점에서 현재 한 문제의 비교·빨간펜 캔버스만 활성화한다.
-    const canvasQuestions = questions.filter((question) => question.id === currentGradingQuestionId);
-    canvasQuestions.forEach((q) => {
+    const canvasQuestions = questions.filter((question) => usesDrawingCanvas(question));
+    const questionById = new Map(canvasQuestions.map((question) => [String(question.id), question]));
+    const createVisibleCanvas = (q) => {
+      if (!q || gradingCanvasInstances.has(q.id) || renderRevision !== gradingRenderRevision) return;
       const gCanvasEl = document.querySelector(`#gradingCanvas_${q.id}`);
       if (gCanvasEl) {
-        const studentStrokes = questionStrokesMap.get(q.id) || [];
-        const gradingStrokes = gradingStrokesMap.get(q.id) || [];
+        const studentStrokes = questionStrokesMap.get(q.id) || questionStrokesMap.get(String(q.id)) || [];
+        const gradingStrokes = gradingStrokesMap.get(q.id) || gradingStrokesMap.get(String(q.id)) || [];
         const gInstance = createDrawingCanvas(gCanvasEl, {
           color: "#c62828", // 기본 빨간 펜 잉크
           width: 3.0,
@@ -2430,19 +2444,35 @@ function renderGradingView() {
         if (gradingStrokes.length > 0) {
           gInstance.setStrokes(gradingStrokes);
         }
-        createdGradingInstances.push(gInstance);
+        gradingCanvasInstances.set(q.id, gInstance);
       }
-    });
-    gradingCanvasInstances = createdGradingInstances;
+    };
+
+    if (typeof IntersectionObserver === "function") {
+      gradingCanvasObserver = new IntersectionObserver((entries, observer) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          createVisibleCanvas(questionById.get(entry.target.dataset.questionId));
+          observer.unobserve(entry.target);
+        });
+      }, { rootMargin: "320px 0px" });
+      canvasQuestions.forEach((q) => {
+        const canvas = document.querySelector(`#gradingCanvas_${q.id}`);
+        if (canvas) gradingCanvasObserver.observe(canvas);
+      });
+    } else {
+      canvasQuestions.forEach(createVisibleCanvas);
+    }
 
     // 2. DOM 레이아웃 정착 후 2차 정밀 redraw로 1:1 완벽 정렬 보장
     setTimeout(() => {
       if (renderRevision !== gradingRenderRevision) {
-        createdGradingInstances.forEach((instance) => instance.destroy());
+        gradingCanvasInstances.forEach((instance) => instance.destroy());
+        gradingCanvasInstances.clear();
         return;
       }
       autoFitProblemStages();
-      createdGradingInstances.forEach((inst) => {
+      gradingCanvasInstances.forEach((inst) => {
         inst.resize();
         inst.redraw();
       });
@@ -2480,10 +2510,7 @@ function moveGradingQuestion(offset) {
   const currentIndex = Math.max(0, questions.findIndex((question) => question.id === currentGradingQuestionId));
   const nextIndex = Math.max(0, Math.min(questions.length - 1, currentIndex + offset));
   if (nextIndex === currentIndex) return;
-  currentGradingQuestionId = questions[nextIndex].id;
-  renderGradingView();
-  triggerDraftSave();
-  persistCurrentGradingProgress().catch((error) => console.error("채점 문제 위치 저장 실패:", error));
+  selectGradingQuestion(questions[nextIndex].id);
 }
 
 function updateGradingStatusUI() {
@@ -2518,7 +2545,14 @@ function handleGradeClick(event) {
   const commentInput = document.querySelector(`#redPenInput_${qId}`);
   const comment = commentInput ? commentInput.value : "";
 
-  const gradeResult = currentSession.gradeQuestion(qId, decision, comment);
+  let gradeResult;
+  try {
+    gradeResult = currentSession.gradeQuestion(qId, decision, comment);
+  } catch (error) {
+    console.error("보호자 판정 처리 실패:", error);
+    alert("채점 상태를 다시 불러오지 못했습니다. 홈에서 채점 이어하기를 다시 열어 주세요.");
+    return;
+  }
   gradingResultsMap.set(qId, gradeResult.gradeData);
   triggerDraftSave();
 
@@ -2630,7 +2664,11 @@ function selectGradingQuestion(questionId) {
   if (!currentSession.questions.some((question) => question.id === resolvedQuestionId)) return;
   gradingViewMode = "detail";
   currentGradingQuestionId = resolvedQuestionId;
-  renderGradingView();
+  document.querySelectorAll(".grading-card[aria-current]").forEach((card) => card.removeAttribute("aria-current"));
+  const card = document.querySelector(`#gradingCard_${resolvedQuestionId}`);
+  card?.setAttribute("aria-current", "step");
+  renderGradingQuestionNavigator();
+  card?.scrollIntoView({ behavior: getPreferredScrollBehavior(), block: "start" });
   triggerDraftSave();
   persistCurrentGradingProgress().catch((error) => console.error("채점 문제 위치 저장 실패:", error));
 }
@@ -2645,7 +2683,9 @@ async function handleLeaveGrading() {
     return;
   }
   gradingCanvasInstances.forEach((instance) => instance.destroy());
-  gradingCanvasInstances = [];
+  gradingCanvasInstances.clear();
+  gradingCanvasObserver?.disconnect();
+  gradingCanvasObserver = null;
   gradingRenderRevision += 1;
   currentSession = null;
   currentSubmission = null;
@@ -2659,10 +2699,10 @@ async function handleLeaveGrading() {
 // 채점 완료 및 최종 성적표 보기 (IndexedDB 영구 저장 및 finalizeSubmissionGrading 결과 확정)
 async function handleFinishGrading() {
   if (!currentSession) return;
+  finishGradingBtn.disabled = true;
   try {
     const activeLId = getActiveLearnerId();
     const submissionId = currentSubmission?.id || `sub_${currentSession.id}`;
-    const summary = currentSession.finishGrading();
     const completedAt = Date.now();
 
     const finalizeResult = await finalizeSubmissionGrading(submissionId, {
@@ -2673,11 +2713,14 @@ async function handleFinishGrading() {
     });
 
     currentSubmission = finalizeResult.submission;
+    const summary = currentSession.finishGrading();
     await clearDraft({ learnerId: activeLId });
 
     showSessionResult(finalizeResult.sessionRecord || summary);
   } catch (error) {
     alert(error.message);
+  } finally {
+    if (currentSession?.state === SessionState.GRADING_ACTIVE) updateGradingStatusUI();
   }
 }
 
@@ -2840,7 +2883,9 @@ async function terminateSession() {
   activeCanvasInstances.forEach((inst) => inst.destroy());
   activeCanvasInstances.clear();
   gradingCanvasInstances.forEach((inst) => inst.destroy());
-  gradingCanvasInstances = [];
+  gradingCanvasInstances.clear();
+  gradingCanvasObserver?.disconnect();
+  gradingCanvasObserver = null;
   gradingRenderRevision += 1;
   currentSession = null;
   questionStrokesMap.clear();
@@ -3445,10 +3490,10 @@ function restoreSessionFromSubmission(submission) {
   questionResponseRecordsMap.clear();
   gradingStrokesMap.clear();
   gradingResultsMap.clear();
-  Object.entries(submission.studentStrokesMap || {}).forEach(([questionId, strokes]) => questionStrokesMap.set(questionId, strokes));
-  Object.entries(submission.responseSnapshots || {}).forEach(([questionId, rec]) => questionResponseRecordsMap.set(questionId, rec));
-  Object.entries(submission.gradingStrokesMap || {}).forEach(([questionId, strokes]) => gradingStrokesMap.set(questionId, strokes));
-  Object.entries(submission.gradingResults || {}).forEach(([questionId, grade]) => gradingResultsMap.set(questionId, grade));
+  Object.entries(submission.studentStrokesMap || {}).forEach(([questionId, strokes]) => questionStrokesMap.set(resolveSessionQuestionId(questionId), strokes));
+  Object.entries(submission.responseSnapshots || {}).forEach(([questionId, rec]) => questionResponseRecordsMap.set(resolveSessionQuestionId(questionId), rec));
+  Object.entries(submission.gradingStrokesMap || {}).forEach(([questionId, strokes]) => gradingStrokesMap.set(resolveSessionQuestionId(questionId), strokes));
+  Object.entries(submission.gradingResults || {}).forEach(([questionId, grade]) => gradingResultsMap.set(resolveSessionQuestionId(questionId), grade));
 
   currentSession.start();
   currentSession.setQuestionSolveTimes(submission.perQuestionElapsedMs || {});
@@ -3463,11 +3508,7 @@ function restoreSessionFromSubmission(submission) {
 
   if (submission.status === "GRADING_ACTIVE") {
     currentSession.startGrading();
-    Object.entries(submission.gradingResults || {}).forEach(([questionId, grade]) => {
-      if (grade?.decision || typeof grade?.isCorrect === "boolean") {
-        currentSession.gradeQuestion(questionId, grade.decision ?? grade.isCorrect, grade.comment || "");
-      }
-    });
+    applyPersistedGradesToCurrentSession();
     renderGradingView();
   } else {
     if (parentGradingStartPanel) parentGradingStartPanel.hidden = false;
@@ -3619,8 +3660,13 @@ if (typeof document !== "undefined") {
 
   initLearnerView({
     isSessionActive: isCurrentSessionActive,
-    onOpenPendingGrading: (submission) => {
-      if (restoreSessionFromSubmission(submission)) {
+    onOpenPendingGrading: async (submission) => {
+      const latestSubmission = await getSubmission(submission?.id, { allLearners: true });
+      if (!latestSubmission || latestSubmission.status === "GRADED" || latestSubmission.status === "SESSION_COMPLETE") {
+        await renderLearnerHomeView();
+        return;
+      }
+      if (restoreSessionFromSubmission(latestSubmission)) {
         navigate(ROUTES.MATH_GRADING);
       }
     },

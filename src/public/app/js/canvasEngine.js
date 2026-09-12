@@ -462,8 +462,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     if (destroyed || settings.readOnly) return;
     //+_+// 직전 Pencil 종료 이벤트가 지연된 상태에서 새 pointerdown이 오면 기존 획을 보존하고 새 획을 즉시 수락한다.
     if (activePenPointerId !== null) {
-      if (e.pointerType !== "pen" || e.pointerId === activePenPointerId) return;
-      resetActivePointers();
+      if (e.pointerType !== "pen") return;
+      //+_+// Apple Pencil은 연속 접촉에서 같은 pointerId를 재사용할 수 있으므로 ID가 같아도 이전 획을 확정하고 새 획을 시작한다.
+      resetActivePointers({ releaseCapture: e.pointerId !== activePenPointerId });
     }
 
     // Cooldown 검사
@@ -681,9 +682,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     if (!destroyed && isDrawing && matchesActivePointer(e)) onPointerUp(e);
   }
 
-  function resetActivePointers() {
+  function resetActivePointers(options = {}) {
     const activePointerId = activePenPointerId !== null ? activePenPointerId : activeTouchPointerId;
-    if (activePointerId !== null) {
+    if (activePointerId !== null && options.releaseCapture !== false) {
       try {
         if (typeof canvasElement.releasePointerCapture === "function") {
           canvasElement.releasePointerCapture(activePointerId);

@@ -1487,7 +1487,7 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
 .grading-question-position { white-space: nowrap; font-weight: 800; color: var(--muted); }
 .grading-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 20px; width: 100%; box-sizing: border-box; }
 
-.grading-card { background: var(--paper); border: 2px solid var(--line); border-radius: 22px; padding: 18px; box-shadow: 0 8px 20px rgba(36, 57, 49, 0.04); display: flex; flex-direction: column; gap: 12px; transition: border-color .2s ease, box-shadow .2s ease; width: 100%; box-sizing: border-box; min-width: 0; }
+.grading-card { scroll-margin-top: 86px; background: var(--paper); border: 2px solid var(--line); border-radius: 22px; padding: 18px; box-shadow: 0 8px 20px rgba(36, 57, 49, 0.04); display: flex; flex-direction: column; gap: 12px; transition: border-color .2s ease, box-shadow .2s ease; width: 100%; box-sizing: border-box; min-width: 0; }
 .grading-card.is-graded-correct { border-color: var(--correct); background: #fbfdfb; }
 .grading-card.is-graded-wrong { border-color: var(--wrong); background: #fdfbfb; }
 
@@ -3336,8 +3336,7 @@ body.mode-grading {
 .parent-grading-home-entry h2, .parent-grading-home-entry p { margin: 0 0 6px; }
 .parent-grading-start[hidden] { display: none; }
 .parent-grading-start h2, .parent-grading-start p { margin: 0 0 6px; }
-.grading-grid.view-detail { grid-template-columns: minmax(0, 1fr) !important; max-width: 1080px; margin: 0 auto; }
-.grading-grid.view-detail .grading-card:not([aria-current="step"]) { display: none; }
+.grading-grid.view-detail { grid-template-columns: minmax(0, 1fr) !important; max-width: 1180px; margin: 0 auto; }
 .grading-card.is-graded-retry { border-color: #b7791f; background: #fffaf0; }
 .grading-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .retry-choice.active { background: #b7791f; color: #fff; }

@@ -53,6 +53,19 @@ test("F13-R2: delayed previous Pencil lifecycle does not swallow next stroke", (
   instance.destroy();
 });
 
+test("F13-R4: delayed lifecycle with reused Pencil pointerId preserves both strokes", () => {
+  const canvas = createMockCanvas();
+  const instance = createDrawingCanvas(canvas, { profile: InputProfile.IPAD_PEN_ONLY });
+  canvas._listeners.pointerdown({ pointerId: 7, pointerType: "pen", clientX: 10, clientY: 10 });
+  canvas._listeners.pointerdown({ pointerId: 7, pointerType: "pen", clientX: 30, clientY: 30 });
+  canvas._listeners.pointerup({ pointerId: 7, pointerType: "pen", clientX: 40, clientY: 40 });
+  const strokes = instance.getStrokes();
+  assert.equal(strokes.length, 2);
+  assert.deepEqual(strokes[0].points.map(({ x, y }) => ({ x, y })), [{ x: 10, y: 10 }]);
+  assert.deepEqual(strokes[1].points.map(({ x, y }) => ({ x, y })), [{ x: 30, y: 30 }, { x: 40, y: 40 }]);
+  instance.destroy();
+});
+
 test("F13-R3: Scribble commit refresh keeps one paint frame before removing its compositor class", () => {
   const classes = new Set();
   const input = {
@@ -84,7 +97,18 @@ test("F13-R3: evidence-first grading navigator and canonical question ID fixes a
   assert.match(html, /id="gradingQuestionNavigator"/);
   assert.match(html, /id="gradingExitBtn"/);
   assert.doesNotMatch(css, /\.grading-grid\.view-quick/);
+  assert.doesNotMatch(css, /grading-card:not\(\[aria-current="step"\]\)\s*\{\s*display:\s*none/);
   assert.match(css, /\.worksheet-card\.response-surface-text \.card-problem-body[\s\S]*?touch-action:\s*auto/);
+});
+
+test("F13-R4: grading start, resume, and finish keep storage as the state authority", () => {
+  const app = fs.readFileSync(new URL("../public/app/js/app.js", import.meta.url), "utf8");
+  const startBlock = app.slice(app.indexOf("async function handleStartParentGrading"), app.indexOf("async function persistCurrentGradingProgress"));
+  const finishBlock = app.slice(app.indexOf("async function handleFinishGrading"), app.indexOf("function showSessionResult"));
+  assert.ok(startBlock.indexOf("await startSubmissionGrading") < startBlock.indexOf("currentSession.startGrading()"));
+  assert.ok(finishBlock.indexOf("await finalizeSubmissionGrading") < finishBlock.indexOf("currentSession.finishGrading()"));
+  assert.match(app, /const latestSubmission = await getSubmission\(submission\?\.id/);
+  assert.match(app, /applyPersistedGradesToCurrentSession\(\)/);
 });
 
 test("F13-R2: string dataset ID grades numeric question ID and enables completion", () => {
