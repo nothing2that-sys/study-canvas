@@ -331,7 +331,7 @@ test("F13-R3 App Shell과 배포 검증에 문제집 모듈이 포함된다", ()
 
 test("F13-R3 세션 생성은 문제집 문맥을 일회성으로 병합한다", () => {
   const source = fs.readFileSync(path.join(appRoot, "js", "app.js"), "utf8");
-  assert.match(source, /consumeActiveWorkbookContext\(\)/);
+  assert.match(source, /consumeActiveWorkbookContext\(undefined, \{ launchTarget: getCurrentRoute\(\) \}\)/);
   assert.match(source, /createSession\(effectiveConfig, questions\)/);
 });
 
