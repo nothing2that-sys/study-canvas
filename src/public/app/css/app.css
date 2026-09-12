@@ -932,7 +932,17 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
 
 .problem-canvas-stage.typed-response-surface {
   align-items: flex-start;
-  touch-action: pan-y;
+  touch-action: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-touch-callout: default;
+  contain: paint;
+  background: white;
+}
+
+.worksheet-card.response-surface-text .card-problem-body,
+.worksheet-card.response-surface-choice .card-problem-body {
+  touch-action: auto;
   user-select: text;
   -webkit-user-select: text;
   -webkit-touch-callout: default;
@@ -945,7 +955,7 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
   z-index: 1;
   width: 100%;
   pointer-events: auto;
-  touch-action: manipulation;
+  touch-action: auto;
 }
 
 .typed-choice-item {
@@ -982,9 +992,18 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
   min-height: 48px;
   box-sizing: border-box;
   pointer-events: auto;
-  touch-action: manipulation;
+  touch-action: auto;
   user-select: text;
   -webkit-user-select: text;
+  background: white;
+  isolation: isolate;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+}
+
+.typed-text-input.scribble-commit-refresh {
+  -webkit-transform: translateZ(0) scale(1.0001);
+  transform: translateZ(0) scale(1.0001);
 }
 
 /* 세로셈 모눈 자릿수 그리드 (Fluid Dynamic Digit Grid) */
@@ -3312,6 +3331,10 @@ body.mode-grading {
 .grading-view-tabs { display: flex; gap: 8px; }
 .grading-grid.view-detail { grid-template-columns: minmax(0, 1fr) !important; max-width: 1080px; margin: 0 auto; }
 .grading-grid.view-detail .grading-card:not([aria-current="step"]) { display: none; }
+.grading-grid.view-quick .grading-comparison-grid,
+.grading-grid.view-quick .grading-explanation,
+.grading-grid.view-quick .red-pen-zone { display: none; }
+.grading-grid.view-quick .grading-card { gap: 10px; }
 .grading-card.is-graded-retry { border-color: #b7791f; background: #fffaf0; }
 .grading-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .retry-choice.active { background: #b7791f; color: #fff; }

@@ -21,3 +21,17 @@ export function bindChoiceResponseSurface(root, questionId, onSelection) {
   });
   return radios;
 }
+
+export function refreshScribbleCommitSurface(inputElement, scheduleFrame = globalThis.requestAnimationFrame) {
+  if (!inputElement?.classList) return false;
+  inputElement.classList.add("scribble-commit-refresh");
+  const schedule = typeof scheduleFrame === "function"
+    ? scheduleFrame
+    : (callback) => globalThis.setTimeout(callback, 0);
+  schedule(() => {
+    //+_+// iPadOS Scribble 변환 직후 입력 레이어를 다시 합성해 변환 전 Pencil 잔상을 제거한다.
+    void inputElement.offsetWidth;
+    inputElement.classList.remove("scribble-commit-refresh");
+  });
+  return true;
+}

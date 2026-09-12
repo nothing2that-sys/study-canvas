@@ -171,9 +171,8 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     if (typeof canvasElement.style === "undefined") return;
     if (settings.readOnly) {
       canvasElement.style.touchAction = "auto";
-    } else if (settings.profile === InputProfile.IPAD_PEN_ONLY) {
-      canvasElement.style.touchAction = "pan-y";
     } else {
+      //+_+// 쓰기 가능한 캔버스는 Safari가 빠른 Pencil 세로 획을 pan 제스처로 선점하지 못하게 항상 직접 처리한다.
       canvasElement.style.touchAction = "none";
     }
   }
@@ -461,7 +460,11 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   // ----------------------------------------------------
   function onPointerDown(e) {
     if (destroyed || settings.readOnly) return;
-    if (activePenPointerId !== null) return;
+    //+_+// 직전 Pencil 종료 이벤트가 지연된 상태에서 새 pointerdown이 오면 기존 획을 보존하고 새 획을 즉시 수락한다.
+    if (activePenPointerId !== null) {
+      if (e.pointerType !== "pen" || e.pointerId === activePenPointerId) return;
+      resetActivePointers();
+    }
 
     // Cooldown 검사
     const now = Date.now();
@@ -729,7 +732,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   addManagedListener(canvasElement, "pointerdown", onPointerDown, { passive: false });
-  addManagedListener(canvasElement, "pointermove", onPointerMove, { passive: false });
+  //+_+// 지원 브라우저에서는 합성 pointermove보다 먼저 오는 raw update를 단독 사용해 고속 Pencil 좌표 지연과 중복 수집을 줄인다.
+  const moveEventType = "onpointerrawupdate" in canvasElement ? "pointerrawupdate" : "pointermove";
+  addManagedListener(canvasElement, moveEventType, onPointerMove, { passive: false });
   addManagedListener(canvasElement, "pointerup", onPointerUp, { passive: false });
   addManagedListener(canvasElement, "pointercancel", onPointerCancel, { passive: false });
   addManagedListener(canvasElement, "lostpointercapture", onLostPointerCapture, { passive: false });

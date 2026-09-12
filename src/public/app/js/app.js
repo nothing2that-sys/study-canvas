@@ -55,7 +55,7 @@ import { setupModalManager } from "./modalEngine.js";
 import { GradeDecision, normalizeGradeDecision } from "./parentGrading.js";
 import { ResponseType, ActivityType, DEFAULT_PROBLEM_COUNT, resolveActivityResponseType, usesDrawingCanvas } from "./learningActivity.js";
 import { createResponseRecord, applyStudentResponseChange } from "./responseEngine.js";
-import { bindChoiceResponseSurface } from "./typedInteractionSurface.js";
+import { bindChoiceResponseSurface, refreshScribbleCommitSurface } from "./typedInteractionSurface.js";
 import {
   canMutatePractice,
   applyStudentStrokeChange,
@@ -336,6 +336,11 @@ function collectGradingResults() {
     if (question.grade) results[question.id] = question.grade;
   });
   return results;
+}
+
+function resolveSessionQuestionId(rawQuestionId) {
+  const question = currentSession?.questions?.find((candidate) => String(candidate.id) === String(rawQuestionId));
+  return question?.id ?? rawQuestionId;
 }
 
 function captureDraftSnapshot() {
@@ -1899,6 +1904,7 @@ function renderCurrentWorksheetPage() {
           } catch (err) {
             console.warn("[app] 학생 응답 변경 거절 (Session Locked):", err);
           }
+          refreshScribbleCommitSurface(inputEl);
         });
         inputEl.addEventListener("input", (e) => {
           if (isComposing || e.isComposing || inputEl.dataset.isComposing === "true") {
@@ -2400,7 +2406,11 @@ function renderGradingView() {
     autoFitProblemStages();
 
     const createdGradingInstances = [];
-    questions.forEach((q) => {
+    //+_+// 빠른 채점은 판정 목록만 렌더링하고, 상세 채점에서 현재 한 문제의 비교·빨간펜 캔버스만 활성화한다.
+    const canvasQuestions = gradingViewMode === "detail"
+      ? questions.filter((question) => question.id === currentGradingQuestionId)
+      : [];
+    canvasQuestions.forEach((q) => {
       const gCanvasEl = document.querySelector(`#gradingCanvas_${q.id}`);
       if (gCanvasEl) {
         const studentStrokes = questionStrokesMap.get(q.id) || [];
@@ -2492,7 +2502,7 @@ function handleGradeClick(event) {
   const btn = event.target.closest(".grade-btn");
   if (!btn || !currentSession) return;
 
-  const qId = btn.dataset.id;
+  const qId = resolveSessionQuestionId(btn.dataset.id);
   const decision = normalizeGradeDecision(btn.dataset.decision);
   const commentInput = document.querySelector(`#redPenInput_${qId}`);
   const comment = commentInput ? commentInput.value : "";
@@ -2531,7 +2541,7 @@ function handleRedChipClick(event) {
   const chip = event.target.closest(".red-chip-btn");
   if (!chip || !currentSession) return;
 
-  const qId = chip.dataset.id;
+  const qId = resolveSessionQuestionId(chip.dataset.id);
   const text = chip.dataset.text;
   const commentInput = document.querySelector(`#redPenInput_${qId}`);
 
@@ -2569,7 +2579,7 @@ function handleRedPenInput(event) {
   const input = event.target.closest(".red-pen-input");
   if (!input || !currentSession) return;
 
-  const qId = input.dataset.id;
+  const qId = resolveSessionQuestionId(input.dataset.id);
   const text = input.value;
   const currentGrade = currentSession.questions.find((q) => q.id === qId)?.grade;
   if (currentGrade) {
@@ -2617,7 +2627,7 @@ function setGradingViewMode(mode, questionId = null) {
 function handleGradingCardDetail(event) {
   const detailButton = event.target.closest("[data-detail-id]");
   if (!detailButton) return;
-  setGradingViewMode("detail", detailButton.dataset.detailId);
+  setGradingViewMode("detail", resolveSessionQuestionId(detailButton.dataset.detailId));
 }
 
 // 채점 완료 및 최종 성적표 보기 (IndexedDB 영구 저장 및 finalizeSubmissionGrading 결과 확정)
