@@ -5,7 +5,7 @@
  * - JSON Import (버전 검증, Preview, Replace vs Merge 모드, 무결성 검증)
  */
 
-import { getDB, getAllSessions, getRecentAttempts, getMistakeQuestions, getDraftSession, clearAllData } from "./storage.js";
+import { getDB, getAllSessions, getRecentAttempts, getMistakeQuestions, getDraftSession, getWorkbookAssignments, clearAllData } from "./storage.js";
 
 export const BACKUP_FORMAT_VERSION = "1.0";
 
@@ -18,6 +18,7 @@ export async function exportAllData() {
   const attempts = await getRecentAttempts(100000);
   const mistakes = await getMistakeQuestions();
   const currentDraft = await getDraftSession();
+  const workbookAssignments = await getWorkbookAssignments({ allLearners: true });
 
   let stageProgress = [];
   let strokes = [];
@@ -64,6 +65,7 @@ export async function exportAllData() {
       mistakeCount: mistakes.length,
       stageProgressCount: stageProgress.length,
       strokeCount: strokes.length,
+      workbookAssignmentCount: workbookAssignments.length,
       draftCount: currentDraft ? 1 : 0
     },
     data: {
@@ -72,6 +74,7 @@ export async function exportAllData() {
       mistakes,
       stageProgress,
       strokes,
+      workbookAssignments,
       drafts: currentDraft ? [currentDraft] : []
     }
   };
@@ -101,6 +104,7 @@ export function validateBackupData(backup) {
   const stageProgress = Array.isArray(backup.data.stageProgress) ? backup.data.stageProgress : [];
   const strokes = Array.isArray(backup.data.strokes) ? backup.data.strokes : [];
   const drafts = Array.isArray(backup.data.drafts) ? backup.data.drafts : [];
+  const workbookAssignments = Array.isArray(backup.data.workbookAssignments) ? backup.data.workbookAssignments : [];
 
   let oldestDate = null;
   let newestDate = null;
@@ -124,6 +128,7 @@ export function validateBackupData(backup) {
       mistakeCount: mistakes.length,
       stageProgressCount: stageProgress.length,
       strokeCount: strokes.length,
+      workbookAssignmentCount: workbookAssignments.length,
       draftCount: drafts.length,
       dateRange: oldestDate && newestDate
         ? `${new Date(oldestDate).toLocaleDateString("ko-KR")} ~ ${new Date(newestDate).toLocaleDateString("ko-KR")}`
@@ -150,7 +155,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
     await clearAllData();
   }
 
-  const { sessions, attempts, mistakes, stageProgress, strokes, drafts = [] } = backup.data;
+  const { sessions, attempts, mistakes, stageProgress, strokes, drafts = [], workbookAssignments = [] } = backup.data;
 
   if (db.isMemory) {
     (sessions || []).forEach((s) => db.sessions.set(s.id, s));
@@ -162,6 +167,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
       if (k) db.strokes.set(k, st.strokes || st);
     });
     (drafts || []).forEach((draft) => db.draftSessions.set("current_draft", { ...draft, id: "current_draft" }));
+    (workbookAssignments || []).forEach((assignment) => db.workbookAssignments.set(assignment.assignmentId, assignment));
 
     return {
       success: true,
@@ -170,18 +176,20 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
       importedAttempts: (attempts || []).length,
       importedMistakes: (mistakes || []).length,
       importedStrokes: (strokes || []).length,
-      importedDrafts: (drafts || []).length
+      importedDrafts: (drafts || []).length,
+        importedWorkbookAssignments: (workbookAssignments || []).length
     };
   }
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions"], "readwrite");
+    const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "workbookAssignments"], "readwrite");
     const sessionStore = tx.objectStore("sessions");
     const attemptStore = tx.objectStore("attempts");
     const mistakeStore = tx.objectStore("mistakes");
     const progressStore = tx.objectStore("stageProgress");
     const strokeStore = tx.objectStore("strokes");
     const draftStore = tx.objectStore("draftSessions");
+    const workbookStore = tx.objectStore("workbookAssignments");
 
     (sessions || []).forEach((s) => sessionStore.put(s));
     (attempts || []).forEach((a) => attemptStore.put(a));
@@ -189,6 +197,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
     (stageProgress || []).forEach((p) => progressStore.put(p));
     (strokes || []).forEach((st) => strokeStore.put(st));
     (drafts || []).forEach((draft) => draftStore.put({ ...draft, id: "current_draft" }));
+    (workbookAssignments || []).forEach((assignment) => workbookStore.put(assignment));
 
     tx.oncomplete = () => {
       resolve({
@@ -198,7 +207,8 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
         importedAttempts: (attempts || []).length,
         importedMistakes: (mistakes || []).length,
         importedStrokes: (strokes || []).length,
-        importedDrafts: (drafts || []).length
+        importedDrafts: (drafts || []).length,
+      importedWorkbookAssignments: (workbookAssignments || []).length
       });
     };
 

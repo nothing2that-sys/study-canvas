@@ -13,6 +13,9 @@ export const ROUTES = Object.freeze({
   ROOT: "/",
   LEARNERS: "/learners",
   HOME: "/home",
+  BOOKSHELF: "/bookshelf",
+  WORKBOOK_DETAIL: "/workbook",
+  WORKBOOK_READER: "/workbook/read",
   MATH_HOME: "/math",
   MATH_ARITHMETIC: "/math/arithmetic",
   MATH_PRACTICE: "/math/arithmetic/practice",
@@ -34,6 +37,9 @@ export const ROUTES = Object.freeze({
 //+_+// 활성 학습자가 필요한 보호된 라우트 목록
 const PROTECTED_ROUTES = new Set([
   ROUTES.HOME,
+  ROUTES.BOOKSHELF,
+  ROUTES.WORKBOOK_DETAIL,
+  ROUTES.WORKBOOK_READER,
   ROUTES.MATH_HOME,
   ROUTES.MATH_ARITHMETIC,
   ROUTES.MATH_PRACTICE,

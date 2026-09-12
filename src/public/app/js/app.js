@@ -41,6 +41,7 @@ import { bootstrapApp } from "./platform/appBootstrap.js";
 import { navigate, replace, ROUTES, initRouter, addRouteListener, getCurrentRoute, resolveGuardedPath } from "./platform/appRouter.js";
 import { initAppShell, updateShellHeader, renderRouteView } from "./platform/appShell.js";
 import { initLearnerView, renderLearnerSelectView, renderLearnerHomeView, renderSubjectHomeView } from "./learners/learnerView.js";
+import { initWorkbookView, renderWorkbookRoute, consumeActiveWorkbookContext } from "./workbookView.js";
 import { playCorrectSound, playWrongSound, playFanfareSound, playClickSound, toggleSound, isSoundMuted } from "./sound.js";
 import { launchConfetti } from "./confetti.js";
 import { applyTheme, cycleTheme, getCurrentTheme, getThemeInfo } from "./theme.js";
@@ -1758,7 +1759,9 @@ function renderProblemStageContent(q, options = {}) {
 // ----------------------------------------------------
 function startSessionWithQuestions(questions, config) {
   if (!questions || questions.length === 0) return;
-  lastSessionConfig = config;
+  const workbookContext = consumeActiveWorkbookContext();
+  const effectiveConfig = workbookContext ? { ...config, ...workbookContext } : config;
+  lastSessionConfig = effectiveConfig;
   currentDraftCreatedAt = Date.now();
   currentQuestions = questions;
   questionStrokesMap.clear();
@@ -1768,7 +1771,7 @@ function startSessionWithQuestions(questions, config) {
   activeCanvasInstances.forEach((instance) => instance.destroy());
   activeCanvasInstances.clear();
 
-  currentSession = createSession(config, questions);
+  currentSession = createSession(effectiveConfig, questions);
   currentSession.start();
 
   startSessionTimer(questionTimer, 0);
@@ -3681,6 +3684,12 @@ if (typeof document !== "undefined") {
     }
   });
 
+  initWorkbookView({
+    documentRef: document,
+    windowRef: window,
+    beforePageChange: () => draftSaveCoordinator?.flush?.()
+  });
+
   addRouteListener(async ({ path }) => {
     if (path === ROUTES.LEARNERS) {
       await renderLearnerSelectView();
@@ -3688,6 +3697,8 @@ if (typeof document !== "undefined") {
       await renderLearnerHomeView();
     } else if (path === ROUTES.MATH_HOME) {
       await renderSubjectHomeView();
+    } else if (path === ROUTES.BOOKSHELF || path === ROUTES.WORKBOOK_DETAIL || path === ROUTES.WORKBOOK_READER) {
+      await renderWorkbookRoute(path);
     } else if (path === ROUTES.MATH_MEASUREMENT) {
       await renderMeasurementLandingView();
     } else if (path === ROUTES.KOREAN_HOME || path === ROUTES.KOREAN_CORE) {
@@ -3743,6 +3754,8 @@ if (typeof document !== "undefined") {
         await renderLearnerHomeView();
       } else if (route === ROUTES.MATH_HOME) {
         await renderSubjectHomeView();
+      } else if (route === ROUTES.BOOKSHELF || route === ROUTES.WORKBOOK_DETAIL || route === ROUTES.WORKBOOK_READER) {
+        await renderWorkbookRoute(route);
       }
     }
   });

@@ -96,8 +96,8 @@ WorkbookAssignment
   "editionVersion": 1,
   "status": "IN_PROGRESS",
   "lastPageId": "page-001",
-  "lastOpenedAt": 0,
-  "completedPageIds": []
+  "bookmarkPageId": "page-001",
+  "lastOpenedAt": 0
 }
 ```
 
@@ -114,7 +114,7 @@ WorkbookAssignment
 - `REVIEW_DUE`
 - `COMPLETED`
 
-기존 Session 상태를 복제하지 않고 표시용 집계로 계산하는 것을 우선한다.
+PageProgress는 별도 완료 배열이나 Store로 중복 저장하지 않는다. 기존 Draft, Submission, GradeDecision, ReviewItem을 입력으로 표시할 때 결정론적으로 계산한다.
 
 # 4. 화면 계약
 
@@ -278,3 +278,12 @@ WorkbookAssignment
 - 종이 질감을 위한 고해상도 배경 이미지 의존
 - 모든 문제 유형을 Canvas로 통일
 - Workbook과 Submission 원본의 결합
+
+
+# 12. F13-R3 구현 결정
+
+- 정적 WorkbookDefinition, WorkbookEdition과 WorkbookPage는 `workbookCatalog.js`의 불변 카탈로그로 제공한다.
+- 학습자별 현재 위치와 책갈피만 `workbookAssignments` Store에 저장한다.
+- DB_VERSION 7은 learnerId, workbookId, status, lastOpenedAt 인덱스가 필요한 신규 Store 추가 근거로 사용한다.
+- 기존 수학, 국어와 영어 콘텐츠는 `LEGACY_UNCLASSIFIED` 표시를 유지하며 학년별 승인 콘텐츠로 간주하지 않는다.
+- Workbook context는 기존 Session config에 일회성으로 연결하고 Draft, Submission과 Guardian GradeDecision 수명주기를 재사용한다.

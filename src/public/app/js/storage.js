@@ -1,4 +1,5 @@
 import { normalizeDraft } from "./draftEngine.js";
+import { normalizeWorkbookAssignment } from "./workbookEngine.js";
 import { getGradingProgress, normalizeGradeDecision, createGradeDecision } from "./parentGrading.js";
 import { createSession } from "./sessionEngine.js";
 import {
@@ -16,8 +17,8 @@ import {
  */
 
 const DB_NAME = "math_canvas_pro_db";
-//+_+// Phase F7: DB_VERSION 6으로 승격 및 reviewItems Store 추가
-export const DB_VERSION = 6;
+//+_+// Phase F13-R3: 학습자별 workbookAssignments Store 추가
+export const DB_VERSION = 7;
 
 //+_+// 기존 레거시 데이터 및 미지정 데이터용 기본 학습자 식별자
 export const DEFAULT_LEGACY_LEARNER_ID = "legacy_default_learner";
@@ -268,6 +269,27 @@ export function getDB() {
           reviewStore.createIndex("learnerId", "learnerId", { unique: false });
         }
       }
+
+      //+_+// 11. workbookAssignments store
+      if (!db.objectStoreNames.contains("workbookAssignments")) {
+        const workbookStore = db.createObjectStore("workbookAssignments", { keyPath: "assignmentId" });
+        workbookStore.createIndex("learnerId", "learnerId", { unique: false });
+        workbookStore.createIndex("workbookId", "workbookId", { unique: false });
+        workbookStore.createIndex("status", "status", { unique: false });
+        workbookStore.createIndex("lastOpenedAt", "lastOpenedAt", { unique: false });
+      } else {
+        const workbookStore = request.transaction.objectStore("workbookAssignments");
+        for (const [indexName, keyPath] of [
+          ["learnerId", "learnerId"],
+          ["workbookId", "workbookId"],
+          ["status", "status"],
+          ["lastOpenedAt", "lastOpenedAt"]
+        ]) {
+          if (!workbookStore.indexNames.contains(indexName)) {
+            workbookStore.createIndex(indexName, keyPath, { unique: false });
+          }
+        }
+      }
     };
 
     request.onsuccess = (event) => {
@@ -296,7 +318,8 @@ let memoryStore = {
   draftSessions: new Map(),
   submissions: new Map(),
   progressAggregates: new Map(),
-  reviewItems: new Map()
+  reviewItems: new Map(),
+  workbookAssignments: new Map()
 };
 
 function createMemoryFallbackDB() {
@@ -311,7 +334,8 @@ function createMemoryFallbackDB() {
     draftSessions: memoryStore.draftSessions,
     submissions: memoryStore.submissions,
     progressAggregates: memoryStore.progressAggregates,
-    reviewItems: memoryStore.reviewItems
+    reviewItems: memoryStore.reviewItems,
+    workbookAssignments: memoryStore.workbookAssignments
   };
 }
 
@@ -1372,6 +1396,79 @@ export async function getSessionsByDate(dateKey, filter = {}) {
   return entry ? entry.sessions : [];
 }
 
+//+_+// ============================================================================
+//+_+// 6. Phase F13-R3: 학습자별 WorkbookAssignment API
+//+_+// ============================================================================
+
+function resolveWorkbookAssignmentOwner(options = {}) {
+  if (options.allLearners === true) return null;
+  const learnerId = options.learnerId || getCurrentLearnerId();
+  if (!learnerId && options.allLearners !== true) {
+    throw new Error("문제집 Assignment 조회에는 활성 학습자가 필요합니다.");
+  }
+  return learnerId ? String(learnerId) : null;
+}
+
+export async function saveWorkbookAssignment(input, options = {}) {
+  const assignment = normalizeWorkbookAssignment(input);
+  const expectedLearnerId = resolveWorkbookAssignmentOwner(options);
+  if (expectedLearnerId && assignment.learnerId !== expectedLearnerId) {
+    throw new Error("다른 학습자의 문제집 Assignment는 저장할 수 없습니다.");
+  }
+  const db = await getDB();
+  if (db.isMemory) {
+    db.workbookAssignments.set(assignment.assignmentId, assignment);
+    return { ...assignment };
+  }
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("workbookAssignments", "readwrite");
+    tx.objectStore("workbookAssignments").put(assignment);
+    tx.oncomplete = () => resolve({ ...assignment });
+    tx.onerror = (event) => reject(event.target.error);
+  });
+}
+
+export async function getWorkbookAssignment(assignmentId, options = {}) {
+  const expectedLearnerId = resolveWorkbookAssignmentOwner(options);
+  const db = await getDB();
+  if (db.isMemory) {
+    const assignment = db.workbookAssignments.get(String(assignmentId)) || null;
+    if (!assignment || (expectedLearnerId && assignment.learnerId !== expectedLearnerId)) return null;
+    return { ...assignment };
+  }
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("workbookAssignments", "readonly");
+    const request = tx.objectStore("workbookAssignments").get(String(assignmentId));
+    request.onsuccess = () => {
+      const assignment = request.result || null;
+      resolve(!assignment || (expectedLearnerId && assignment.learnerId !== expectedLearnerId) ? null : assignment);
+    };
+    request.onerror = (event) => reject(event.target.error);
+  });
+}
+
+export async function getWorkbookAssignments(options = {}) {
+  const expectedLearnerId = resolveWorkbookAssignmentOwner(options);
+  const db = await getDB();
+  let assignments;
+  if (db.isMemory) {
+    assignments = Array.from(db.workbookAssignments.values());
+  } else {
+    assignments = await new Promise((resolve, reject) => {
+      const tx = db.transaction("workbookAssignments", "readonly");
+      const request = tx.objectStore("workbookAssignments").getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = (event) => reject(event.target.error);
+    });
+  }
+  return assignments
+    .filter((item) => !expectedLearnerId || item.learnerId === expectedLearnerId)
+    .filter((item) => !options.workbookId || item.workbookId === String(options.workbookId))
+    .filter((item) => !options.status || item.status === String(options.status).toUpperCase())
+    .sort((a, b) => (Number(b.lastOpenedAt) || 0) - (Number(a.lastOpenedAt) || 0) || a.assignmentId.localeCompare(b.assignmentId))
+    .map((item) => ({ ...item }));
+}
+
 /**
  * 저장소 초기화 (특정 learnerId 지정 시 해당 학습자 데이터만 초기화, 미지정 시 전체 초기화)
  */
@@ -1406,13 +1503,16 @@ export async function clearAllData(options = {}) {
       for (const [key, rev] of db.reviewItems.entries()) {
         if ((rev.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId) db.reviewItems.delete(key);
       }
+      for (const [key, assignment] of db.workbookAssignments.entries()) {
+        if (assignment.learnerId === targetLearnerId) db.workbookAssignments.delete(key);
+      }
       const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
       db.draftSessions.delete(draftKey);
       return true;
     }
 
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems"], "readwrite");
+      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems", "workbookAssignments"], "readwrite");
       // sessions
       const sessionStore = tx.objectStore("sessions");
       sessionStore.openCursor().onsuccess = (e) => {
@@ -1493,6 +1593,16 @@ export async function clearAllData(options = {}) {
         }
       };
 
+      //+_+// workbookAssignments
+      const workbookStore = tx.objectStore("workbookAssignments");
+      workbookStore.openCursor().onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if (cursor.value.learnerId === targetLearnerId) cursor.delete();
+          cursor.continue();
+        }
+      };
+
       tx.oncomplete = () => resolve(true);
       tx.onerror = (e) => reject(e.target.error);
     });
@@ -1512,11 +1622,12 @@ export async function clearAllData(options = {}) {
     db.submissions.clear();
     db.progressAggregates.clear();
     db.reviewItems.clear();
+    db.workbookAssignments.clear();
     return true;
   }
 
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(["learnerProfiles", "sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems"], "readwrite");
+    const tx = db.transaction(["learnerProfiles", "sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems", "workbookAssignments"], "readwrite");
     tx.objectStore("learnerProfiles").clear();
     tx.objectStore("sessions").clear();
     tx.objectStore("attempts").clear();
@@ -1527,6 +1638,7 @@ export async function clearAllData(options = {}) {
     tx.objectStore("submissions").clear();
     tx.objectStore("progressAggregates").clear();
     tx.objectStore("reviewItems").clear();
+    tx.objectStore("workbookAssignments").clear();
     tx.oncomplete = () => resolve(true);
     tx.onerror = (e) => reject(e.target.error);
   });
@@ -2466,7 +2578,7 @@ export async function finalizeSubmissionGrading(id, options = {}) {
   return new Promise((resolve, reject) => {
     let tx;
     try {
-      tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates", "reviewItems"], "readwrite");
+      tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates", "reviewItems", "workbookAssignments"], "readwrite");
       const subStore = tx.objectStore("submissions");
       const sessStore = tx.objectStore("sessions");
       const attStore = tx.objectStore("attempts");
@@ -2862,7 +2974,7 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
   return new Promise((resolve, reject) => {
     let tx;
     try {
-      tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates", "reviewItems"], "readwrite");
+      tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates", "reviewItems", "workbookAssignments"], "readwrite");
       const subStore = tx.objectStore("submissions");
       const sessStore = tx.objectStore("sessions");
       const attStore = tx.objectStore("attempts");

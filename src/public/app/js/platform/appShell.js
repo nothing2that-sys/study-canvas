@@ -39,6 +39,9 @@ export function initAppShell(options = {}) {
     measurementLandingView: doc.querySelector("#measurementLandingView"),
     koreanLandingView: doc.querySelector("#koreanLandingView"),
     englishLandingView: doc.querySelector("#englishLandingView"),
+    bookshelfView: doc.querySelector("#bookshelfView"),
+    workbookDetailView: doc.querySelector("#workbookDetailView"),
+    workbookReaderView: doc.querySelector("#workbookReaderView"),
     mathAppRoot: doc.querySelector("#mathAppRoot"),
     migrationErrorView: doc.querySelector("#migrationErrorView"),
 
@@ -125,6 +128,9 @@ export function renderRouteView(routePath) {
     domElements.measurementLandingView,
     domElements.koreanLandingView,
     domElements.englishLandingView,
+    domElements.bookshelfView,
+    domElements.workbookDetailView,
+    domElements.workbookReaderView,
     domElements.migrationErrorView,
     domElements.setupView,
     domElements.practiceView,
@@ -162,6 +168,30 @@ export function renderRouteView(routePath) {
       if (domElements.learnerHomeView) {
         domElements.learnerHomeView.hidden = false;
         domElements.learnerHomeView.classList.add("active-view");
+      }
+      break;
+
+    case ROUTES.BOOKSHELF:
+      if (domElements.platformRoot) domElements.platformRoot.hidden = false;
+      if (domElements.bookshelfView) {
+        domElements.bookshelfView.hidden = false;
+        domElements.bookshelfView.classList.add("active-view");
+      }
+      break;
+
+    case ROUTES.WORKBOOK_DETAIL:
+      if (domElements.platformRoot) domElements.platformRoot.hidden = false;
+      if (domElements.workbookDetailView) {
+        domElements.workbookDetailView.hidden = false;
+        domElements.workbookDetailView.classList.add("active-view");
+      }
+      break;
+
+    case ROUTES.WORKBOOK_READER:
+      if (domElements.platformRoot) domElements.platformRoot.hidden = false;
+      if (domElements.workbookReaderView) {
+        domElements.workbookReaderView.hidden = false;
+        domElements.workbookReaderView.classList.add("active-view");
       }
       break;
 
