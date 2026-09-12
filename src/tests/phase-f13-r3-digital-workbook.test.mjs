@@ -19,6 +19,7 @@ import {
 import { getWorkbookCatalog } from "../public/app/js/workbookCatalog.js";
 import {
   DB_VERSION,
+  getDB,
   clearAllData,
   closeDB,
   getWorkbookAssignment,
@@ -27,6 +28,7 @@ import {
   setCurrentLearnerId
 } from "../public/app/js/storage.js";
 import { consumeActiveWorkbookContext, getActiveWorkbookContext } from "../public/app/js/workbookView.js";
+import { exportAllData, importBackupData, validateBackupData } from "../public/app/js/backupEngine.js";
 import { ROUTES, resolveGuardedPath } from "../public/app/js/platform/appRouter.js";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -159,10 +161,13 @@ test("F13-R3 미해결 복습은 PageProgress 최우선 상태다", () => {
   }), PageProgressStatus.REVIEW_DUE);
 });
 
-test("F13-R3 DB_VERSION 7과 Assignment 저장소를 사용한다", () => {
+test("F13-R3 DB_VERSION 7과 Assignment 저장소 인덱스를 사용한다", async () => {
   assert.equal(DB_VERSION, 7);
-  const source = fs.readFileSync(path.join(appRoot, "js", "storage.js"), "utf8");
-  for (const indexName of ["learnerId", "workbookId", "status", "lastOpenedAt"]) assert.match(source, new RegExp(indexName));
+  const assignments = await getWorkbookAssignments({ allLearners: true });
+  assert.deepEqual(assignments, []);
+  const db = await getDB();
+  const indexNames = Array.from(db.transaction("workbookAssignments", "readonly").objectStore("workbookAssignments").indexNames);
+  for (const indexName of ["learnerId", "workbookId", "status", "lastOpenedAt"]) assert.ok(indexNames.includes(indexName));
 });
 
 test("F13-R3 Assignment 저장과 복원은 활성 학습자로 격리된다", async () => {
@@ -189,6 +194,27 @@ test("F13-R3 특정 학습자 초기화는 다른 학습자 Assignment를 보존
   await clearAllData({ learnerId: "learner-a" });
   const all = await getWorkbookAssignments({ allLearners: true });
   assert.deepEqual(all.map((item) => item.learnerId), ["learner-b"]);
+});
+
+
+test("F13-R3 백업 Preview에 Assignment 수를 포함한다", async () => {
+  setCurrentLearnerId("learner-a");
+  await saveWorkbookAssignment(createWorkbookAssignment({ learnerId: "learner-a", workbookId: "w", editionVersion: 1 }));
+  const backup = await exportAllData();
+  const validation = validateBackupData(backup);
+  assert.equal(backup.metadata.workbookAssignmentCount, 1);
+  assert.equal(validation.preview.workbookAssignmentCount, 1);
+});
+
+test("F13-R3 Assignment는 백업과 복원 왕복에서 보존된다", async () => {
+  setCurrentLearnerId("learner-a");
+  const assignment = createWorkbookAssignment({ learnerId: "learner-a", workbookId: "w", editionVersion: 1 });
+  await saveWorkbookAssignment(assignment);
+  const backup = await exportAllData();
+  await clearAllData({ allLearners: true });
+  await importBackupData(backup, { mode: "merge" });
+  const restored = await getWorkbookAssignments({ allLearners: true });
+  assert.equal(restored[0].assignmentId, assignment.assignmentId);
 });
 
 test("F13-R3 카탈로그는 기존 콘텐츠를 학년 미분류로 유지한다", () => {

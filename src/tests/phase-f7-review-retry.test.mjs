@@ -100,8 +100,8 @@ test.after(async () => {
 // 1. 저장 구조 및 마이그레이션 (F7-01 ~ F7-04)
 // ============================================================================
 
-test("Phase F7: 1. [F7-01] DB_VERSION이 6으로 정의되고 6 이상으로 오픈된다", async () => {
-  assert.equal(DB_VERSION, 6, "DB_VERSION 상수가 6이어야 함");
+test("Phase F7: 1. [F7-01] DB_VERSION이 6 이상으로 정의되고 6 이상으로 오픈된다", async () => {
+  assert.ok(DB_VERSION >= 6, "DB_VERSION은 6 이상이어야 함");
   const db = await getDB();
   assert.ok(db.version >= 6, "DB 오픈 버전이 6 이상이어야 함");
 });

@@ -2578,7 +2578,7 @@ export async function finalizeSubmissionGrading(id, options = {}) {
   return new Promise((resolve, reject) => {
     let tx;
     try {
-      tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates", "reviewItems", "workbookAssignments"], "readwrite");
+      tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates", "reviewItems"], "readwrite");
       const subStore = tx.objectStore("submissions");
       const sessStore = tx.objectStore("sessions");
       const attStore = tx.objectStore("attempts");
@@ -2974,7 +2974,7 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
   return new Promise((resolve, reject) => {
     let tx;
     try {
-      tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates", "reviewItems", "workbookAssignments"], "readwrite");
+      tx = db.transaction(["submissions", "sessions", "attempts", "mistakes", "progressAggregates", "reviewItems"], "readwrite");
       const subStore = tx.objectStore("submissions");
       const sessStore = tx.objectStore("sessions");
       const attStore = tx.objectStore("attempts");

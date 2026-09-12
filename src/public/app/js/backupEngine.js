@@ -208,7 +208,7 @@ export async function importBackupData(backup, options = { mode: "replace" }) {
         importedMistakes: (mistakes || []).length,
         importedStrokes: (strokes || []).length,
         importedDrafts: (drafts || []).length,
-      importedWorkbookAssignments: (workbookAssignments || []).length
+        importedWorkbookAssignments: (workbookAssignments || []).length
       });
     };
 
