@@ -236,10 +236,13 @@ export function createSession(config = {}, questions = []) {
       throw new Error(`채점할 수 없는 상태입니다. 현재 상태: ${state} (GRADING_ACTIVE 상태에서만 가능)`);
     }
 
-    const question = questions.find((q) => q.id === questionId);
+    //+_+// DOM dataset와 persisted object key는 문자열이므로 원본 question ID 타입과 정규화해 같은 문항으로 판정한다.
+    const question = questions.find((q) => String(q.id) === String(questionId));
     if (!question) {
       throw new Error(`해당 ID(${questionId})의 문제를 찾을 수 없습니다.`);
     }
+
+    const resolvedQuestionId = question.id;
 
     const gradeData = createGradeDecision({
       ...question,
@@ -247,12 +250,12 @@ export function createSession(config = {}, questions = []) {
       level: question.level || macroLevelId,
       macroLevelId: question.macroLevelId || macroLevelId,
       stageId: question.stageId || stageId
-    }, decision, comment, grades.get(questionId));
+    }, decision, comment, grades.get(resolvedQuestionId));
 
-    grades.set(questionId, gradeData);
+    grades.set(resolvedQuestionId, gradeData);
     question.grade = gradeData;
     return {
-      questionId,
+      questionId: resolvedQuestionId,
       gradeData,
       status: getGradingStatus()
     };

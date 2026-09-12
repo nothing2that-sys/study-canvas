@@ -4,6 +4,7 @@ import fs from "node:fs";
 
 import { createDrawingCanvas, InputProfile } from "../public/app/js/canvasEngine.js";
 import { refreshScribbleCommitSurface } from "../public/app/js/typedInteractionSurface.js";
+import { createSession } from "../public/app/js/sessionEngine.js";
 
 function createMockCanvas({ rawUpdate = false } = {}) {
   const listeners = {};
@@ -76,4 +77,20 @@ test("F13-R2: quick/detail grading and canonical question ID fixes are wired", (
   assert.match(app, /const canvasQuestions = gradingViewMode === "detail"/);
   assert.match(css, /\.grading-grid\.view-quick \.grading-comparison-grid/);
   assert.match(css, /\.worksheet-card\.response-surface-text \.card-problem-body[\s\S]*?touch-action:\s*auto/);
+});
+
+test("F13-R2: string dataset ID grades numeric question ID and enables completion", () => {
+  const session = createSession({}, [
+    { id: 101, answer: "a", level: "G3" },
+    { id: 102, answer: "b", level: "G3" }
+  ]);
+  session.start();
+  session.startSubmitting();
+  session.submitPractice();
+  session.setPendingGrading();
+  session.startGrading();
+  session.gradeQuestion("101", "CORRECT");
+  session.gradeQuestion("102", "WRONG");
+  assert.equal(session.getGradingStatus().allGraded, true);
+  assert.doesNotThrow(() => session.finishGrading());
 });
