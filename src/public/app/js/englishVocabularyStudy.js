@@ -156,18 +156,34 @@ export function normalizeVocabularyMemoryState(input = {}) {
   const memoryStatus = String(input.memoryStatus || VocabularyMemoryStatus.NEW).toUpperCase();
   if (!VALID_MEMORY_STATUSES.has(memoryStatus)) throw new Error(`유효하지 않은 기억 상태입니다: ${input.memoryStatus}`);
   const dueAt = input.dueAt === null || input.dueAt === undefined ? null : Number(input.dueAt);
-  if (dueAt !== null && !Number.isFinite(dueAt)) throw new Error("dueAt이 유효하지 않습니다.");
+  if (dueAt !== null && (!Number.isFinite(dueAt) || dueAt < 0)) throw new Error("dueAt이 유효하지 않습니다.");
+
+  const exposureCount = input.exposureCount === null || input.exposureCount === undefined ? 0 : Number(input.exposureCount);
+  if (!Number.isInteger(exposureCount) || exposureCount < 0) throw new Error("exposureCount가 유효하지 않습니다.");
+  const successStreak = input.successStreak === null || input.successStreak === undefined ? 0 : Number(input.successStreak);
+  if (!Number.isInteger(successStreak) || successStreak < 0) throw new Error("successStreak가 유효하지 않습니다.");
+
+  const lastRating = input.lastRating ? String(input.lastRating).toUpperCase() : null;
+  if (lastRating !== null && !VALID_RATINGS.has(lastRating)) throw new Error(`lastRating이 유효하지 않습니다: ${input.lastRating}`);
+  const lastPracticedAt = input.lastPracticedAt === null || input.lastPracticedAt === undefined ? null : Number(input.lastPracticedAt);
+  if (lastPracticedAt !== null && (!Number.isFinite(lastPracticedAt) || lastPracticedAt < 0)) throw new Error("lastPracticedAt이 유효하지 않습니다.");
+
+  const createdAt = input.createdAt === null || input.createdAt === undefined ? base.createdAt : Number(input.createdAt);
+  if (!Number.isFinite(createdAt) || createdAt < 0) throw new Error("createdAt이 유효하지 않습니다.");
+  const updatedAt = input.updatedAt === null || input.updatedAt === undefined ? base.updatedAt : Number(input.updatedAt);
+  if (!Number.isFinite(updatedAt) || updatedAt < 0) throw new Error("updatedAt이 유효하지 않습니다.");
+
   return {
     ...base,
     id: `${base.learnerId}:${base.wordId}`,
     memoryStatus,
     dueAt,
-    exposureCount: Math.max(0, Number(input.exposureCount) || 0),
-    successStreak: Math.max(0, Number(input.successStreak) || 0),
-    lastRating: input.lastRating ? String(input.lastRating).toUpperCase() : null,
-    lastPracticedAt: input.lastPracticedAt === null || input.lastPracticedAt === undefined ? null : Number(input.lastPracticedAt),
-    createdAt: Number(input.createdAt) || base.createdAt,
-    updatedAt: Number(input.updatedAt) || base.updatedAt
+    exposureCount,
+    successStreak,
+    lastRating,
+    lastPracticedAt,
+    createdAt,
+    updatedAt
   };
 }
 

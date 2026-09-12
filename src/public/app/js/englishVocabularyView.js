@@ -109,21 +109,37 @@ export async function initEnglishVocabularyStudy({ container, learner, onStartCh
     topicSelect.innerHTML = `<option value="ALL" ${topicId === "ALL" ? "selected" : ""}>전체 주제</option>${topics.map((topic) => `<option value="${escapeHtml(topic.topicId)}" ${topic.topicId === topicId ? "selected" : ""}>${escapeHtml(topic.title)}</option>`).join("")}`;
   }
 
+  function showVocabularyError(message) {
+    stage.hidden = false;
+    let alert = stage.querySelector(".vocabulary-error-message");
+    if (!alert) {
+      stage.insertAdjacentHTML("afterbegin", '<p class="vocabulary-error-message" role="alert"></p>');
+      alert = stage.querySelector(".vocabulary-error-message");
+    }
+    alert.textContent = message;
+  }
+
   async function refreshSummary() {
     if (gradeLevel === null) {
       dueSummary.textContent = "보호자 설정에서 영어 학년 범위를 허용해 주세요.";
-      return;
+      return false;
     }
-    const [states, aggregates] = await Promise.all([
-      getVocabularyMemoryStates({ learnerId: learner.id }),
-      getAllProgressAggregates({ learnerId: learner.id, subjectId: "english" })
-    ]);
-    const eligibleWordIds = new Set(selectVocabularyWords({ words: allWords, gradeLevel, topicId }).map((word) => word.wordId));
-    const dueCount = states.filter((state) => eligibleWordIds.has(state.wordId) && state.dueAt !== null && state.dueAt <= Date.now()).length;
-    const masteredCount = states.filter((state) => eligibleWordIds.has(state.wordId) && state.memoryStatus === "MASTERED").length;
-    const official = aggregates.find((item) => item.levelId === `EN_VOCAB_CHECK_G${gradeLevel}`);
-    const officialText = official && official.gradedAttemptCount > 0 ? ` · 확인 정답률 ${Math.round(official.accuracy)}%` : "";
-    dueSummary.textContent = `복습 예정 ${dueCount}개 · 익힘 ${masteredCount}개${officialText}`;
+    try {
+      const [states, aggregates] = await Promise.all([
+        getVocabularyMemoryStates({ learnerId: learner.id }),
+        getAllProgressAggregates({ learnerId: learner.id, subjectId: "english" })
+      ]);
+      const eligibleWordIds = new Set(selectVocabularyWords({ words: allWords, gradeLevel, topicId }).map((word) => word.wordId));
+      const dueCount = states.filter((state) => eligibleWordIds.has(state.wordId) && state.dueAt !== null && state.dueAt <= Date.now()).length;
+      const masteredCount = states.filter((state) => eligibleWordIds.has(state.wordId) && state.memoryStatus === "MASTERED").length;
+      const official = aggregates.find((item) => item.levelId === `EN_VOCAB_CHECK_G${gradeLevel}`);
+      const officialText = official && official.gradedAttemptCount > 0 ? ` · 확인 정답률 ${Math.round(official.accuracy)}%` : "";
+      dueSummary.textContent = `복습 예정 ${dueCount}개 · 익힘 ${masteredCount}개${officialText}`;
+      return true;
+    } catch (error) {
+      dueSummary.textContent = "학습 현황을 불러오지 못했습니다. 다시 시도해 주세요.";
+      return false;
+    }
   }
 
   function showRatingButtons(item) {
@@ -132,12 +148,22 @@ export async function initEnglishVocabularyStudy({ container, learner, onStartCh
     controls.hidden = false;
     controls.querySelectorAll("button[data-rating]").forEach((button) => {
       button.addEventListener("click", async () => {
-        const updated = applyVocabularyPracticeRating(item.state, button.dataset.rating, { now: Date.now() });
-        await saveVocabularyMemoryState(updated, { learnerId: learner.id });
-        queueIndex += 1;
-        await refreshSummary();
-        renderCurrentCard();
-      }, { once: true });
+        if (button.dataset.saving === "true") return;
+        const ratingButtons = Array.from(controls.querySelectorAll("button[data-rating]"));
+        ratingButtons.forEach((candidate) => { candidate.disabled = true; });
+        button.dataset.saving = "true";
+        try {
+          const updated = applyVocabularyPracticeRating(item.state, button.dataset.rating, { now: Date.now() });
+          await saveVocabularyMemoryState(updated, { learnerId: learner.id });
+          queueIndex += 1;
+          await refreshSummary();
+          renderCurrentCard();
+        } catch (error) {
+          ratingButtons.forEach((candidate) => { candidate.disabled = false; });
+          delete button.dataset.saving;
+          showVocabularyError("복습 상태를 저장하지 못했습니다. 같은 평가를 다시 눌러 주세요.");
+        }
+      });
     });
   }
 
@@ -209,17 +235,24 @@ export async function initEnglishVocabularyStudy({ container, learner, onStartCh
   });
   practiceButton.addEventListener("click", async () => {
     if (gradeLevel === null) return;
-    onPracticeStart?.({ gradeLevel, topicId });
-    const states = await getVocabularyMemoryStates({ learnerId: learner.id });
-    const eligibleWords = selectVocabularyWords({ words: allWords, gradeLevel, topicId });
-    queue = buildVocabularyPracticeQueue({ words: eligibleWords, memoryStates: states, learnerId: learner.id, now: Date.now(), limit: 12 });
-    queueIndex = 0;
-    stage.hidden = false;
-    if (queue.length === 0) {
-      stage.innerHTML = `<div class="vocabulary-session-complete"><h3>지금 복습할 단어가 없어요</h3><p>다음 예정일에 다시 확인해 주세요.</p></div>`;
-      return;
+    practiceButton.disabled = true;
+    try {
+      const states = await getVocabularyMemoryStates({ learnerId: learner.id });
+      const eligibleWords = selectVocabularyWords({ words: allWords, gradeLevel, topicId });
+      queue = buildVocabularyPracticeQueue({ words: eligibleWords, memoryStates: states, learnerId: learner.id, now: Date.now(), limit: 12 });
+      queueIndex = 0;
+      stage.hidden = false;
+      if (queue.length === 0) {
+        stage.innerHTML = `<div class="vocabulary-session-complete"><h3>지금 복습할 단어가 없어요</h3><p>다음 예정일에 다시 확인해 주세요.</p></div>`;
+        return;
+      }
+      onPracticeStart?.({ gradeLevel, topicId });
+      renderCurrentCard();
+    } catch (error) {
+      showVocabularyError("복습 데이터를 불러오지 못했습니다. 다시 시도해 주세요.");
+    } finally {
+      practiceButton.disabled = gradeLevel === null;
     }
-    renderCurrentCard();
   });
   checkButton.addEventListener("click", () => {
     if (gradeLevel === null) return;
