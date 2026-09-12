@@ -3,6 +3,7 @@
 문서 상태: ARCHITECTURE_SSOT  
 작성일: 2026-09-11  
 상위 정본: `Docs/UNIFIED_CURRICULUM_ACTIVITY_PLATFORM_v2.3.md`  
+구현 정본: `Docs/Implementation_Phases/26_PHASE_F13_R2_GRADE_LEVEL_FOUNDATION.md`  
 
 ---
 
@@ -35,6 +36,8 @@
   "guardianPolicyId": "policy-1"
 }
 ```
+
+F13-R2 로컬 우선 구현에서는 별도 Object Store를 추가하지 않고 프로필에 `guardianPolicyId`, 정책 Snapshot과 과목별 Placement를 함께 저장한다. 정책 ID는 향후 별도 저장소나 동기화 계층으로 분리할 때도 안정적으로 유지한다.
 
 검증:
 
