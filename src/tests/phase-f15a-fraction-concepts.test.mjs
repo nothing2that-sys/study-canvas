@@ -1349,3 +1349,185 @@ test("F15A-REWORK2-E2E-03: 다중 학습자 데이터 격리 및 분수(fraction
   assert.equal(arithAgg.incorrectCount, 0);
 });
 
+//+_+// Group 8: Phase F15A Rework 4 - TEXT Scribble Refresh SSOT 및 중복 호출 제거 회귀 테스트
+test("F15A-R4-TEXT-01: 일반 TEXT input 1회 발생 시 onInput 1회, onDraftTrigger 1회, Scribble refresh outer frame 1회 스케줄링 검증 (중복 scheduling 금지)", () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body><input id="textInput_frac_r4_01" class="typed-text-input" /></body></html>');
+  const inputEl = dom.window.document.getElementById("textInput_frac_r4_01");
+
+  let onInputCallCount = 0;
+  let onDraftTriggerCallCount = 0;
+  let outerFrameCount = 0;
+  const frameQueue = [];
+
+  const mockScheduleFrame = (fn) => {
+    outerFrameCount++;
+    frameQueue.push(fn);
+  };
+
+  bindTextResponseSurface(
+    dom.window.document,
+    "frac_r4_01",
+    (value) => {
+      onInputCallCount++;
+    },
+    {
+      onDraftTrigger: () => {
+        onDraftTriggerCallCount++;
+      },
+      scheduleFrame: mockScheduleFrame
+    }
+  );
+
+  inputEl.value = "2/3";
+  inputEl.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+
+  assert.equal(onInputCallCount, 1, "onInput은 정확히 1회 호출되어야 함");
+  assert.equal(onDraftTriggerCallCount, 1, "onDraftTrigger는 정확히 1회 호출되어야 함");
+  assert.equal(outerFrameCount, 1, "Scribble refresh outer frame은 중복 없이 정확히 1회만 스케줄링되어야 함");
+  assert.equal(inputEl.classList.contains("scribble-commit-refresh"), true, "Scribble refresh 클래스가 추가되어 있어야 함");
+
+  // Drain frame queue to verify 2-stage RAF completion and class removal
+  assert.equal(frameQueue.length, 1);
+  const outerCallback = frameQueue.shift();
+  outerCallback();
+  assert.equal(frameQueue.length, 1);
+  const innerCallback = frameQueue.shift();
+  innerCallback();
+  assert.equal(inputEl.classList.contains("scribble-commit-refresh"), false, "2단계 프레임 완료 후 refresh 클래스가 제거되어야 함");
+});
+
+test("F15A-R4-TEXT-02: IME compositionstart -> composing input -> compositionend 흐름에서 조합 중 commit 0회 및 종료 시 최종 commit/draft/refresh 각 1회 검증", () => {
+  const dom = new JSDOM('<!DOCTYPE html><html><body><input id="textInput_frac_r4_02" class="typed-text-input" /></body></html>');
+  const inputEl = dom.window.document.getElementById("textInput_frac_r4_02");
+
+  let onInputCallCount = 0;
+  let onDraftTriggerCallCount = 0;
+  let outerFrameCount = 0;
+  const frameQueue = [];
+
+  const mockScheduleFrame = (fn) => {
+    outerFrameCount++;
+    frameQueue.push(fn);
+  };
+
+  bindTextResponseSurface(
+    dom.window.document,
+    "frac_r4_02",
+    (value) => {
+      onInputCallCount++;
+    },
+    {
+      onDraftTrigger: () => {
+        onDraftTriggerCallCount++;
+      },
+      scheduleFrame: mockScheduleFrame
+    }
+  );
+
+  // 1. compositionstart
+  inputEl.dispatchEvent(new dom.window.CompositionEvent("compositionstart", { bubbles: true }));
+  assert.equal(inputEl.dataset.isComposing, "true");
+
+  // 2. composing input events (typing intermediate characters)
+  inputEl.value = "ㄱ";
+  inputEl.dispatchEvent(new dom.window.InputEvent("input", { bubbles: true, isComposing: true }));
+  inputEl.value = "가";
+  inputEl.dispatchEvent(new dom.window.InputEvent("input", { bubbles: true, isComposing: true }));
+
+  assert.equal(onInputCallCount, 0, "조합 중에는 onInput 호출이 없어야 함 (0회)");
+  assert.equal(onDraftTriggerCallCount, 0, "조합 중에는 onDraftTrigger 호출이 없어야 함 (0회)");
+  assert.equal(outerFrameCount, 0, "조합 중에는 Scribble refresh 스케줄링이 없어야 함 (0회)");
+
+  // 3. compositionend with final committed value
+  inputEl.value = "3/4";
+  inputEl.dispatchEvent(new dom.window.CompositionEvent("compositionend", { bubbles: true, data: "3/4" }));
+
+  assert.equal(inputEl.dataset.isComposing, "false");
+  assert.equal(onInputCallCount, 1, "compositionend에서 최종 commit onInput은 정확히 1회 호출되어야 함");
+  assert.equal(onDraftTriggerCallCount, 1, "compositionend에서 onDraftTrigger는 정확히 1회 호출되어야 함");
+  assert.equal(outerFrameCount, 1, "compositionend에서 Scribble refresh outer frame은 정확히 1회 스케줄링되어야 함");
+  assert.equal(inputEl.classList.contains("scribble-commit-refresh"), true);
+
+  // Drain frame queue
+  const outerCallback = frameQueue.shift();
+  outerCallback();
+  const innerCallback = frameQueue.shift();
+  innerCallback();
+  assert.equal(inputEl.classList.contains("scribble-commit-refresh"), false);
+});
+
+test("F15A-R4-TEXT-03: Production app.js와 shared binder 연결 구조 및 동일 event당 refresh 1회 보장 검증", () => {
+  // 1. Production app.js 정적 계약 검증:
+  // app.js는 bindTextResponseSurface를 사용하고, 그 콜백 내에서 applyStudentResponseChange만 호출하며,
+  // 중복 refreshScribbleCommitSurface를 직접 호출하지 않는다.
+  const appSource = fs.readFileSync(new URL("../public/app/js/app.js", import.meta.url), "utf8");
+  assert.match(appSource, /bindTextResponseSurface\s*\(\s*document,\s*q\.id/);
+  assert.doesNotMatch(appSource, /applyStudentResponseChange[\s\S]*?refreshScribbleCommitSurface/);
+
+  // 2. Production wiring과 동일한 데이터 구조 및 binder 연결 검증
+  const testAct = activities.find((a) => a.id === "frac_equiv_text_002") || {
+    id: "frac_equiv_text_002",
+    subjectId: "math",
+    courseId: "fraction",
+    moduleId: "fraction",
+    skillId: "SKILL_FRACTION_EQUIV",
+    responseType: "TEXT",
+    answer: "2/4"
+  };
+
+  const session = createSession({
+    subjectId: "math",
+    courseId: "fraction",
+    moduleId: "fraction",
+    skillId: "SKILL_FRACTION_EQUIV",
+    learnerId: "learner-r4-text"
+  }, [testAct]);
+  session.start();
+
+  const questionResponseRecordsMap = new Map();
+  const dom = new JSDOM(`<!DOCTYPE html><html><body><input id="textInput_${testAct.id}" class="typed-text-input" /></body></html>`);
+  const inputEl = dom.window.document.getElementById(`textInput_${testAct.id}`);
+
+  let draftSavedCount = 0;
+  let outerFrameCount = 0;
+  const mockScheduleFrame = (fn) => {
+    outerFrameCount++;
+  };
+
+  // Production app.js lines 1839-1860와 동일한 wiring (shared binder + response mutation guard)
+  bindTextResponseSurface(
+    dom.window.document,
+    testAct.id,
+    (value) => {
+      try {
+        applyStudentResponseChange(session, questionResponseRecordsMap, testAct, value);
+      } catch (err) {
+        console.warn("[app] 학생 응답 변경 거절 (Session Locked):", err);
+      }
+    },
+    {
+      onDraftTrigger: () => {
+        draftSavedCount++;
+      },
+      scheduleFrame: mockScheduleFrame
+    }
+  );
+
+  // Event 1: 1회 input 이벤트 발생
+  inputEl.value = "2/4";
+  inputEl.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+
+  assert.equal(questionResponseRecordsMap.get(testAct.id)?.value, "2/4", "ResponseRecord에 학생 응답 정상 저장");
+  assert.equal(draftSavedCount, 1, "드래프트 저장 트리거 1회");
+  assert.equal(outerFrameCount, 1, "전체 파이프라인에서 refresh scheduling은 중복 없이 정확히 1회만 발생");
+
+  // Event 2: 1회 compositionend 이벤트 발생
+  inputEl.value = "3/6";
+  inputEl.dispatchEvent(new dom.window.CompositionEvent("compositionend", { bubbles: true, data: "3/6" }));
+
+  assert.equal(questionResponseRecordsMap.get(testAct.id)?.value, "3/6", "ResponseRecord에 최종 IME 응답 정상 저장");
+  assert.equal(draftSavedCount, 2, "드래프트 저장 트리거 총 2회");
+  assert.equal(outerFrameCount, 2, "compositionend 포함 refresh scheduling은 정확히 2회 (각 이벤트당 1회)");
+});
+
+

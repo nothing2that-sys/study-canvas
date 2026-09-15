@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
+import { JSDOM } from "jsdom";
+
 import { createDrawingCanvas, InputProfile } from "../public/app/js/canvasEngine.js";
-import { refreshScribbleCommitSurface } from "../public/app/js/typedInteractionSurface.js";
+import { refreshScribbleCommitSurface, bindTextResponseSurface } from "../public/app/js/typedInteractionSurface.js";
 import { createSession } from "../public/app/js/sessionEngine.js";
 
 function createMockCanvas({ rawUpdate = false } = {}) {
@@ -92,7 +94,31 @@ test("F13-R3: evidence-first grading navigator and canonical question ID fixes a
   assert.match(app, /const qId = resolveSessionQuestionId\(btn\.dataset\.id\)/);
   assert.match(app, /const canvasQuestions = questions\.filter/);
   assert.match(app, /function renderGradingQuestionNavigator/);
-  assert.match(app, /refreshScribbleCommitSurface\(inputEl\)/);
+  //+_+// Phase F15A Rework 4: Scribble refresh 실행 책임은 bindTextResponseSurface 단일 SSOT로 이전됨
+  assert.equal(typeof refreshScribbleCommitSurface, "function", "typedInteractionSurface exports refreshScribbleCommitSurface");
+  assert.equal(typeof bindTextResponseSurface, "function", "typedInteractionSurface exports bindTextResponseSurface");
+  assert.match(app, /bindTextResponseSurface\s*\(\s*document,\s*q\.id/);
+  assert.doesNotMatch(app, /applyStudentResponseChange[\s\S]*?refreshScribbleCommitSurface/);
+
+  // Behavioral assertion: bindTextResponseSurface routes exactly 1 refresh scheduling per input & compositionend
+  const dom = new JSDOM('<!DOCTYPE html><html><body><input id="textInput_f13_ssot" class="typed-text-input" /></body></html>');
+  let outerScheduleCount = 0;
+  const mockSchedule = (fn) => {
+    outerScheduleCount++;
+  };
+  bindTextResponseSurface(dom.window.document, "f13_ssot", () => {}, { scheduleFrame: mockSchedule });
+  const f13InputEl = dom.window.document.getElementById("textInput_f13_ssot");
+
+  // Input event -> exactly 1 refresh outer scheduling
+  f13InputEl.value = "10";
+  f13InputEl.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+  assert.equal(outerScheduleCount, 1, "한 input event당 refresh scheduling은 정확히 1회");
+  assert.equal(f13InputEl.classList.contains("scribble-commit-refresh"), true);
+
+  // Compositionend event -> exactly 1 additional refresh outer scheduling
+  f13InputEl.dispatchEvent(new dom.window.CompositionEvent("compositionend", { bubbles: true, data: "10" }));
+  assert.equal(outerScheduleCount, 2, "한 compositionend당 refresh scheduling은 정확히 1회 추가 (총 2회)");
+
   assert.doesNotMatch(app, /focusNextUngraded\(qId\)/);
   assert.match(html, /id="gradingQuestionNavigator"/);
   assert.match(html, /id="gradingExitBtn"/);
