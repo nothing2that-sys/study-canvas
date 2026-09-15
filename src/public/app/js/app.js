@@ -63,8 +63,7 @@ import {
   bindTextResponseSurface,
   renderChoiceActivityStage,
   renderTextActivityStage,
-  renderTypedActivityStage,
-  refreshScribbleCommitSurface
+  renderTypedActivityStage
 } from "./typedInteractionSurface.js";
 import {
   canMutatePractice,
@@ -1840,13 +1839,12 @@ function renderCurrentWorksheetPage() {
       bindTextResponseSurface(
         document,
         q.id,
-        (value, inputEl) => {
+        (value) => {
           try {
             applyStudentResponseChange(currentSession, questionResponseRecordsMap, q, value);
           } catch (err) {
             console.warn("[app] 학생 응답 변경 거절 (Session Locked):", err);
           }
-          refreshScribbleCommitSurface(inputEl);
         },
         {
           onDraftTrigger: () => {
