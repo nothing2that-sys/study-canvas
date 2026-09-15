@@ -47,6 +47,21 @@ import {
 } from "../public/app/js/storage.js";
 
 import {
+  createSession,
+  SessionState
+} from "../public/app/js/sessionEngine.js";
+
+import {
+  applyStudentResponseChange,
+  createResponseRecord
+} from "../public/app/js/responseEngine.js";
+
+import {
+  bindChoiceResponseSurface,
+  syncChoiceSurfaceSelection
+} from "../public/app/js/typedInteractionSurface.js";
+
+import {
   getWorkbookCatalog,
   getWorkbookCatalogItem
 } from "../public/app/js/workbookCatalog.js";
@@ -123,11 +138,15 @@ test("F15A-MODEL-02: 정수 분수 유효성 검사 - 음수 및 부동소수점
   assert.throws(() => normalizeFraction({ numerator: 1, denominator: Infinity }), /무한대/);
 });
 
-test("F15A-MODEL-03: 분모 1 정책 - 자연수 분수 허용", () => {
-  const norm = normalizeFraction({ numerator: 4, denominator: 1 });
-  assert.equal(norm.numerator, 4);
-  assert.equal(norm.denominator, 1);
-  assert.equal(classifyFractionType(norm), FractionType.IMPROPER);
+//+_+// Rework 1: 분모 1 정책 수정 (기본 public fraction 계약에서는 denominator 1 거부)
+test("F15A-MODEL-03: 분모 1 정책 - 일반 분수 계약에서 분모 1은 거절된다", () => {
+  assert.equal(validateFraction({ numerator: 4, denominator: 1 }), false);
+  assert.throws(() => normalizeFraction({ numerator: 4, denominator: 1 }), /최소 2 이상|분모 1/);
+  assert.throws(() => normalizeFraction("4/1"), /최소 2 이상|분모 1/);
+
+  // 내부 전용 경로만 명시적 옵션으로 denominator 1 허용 가능
+  const internal = normalizeFraction({ numerator: 4, denominator: 1 }, { allowWholeAsFraction: true, minDenominator: 1 });
+  assert.equal(internal.denominator, 1);
 });
 
 test("F15A-MODEL-04: 분수 유형 분류 (PROPER, IMPROPER, MIXED, UNIT)", () => {
@@ -186,6 +205,23 @@ test("F15A-MODEL-07: 한국어 접근성 텍스트 설명 생성", () => {
 
   const formatted = formatFraction({ numerator: 5, denominator: 6 });
   assert.equal(formatted, "5/6");
+});
+
+//+_+// Rework 1: 신규 분수 데이터 모델 실패 선행 검증 (Fail-Closed)
+test("F15A-REWORK-01: 분모 1 public Fraction 거부 (denominator = 1 reject)", () => {
+  assert.equal(validateFraction({ numerator: 1, denominator: 1 }), false);
+  assert.throws(() => normalizeFraction({ numerator: 1, denominator: 1 }), /최소 2 이상|분모 1/);
+  assert.throws(() => normalizeFraction({ numerator: 3, denominator: 1 }), /최소 2 이상|분모 1/);
+  assert.throws(() => normalizeFraction("1/1"), /최소 2 이상|분모 1/);
+});
+
+test("F15A-REWORK-02: 분모 0, 소수 분모, NaN, Infinity 입력 fail-closed 거절", () => {
+  assert.throws(() => normalizeFraction({ numerator: 1, denominator: 0 }), /분모는 0일 수 없습니다/);
+  assert.throws(() => normalizeFraction({ numerator: 1, denominator: 2.5 }), /소수/);
+  assert.throws(() => normalizeFraction({ numerator: NaN, denominator: 3 }), /NaN/);
+  assert.throws(() => normalizeFraction({ numerator: Infinity, denominator: 3 }), /무한대/);
+  assert.throws(() => normalizeFraction({ numerator: 3, denominator: NaN }), /NaN/);
+  assert.throws(() => normalizeFraction({ numerator: 3, denominator: Infinity }), /무한대/);
 });
 
 //+_+// Group 3: 시각적 표현 렌더러 (SVG/DOM Representation Viewers & Accessibility)
@@ -258,16 +294,47 @@ test("F15A-VIEW-05: EQUIVALENT_PAIR SVG 생성 및 이중 모델 비교", () => 
   assert.ok(svg.includes('aria-label="1/2과 2/4 동치 분수 비교 바"'));
 });
 
-test("F15A-VIEW-06: 렌더러 결정론 (Math.random 미사용 확인) 및 폴백 처리", () => {
+test("F15A-VIEW-06: 렌더러 결정론 (Math.random 미사용 확인) 및 fail-closed 검증", () => {
   const svg1 = renderPartWholeBarSVG({ fraction: { numerator: 2, denominator: 3 } });
   const svg2 = renderPartWholeBarSVG({ fraction: { numerator: 2, denominator: 3 } });
   assert.equal(svg1, svg2, "동일 입력 시 완벽히 동일한 SVG 문자열 생성");
 
-  const fallback = renderFractionRepresentation({
+  // UNKNOWN representation은 침묵 폴백 대신 명시적 fail-closed 거절
+  assert.throws(() => renderFractionRepresentation({
     type: "UNKNOWN_TYPE",
     fraction: { numerator: 1, denominator: 2 }
-  });
-  assert.ok(fallback.includes("fraction-visual-container"), "미지원 타입 폴백 렌더링");
+  }), /알 수 없는|지원되지 않는|UNKNOWN/);
+});
+
+//+_+// Rework 1: 시각 표현 모델 fail-closed 검증 (silent clamp/coercion 제거)
+test("F15A-REWORK-03: BAR 렌더러는 유효하지 않은 분자/분모를 fail-closed로 거부한다", () => {
+  // BAR invalid numerator reject (분자 > 분모)
+  assert.throws(() => renderPartWholeBarSVG({ fraction: { numerator: 5, denominator: 4 } }), /초과|유효하지 않은/);
+  // BAR invalid denominator reject (분모 < 2)
+  assert.throws(() => renderPartWholeBarSVG({ fraction: { numerator: 1, denominator: 1 } }), /최소 2 이상|유효하지 않은/);
+});
+
+test("F15A-REWORK-04: GRID 렌더러는 소수 rows, 0 rows, 분모 불일치를 fail-closed로 거부한다", () => {
+  // GRID decimal rows reject
+  assert.throws(() => renderPartWholeGridSVG({ rows: 2.5, cols: 2, fraction: { numerator: 1, denominator: 5 } }), /정수|유효하지 않은/);
+  // GRID zero rows reject
+  assert.throws(() => renderPartWholeGridSVG({ rows: 0, cols: 4, fraction: { numerator: 1, denominator: 4 } }), /1 이상|유효하지 않은/);
+  // GRID inconsistent denominator reject (rows * cols !== denominator)
+  assert.throws(() => renderPartWholeGridSVG({ rows: 2, cols: 3, fraction: { numerator: 2, denominator: 8 } }), /불일치|일치하지 않습니다/);
+});
+
+test("F15A-REWORK-05: NUMBER_LINE 렌더러는 유효하지 않은 subdivisions 및 범위 밖 마커를 fail-closed로 거부한다", () => {
+  // NUMBER_LINE invalid subdivisions reject
+  assert.throws(() => renderNumberLineSVG({ subdivisions: 1.5, fractions: [{ numerator: 1, denominator: 2 }] }), /정수|유효하지 않은/);
+  // NUMBER_LINE marker out of range reject (markerVal > maxVal)
+  assert.throws(() => renderNumberLineSVG({ maxVal: 1, subdivisions: 4, fractions: [{ numerator: 5, denominator: 4 }] }), /범위|초과/);
+});
+
+test("F15A-REWORK-06: EQUIVALENT_PAIR 및 알 수 없는 표현 타입 fail-closed 거부", () => {
+  // EQUIVALENT_PAIR invalid side reject
+  assert.throws(() => renderEquivalentPairSVG({ fractionA: { numerator: 1, denominator: 2 }, fractionB: { numerator: 1, denominator: 1 } }), /최소 2 이상|유효하지 않은/);
+  // UNKNOWN representation reject
+  assert.throws(() => renderFractionRepresentation({ type: "UNKNOWN_TYPE", fraction: { numerator: 1, denominator: 2 } }), /지원되지 않는|알 수 없는|UNKNOWN/);
 });
 
 //+_+// Group 4: 스토리지, 임시저장, 제출 스냅샷, 학부모 채점, 복습 사이클
@@ -464,4 +531,216 @@ test("F15A-SW-01: 서비스 워커 프리캐시 항목에 신규 분수 모듈 �
   assert.ok(swContent.includes("./content/packages/math-fraction-concepts-v1/manifest.json"), "manifest.json 캐시 목록 포함");
   assert.ok(swContent.includes("./content/packages/math-fraction-concepts-v1/curriculum.json"), "curriculum.json 캐시 목록 포함");
   assert.ok(swContent.includes("./content/packages/math-fraction-concepts-v1/activities.json"), "activities.json 캐시 목록 포함");
+});
+
+//+_+// Rework 1 Group 8: 실제 DOM 상호작용 검증 (CHOICE 및 TEXT 풀이, Draft 저장/복원, 제출 및 Lock)
+function createMockElement(tag, attrs = {}) {
+  const listeners = new Map();
+  const classes = new Set();
+  const el = {
+    tagName: tag.toUpperCase(),
+    value: attrs.value || "",
+    checked: Boolean(attrs.checked),
+    disabled: Boolean(attrs.disabled),
+    innerHTML: "",
+    dataset: {},
+    classList: {
+      add(c) { classes.add(c); },
+      remove(c) { classes.delete(c); },
+      toggle(c, force) {
+        if (force !== undefined) {
+          if (force) classes.add(c); else classes.delete(c);
+        } else {
+          if (classes.has(c)) classes.delete(c); else classes.add(c);
+        }
+      },
+      contains(c) { return classes.has(c); }
+    },
+    addEventListener(event, fn) {
+      if (!listeners.has(event)) listeners.set(event, []);
+      listeners.get(event).push(fn);
+    },
+    dispatchEvent(eventObj) {
+      const fns = listeners.get(eventObj.type) || [];
+      for (const fn of fns) fn(eventObj);
+    },
+    closest(selector) {
+      if (selector === ".typed-choice-item" && el.card) return el.card;
+      return null;
+    }
+  };
+  return el;
+}
+
+test("F15A-REWORK-07: Fraction CHOICE Activity 실제 DOM 상호작용 (선택, Draft 저장, 복원, 제출 Lock)", async () => {
+  await clearAllData();
+  setCurrentLearnerId("learner-rework-choice");
+
+  const act = activities.find((a) => a.id === "frac_part_whole_bar_001");
+  assert.ok(act);
+  assert.equal(act.responseType, "CHOICE");
+
+  // 시각 표현 DOM 생성 검증
+  const visualHtml = renderFractionRepresentation(act);
+  assert.ok(visualHtml.includes("<svg"));
+  assert.ok(visualHtml.includes('role="img"'));
+
+  // 세션 생성
+  const session = createSession({
+    subjectId: "math",
+    courseId: "fraction",
+    moduleId: "fraction",
+    skillId: act.skillId,
+    learnerId: "learner-rework-choice"
+  }, [act]);
+  session.start();
+
+  const responseRecordsMap = new Map();
+
+  // CHOICE DOM 트리 구성
+  const radios = act.choices.map((c) => {
+    const radio = createMockElement("input", { value: c.id, checked: false });
+    const card = createMockElement("label");
+    radio.card = card;
+    return radio;
+  });
+
+  const mockRoot = {
+    querySelectorAll(sel) {
+      if (sel.includes(`input[name="choice_${act.id}"]`)) return radios;
+      return [];
+    }
+  };
+
+  // Surface 바인딩
+  bindChoiceResponseSurface(mockRoot, act.id, (selectedChoiceId) => {
+    applyStudentResponseChange(session, responseRecordsMap, act, selectedChoiceId);
+  });
+
+  // 1. 학생이 3번째 선택지 (3/4, choice_3) 클릭 시뮬레이션
+  const targetRadio = radios[2];
+  targetRadio.checked = true;
+  targetRadio.dispatchEvent({ type: "change", target: targetRadio });
+
+  // 선택 상태가 DOM 및 ResponseRecord에 반영되었는지 검증
+  assert.equal(targetRadio.card.classList.contains("selected-choice"), true);
+  assert.equal(radios[0].card.classList.contains("selected-choice"), false);
+  assert.equal(responseRecordsMap.get(act.id).value, "choice_3");
+
+  // 2. Draft 저장
+  const draftPayload = {
+    id: "current_draft_learner-rework-choice",
+    sessionId: session.id,
+    learnerId: "learner-rework-choice",
+    subjectId: "math",
+    courseId: "fraction",
+    questions: [act],
+    responseRecords: Object.fromEntries(responseRecordsMap.entries()),
+    savedAt: Date.now()
+  };
+  await saveDraftSession(draftPayload);
+
+  // 3. Draft 재진입 복원 시뮬레이션
+  const restored = await getDraftSession();
+  assert.ok(restored);
+  assert.equal(restored.responseRecords[act.id].value, "choice_3");
+
+  // 4. 세션 제출
+  const submission = {
+    sessionId: session.id,
+    learnerId: "learner-rework-choice",
+    subjectId: "math",
+    courseId: "fraction",
+    questions: [act],
+    responseSnapshots: { [act.id]: { value: "choice_3" } },
+    status: "PARENT_GRADING_PENDING",
+    submittedAt: Date.now()
+  };
+  await saveSubmissionSnapshot(submission);
+  session.startSubmitting();
+  session.submitPractice(1000);
+  session.setPendingGrading();
+
+  // 5. 제출 후 Lock 검증: 세션 상태가 잠겨 응답 변경 거절
+  assert.throws(() => {
+    applyStudentResponseChange(session, responseRecordsMap, act, "choice_1");
+  }, /수정할 수 없습니다|Locked|PARENT_GRADING_PENDING/i);
+
+  // DOM Disabled 잠금 상태 반영
+  radios.forEach((r) => { r.disabled = true; });
+  radios[0].checked = true;
+  radios[0].dispatchEvent({ type: "change", target: radios[0] });
+  // 잠겨있으므로 responseRecordsMap은 여전히 choice_3 유지
+  assert.equal(responseRecordsMap.get(act.id).value, "choice_3");
+});
+
+test("F15A-REWORK-08: Fraction TEXT Activity 실제 DOM 상호작용 (입력, Draft 저장, 복원, 제출 Lock)", async () => {
+  await clearAllData();
+  setCurrentLearnerId("learner-rework-text");
+
+  const act = activities.find((a) => a.id === "frac_equiv_text_002");
+  assert.ok(act);
+  assert.equal(act.responseType, "TEXT");
+
+  // 시각 표현 DOM 생성 검증
+  const visualHtml = renderFractionRepresentation(act);
+  assert.ok(visualHtml.includes("<svg"));
+
+  // 세션 생성
+  const session = createSession({
+    subjectId: "math",
+    courseId: "fraction",
+    moduleId: "fraction",
+    skillId: act.skillId,
+    learnerId: "learner-rework-text"
+  }, [act]);
+  session.start();
+
+  const responseRecordsMap = new Map();
+
+  // TEXT DOM 요소 구성
+  const inputEl = createMockElement("input", { value: "" });
+
+  // 1. 학생 입력 시뮬레이션 ("2/4")
+  inputEl.value = "2/4";
+  applyStudentResponseChange(session, responseRecordsMap, act, inputEl.value);
+  assert.equal(responseRecordsMap.get(act.id).value, "2/4");
+
+  // 2. Draft 저장
+  const draftPayload = {
+    id: "current_draft_learner-rework-text",
+    sessionId: session.id,
+    learnerId: "learner-rework-text",
+    subjectId: "math",
+    courseId: "fraction",
+    questions: [act],
+    responseRecords: Object.fromEntries(responseRecordsMap.entries()),
+    savedAt: Date.now()
+  };
+  await saveDraftSession(draftPayload);
+
+  // 3. Draft 재진입 복원
+  const restored = await getDraftSession();
+  assert.ok(restored);
+  assert.equal(restored.responseRecords[act.id].value, "2/4");
+
+  // 4. 제출
+  await saveSubmissionSnapshot({
+    sessionId: session.id,
+    learnerId: "learner-rework-text",
+    subjectId: "math",
+    courseId: "fraction",
+    questions: [act],
+    responseSnapshots: { [act.id]: { value: "2/4" } },
+    status: "PARENT_GRADING_PENDING",
+    submittedAt: Date.now()
+  });
+  session.startSubmitting();
+  session.submitPractice(1000);
+  session.setPendingGrading();
+
+  // 5. 제출 후 Lock 검증
+  assert.throws(() => {
+    applyStudentResponseChange(session, responseRecordsMap, act, "1/2");
+  }, /수정할 수 없습니다|Locked|PARENT_GRADING_PENDING/i);
 });

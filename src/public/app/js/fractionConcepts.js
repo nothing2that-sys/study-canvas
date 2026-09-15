@@ -81,7 +81,9 @@ export function validateFraction(fraction, options = {}) {
     return fail("분모는 0일 수 없습니다.");
   }
 
-  const minDenom = options.minDenominator !== undefined ? options.minDenominator : 1;
+  //+_+// Phase F15A Rework 1: 기본 분모 계약은 2 이상 (denominator >= 2).
+  //+_+// 내부 rational 연산 등 명시적 옵션(allowWholeAsFraction: true 또는 minDenominator: 1) 지정 시에만 1 허용
+  const minDenom = options.allowWholeAsFraction ? 1 : (options.minDenominator !== undefined ? options.minDenominator : 2);
   if (denominator < minDenom) {
     return fail(`분모는 최소 ${minDenom} 이상이어야 합니다.`);
   }
@@ -128,9 +130,7 @@ export function normalizeFraction(input, options = {}) {
         numerator: parseInt(mixedMatch[2], 10),
         denominator: parseInt(mixedMatch[3], 10)
       };
-      if (!validateFraction(candidate, options)) {
-        throw new Error(`유효하지 않은 대분수 문자열입니다: "${input}"`);
-      }
+      validateFraction(candidate, { ...options, throwOnError: true });
       return candidate;
     }
 
@@ -142,9 +142,7 @@ export function normalizeFraction(input, options = {}) {
         numerator: parseInt(simpleMatch[1], 10),
         denominator: parseInt(simpleMatch[2], 10)
       };
-      if (!validateFraction(candidate, options)) {
-        throw new Error(`유효하지 않은 분수 문자열입니다: "${input}"`);
-      }
+      validateFraction(candidate, { ...options, throwOnError: true });
       return candidate;
     }
 
@@ -163,6 +161,11 @@ export function normalizeFraction(input, options = {}) {
   }
 
   throw new TypeError(`분수 입력 타입이 올바르지 않습니다: ${typeof input}`);
+}
+
+//+_+// Phase F15A Rework 1: 내부 유리수 연산용 헬퍼 (자연수 분모 1 허용 경로 명시적 분리)
+export function normalizeRationalInternal(input) {
+  return normalizeFraction(input, { allowWholeAsFraction: true, minDenominator: 1 });
 }
 
 /**

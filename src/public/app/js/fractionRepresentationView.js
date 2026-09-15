@@ -27,23 +27,197 @@ function createHatchPatternDef(patternId) {
 }
 
 /**
- * PART_WHOLE_BAR: 막대 분수 렌더러
+ * 분수 시각화 사양(spec) 정규화 및 fail-closed 중앙 검증기 SSOT
+ * @param {Object} spec
+ * @returns {Object} 정규화 및 검증 완료된 spec
+ */
+export function normalizeFractionRepresentationSpec(spec) {
+  if (!spec || typeof spec !== "object") {
+    throw new Error("유효하지 않은 분수 시각 표현 사양(spec)입니다.");
+  }
+
+  const validTypes = new Set([
+    "PART_WHOLE_BAR",
+    "PART_WHOLE_GRID",
+    "NUMBER_LINE",
+    "SYMBOLIC_FRACTION",
+    "EQUIVALENT_PAIR"
+  ]);
+
+  if (!spec.type || !validTypes.has(spec.type)) {
+    throw new Error(`지원되지 않거나 알 수 없는 분수 시각 표현 타입입니다: ${spec.type}`);
+  }
+
+  // 1. EQUIVALENT_PAIR
+  if (spec.type === "EQUIVALENT_PAIR") {
+    const pair1 = spec.pair1 || spec.fractionA;
+    const pair2 = spec.pair2 || spec.fractionB;
+    if (!pair1 || !pair2) {
+      throw new Error("EQUIVALENT_PAIR는 두 개의 비교 분수(pair1/fractionA, pair2/fractionB)가 모두 필요합니다.");
+    }
+    const normPair1 = normalizeFractionRepresentationSpec({
+      ...pair1,
+      type: pair1.type || "PART_WHOLE_BAR"
+    });
+    const normPair2 = normalizeFractionRepresentationSpec({
+      ...pair2,
+      type: pair2.type || "PART_WHOLE_BAR"
+    });
+    return {
+      ...spec,
+      type: "EQUIVALENT_PAIR",
+      pair1: normPair1,
+      pair2: normPair2
+    };
+  }
+
+  // 2. NUMBER_LINE
+  if (spec.type === "NUMBER_LINE") {
+    const f = (spec.fractions && spec.fractions[0]) || spec.fraction || spec;
+    const denom = spec.subdivisions !== undefined ? spec.subdivisions : f.denominator;
+    const num = spec.markerNumerator !== undefined ? spec.markerNumerator : (f.numerator !== undefined ? f.numerator : 1);
+    const whole = f.wholeNumber !== undefined ? f.wholeNumber : (f.whole !== undefined ? f.whole : 0);
+    const maxVal = spec.maxVal !== undefined ? spec.maxVal : (spec.max !== undefined ? spec.max : (spec.rangeEnd !== undefined ? spec.rangeEnd : 1));
+
+    if (typeof denom !== "number" || Number.isNaN(denom) || !Number.isFinite(denom) || !Number.isInteger(denom) || denom < 2) {
+      throw new Error(`NUMBER_LINE subdivisions(분모)는 2 이상의 정수여야 합니다. 입력값: ${denom}`);
+    }
+    if (typeof num !== "number" || Number.isNaN(num) || !Number.isFinite(num) || !Number.isInteger(num) || num < 0) {
+      throw new Error(`NUMBER_LINE 분자(markerNumerator)는 0 이상의 정수여야 합니다. 입력값: ${num}`);
+    }
+    if (typeof whole !== "number" || Number.isNaN(whole) || !Number.isFinite(whole) || !Number.isInteger(whole) || whole < 0) {
+      throw new Error(`NUMBER_LINE wholeNumber는 0 이상의 정수여야 합니다. 입력값: ${whole}`);
+    }
+    if (typeof maxVal !== "number" || Number.isNaN(maxVal) || !Number.isFinite(maxVal) || !Number.isInteger(maxVal) || maxVal < 1) {
+      throw new Error(`NUMBER_LINE maxVal은 1 이상의 정수여야 합니다. 입력값: ${maxVal}`);
+    }
+
+    const targetVal = whole + num / denom;
+    if (targetVal < 0 || targetVal > maxVal) {
+      throw new Error(`NUMBER_LINE 마커 위치(${targetVal})가 유효 범위(0 ~ ${maxVal})를 벗어났습니다.`);
+    }
+
+    return {
+      ...spec,
+      type: "NUMBER_LINE",
+      denominator: denom,
+      numerator: num,
+      wholeNumber: whole,
+      maxVal,
+      targetVal,
+      subdivisions: denom
+    };
+  }
+
+  // 3. PART_WHOLE_BAR / PART_WHOLE_GRID / SYMBOLIC_FRACTION 분수 기본 성분 검증
+  const f = spec.fraction || spec;
+  const num = f.numerator !== undefined ? f.numerator : (f.filledParts !== undefined ? f.filledParts : null);
+  const denom = f.denominator !== undefined ? f.denominator : (f.totalParts !== undefined ? f.totalParts : null);
+  const whole = f.wholeNumber !== undefined ? f.wholeNumber : (f.whole !== undefined ? f.whole : 0);
+
+  if (num === null || denom === null) {
+    throw new Error("분수 시각화에 분자(numerator)와 분모(denominator)가 반드시 지정되어야 합니다.");
+  }
+  if (typeof num !== "number" || typeof denom !== "number" || typeof whole !== "number") {
+    throw new Error("분수 성분은 숫자여야 합니다.");
+  }
+  if (Number.isNaN(num) || Number.isNaN(denom) || Number.isNaN(whole)) {
+    throw new Error("분수 성분에 NaN이 포함될 수 없습니다.");
+  }
+  if (!Number.isFinite(num) || !Number.isFinite(denom) || !Number.isFinite(whole)) {
+    throw new Error("분수 성분에 Infinity가 포함될 수 없습니다.");
+  }
+  if (!Number.isInteger(num) || !Number.isInteger(denom) || !Number.isInteger(whole)) {
+    throw new Error("분수 성분은 정수여야 합니다.");
+  }
+  if (num < 0 || denom < 0 || whole < 0) {
+    throw new Error("분수 성분은 음수일 수 없습니다.");
+  }
+  if (denom < 2) {
+    throw new Error(`분수 시각 표현의 분모는 최소 2 이상이어야 합니다. 입력값: ${denom}`);
+  }
+
+  if (spec.type === "PART_WHOLE_BAR") {
+    if (num > denom) {
+      throw new Error(`막대 분수의 분자(${num})는 분모(${denom})를 초과할 수 없습니다.`);
+    }
+    return {
+      ...spec,
+      type: "PART_WHOLE_BAR",
+      numerator: num,
+      denominator: denom,
+      wholeNumber: whole
+    };
+  }
+
+  if (spec.type === "PART_WHOLE_GRID") {
+    const rows = spec.rows !== undefined ? spec.rows : f.rows;
+    const cols = spec.cols !== undefined ? spec.cols : f.cols;
+    if (rows === undefined || cols === undefined) {
+      throw new Error("PART_WHOLE_GRID는 rows와 cols가 반드시 지정되어야 합니다.");
+    }
+    if (typeof rows !== "number" || typeof cols !== "number") {
+      throw new Error("GRID의 rows와 cols는 숫자여야 합니다.");
+    }
+    if (Number.isNaN(rows) || Number.isNaN(cols) || !Number.isFinite(rows) || !Number.isFinite(cols) || !Number.isInteger(rows) || !Number.isInteger(cols)) {
+      throw new Error("GRID의 rows와 cols는 정수여야 합니다.");
+    }
+    if (rows < 1 || cols < 1) {
+      throw new Error("GRID의 rows와 cols는 1 이상의 양의 정수여야 합니다.");
+    }
+    if (rows * cols !== denom) {
+      throw new Error(`GRID의 rows(${rows}) * cols(${cols}) = ${rows * cols} 은 분모(${denom})와 일치하지 않습니다.`);
+    }
+    if (num > denom) {
+      throw new Error(`격자 분수의 색칠된 칸수(${num})는 전체 칸수(${denom})를 초과할 수 없습니다.`);
+    }
+    return {
+      ...spec,
+      type: "PART_WHOLE_GRID",
+      numerator: num,
+      denominator: denom,
+      wholeNumber: whole,
+      rows,
+      cols
+    };
+  }
+
+  if (spec.type === "SYMBOLIC_FRACTION") {
+    return {
+      ...spec,
+      type: "SYMBOLIC_FRACTION",
+      numerator: num,
+      denominator: denom,
+      wholeNumber: whole
+    };
+  }
+
+  throw new Error(`지원되지 않는 분수 시각화 타입입니다: ${spec.type}`);
+}
+
+/**
+ * PART_WHOLE_BAR: 막대 분수 렌더러 (fail-closed)
  * @param {Object} spec
  * @returns {string} SVG HTML
  */
 export function renderPartWholeBar(spec) {
-  const f = spec.fraction || spec;
-  const denom = Math.max(2, Number(f.denominator || f.totalParts || 2));
-  const num = Math.max(0, Number(f.numerator || f.filledParts || 0));
-  const width = spec.width || 320;
-  const height = spec.height || 64;
+  const normSpec = normalizeFractionRepresentationSpec({ ...spec, type: spec.type || "PART_WHOLE_BAR" });
+  const denom = normSpec.denominator;
+  const num = normSpec.numerator;
+  const width = normSpec.width || 320;
+  const height = normSpec.height || 64;
   const padding = 10;
   const barWidth = width - padding * 2;
   const barHeight = height - padding * 2;
   const partWidth = barWidth / denom;
 
   const patternId = `bar_hatch_${denom}_${num}_${Math.abs(width * 31 + height)}`;
-  const accessibleDesc = spec.ariaLabel || getFractionAccessibleDescription({ ...f, type: "PART_WHOLE_BAR" });
+  const accessibleDesc = normSpec.ariaLabel || getFractionAccessibleDescription({
+    type: "PART_WHOLE_BAR",
+    numerator: num,
+    denominator: denom,
+    wholeNumber: normSpec.wholeNumber
+  });
 
   let partsSvg = "";
   for (let i = 0; i < denom; i++) {
@@ -75,19 +249,19 @@ export function renderPartWholeBar(spec) {
 }
 
 /**
- * PART_WHOLE_GRID: 격자 분수 렌더러
+ * PART_WHOLE_GRID: 격자 분수 렌더러 (fail-closed)
  * @param {Object} spec
  * @returns {string} SVG HTML
  */
 export function renderPartWholeGrid(spec) {
-  const f = spec.fraction || spec;
-  const rows = Math.max(1, Number(spec.rows || f.rows || 2));
-  const cols = Math.max(1, Number(spec.cols || f.cols || 3));
-  const denom = rows * cols;
-  const num = Math.min(denom, Math.max(0, Number(f.numerator || f.filledParts || 0)));
+  const normSpec = normalizeFractionRepresentationSpec({ ...spec, type: spec.type || "PART_WHOLE_GRID" });
+  const rows = normSpec.rows;
+  const cols = normSpec.cols;
+  const denom = normSpec.denominator;
+  const num = normSpec.numerator;
 
-  const width = spec.width || 240;
-  const height = spec.height || 120;
+  const width = normSpec.width || 240;
+  const height = normSpec.height || 120;
   const padding = 10;
   const gridWidth = width - padding * 2;
   const gridHeight = height - padding * 2;
@@ -95,7 +269,12 @@ export function renderPartWholeGrid(spec) {
   const cellHeight = gridHeight / rows;
 
   const patternId = `grid_hatch_${rows}_${cols}_${num}`;
-  const accessibleDesc = spec.ariaLabel || getFractionAccessibleDescription({ ...f, type: "PART_WHOLE_GRID", denominator: denom, numerator: num });
+  const accessibleDesc = normSpec.ariaLabel || getFractionAccessibleDescription({
+    type: "PART_WHOLE_GRID",
+    denominator: denom,
+    numerator: num,
+    wholeNumber: normSpec.wholeNumber
+  });
 
   let cellsSvg = "";
   let cellCount = 0;
@@ -133,20 +312,20 @@ export function renderPartWholeGrid(spec) {
 }
 
 /**
- * NUMBER_LINE: 수직선 분수 렌더러
+ * NUMBER_LINE: 수직선 분수 렌더러 (fail-closed)
  * @param {Object} spec
  * @returns {string} SVG HTML
  */
 export function renderNumberLine(spec) {
-  const f = (spec.fractions && spec.fractions[0]) || spec.fraction || spec;
-  const maxVal = Math.max(1, Number(spec.maxVal || spec.max || spec.rangeEnd || 1));
-  const denom = Math.max(2, Number(f.denominator || spec.subdivisions || 4));
-  const num = Number(f.numerator !== undefined ? f.numerator : (spec.markerNumerator ?? 1));
-  const whole = Number(f.wholeNumber || f.whole || 0);
-  const targetVal = whole + num / denom;
+  const normSpec = normalizeFractionRepresentationSpec({ ...spec, type: spec.type || "NUMBER_LINE" });
+  const maxVal = normSpec.maxVal;
+  const denom = normSpec.denominator;
+  const num = normSpec.numerator;
+  const whole = normSpec.wholeNumber;
+  const targetVal = normSpec.targetVal;
 
-  const width = spec.width || 340;
-  const height = spec.height || 90;
+  const width = normSpec.width || 340;
+  const height = normSpec.height || 90;
   const paddingX = 30;
   const paddingY = 45;
   const axisY = paddingY;
@@ -157,7 +336,7 @@ export function renderNumberLine(spec) {
   const totalSteps = maxVal * denom;
   const stepWidth = lineWidth / totalSteps;
 
-  const accessibleDesc = spec.ariaLabel || getFractionAccessibleDescription({
+  const accessibleDesc = normSpec.ariaLabel || getFractionAccessibleDescription({
     type: "NUMBER_LINE",
     denominator: denom,
     numerator: num,
@@ -165,7 +344,6 @@ export function renderNumberLine(spec) {
   });
 
   let ticksSvg = "";
-  // 눈금 및 숫자 렌더링
   for (let i = 0; i <= totalSteps; i++) {
     const x = lineStartX + i * stepWidth;
     const isMajor = i % denom === 0;
@@ -185,12 +363,11 @@ export function renderNumberLine(spec) {
     }
   }
 
-  // 마커 위치 계산
   const markerX = lineStartX + (targetVal * denom) * stepWidth;
-  const markerLabel = spec.markerLabel || "▼";
+  const markerLabel = normSpec.markerLabel || "▼";
 
   let markerSvg = "";
-  if (spec.showMarker !== false && markerX >= lineStartX && markerX <= lineEndX + 1) {
+  if (normSpec.showMarker !== false && markerX >= lineStartX && markerX <= lineEndX + 1) {
     markerSvg = `
       <!-- 마커 점 및 화살표 -->
       <circle cx="${markerX.toFixed(1)}" cy="${axisY}" r="5" fill="#d93025" stroke="#ffffff" stroke-width="1.5" />
@@ -205,11 +382,8 @@ export function renderNumberLine(spec) {
       <svg role="img" aria-label="${escapeAttr(accessibleDesc)}" pointer-events="none"
            viewBox="0 0 ${width} ${height}" width="100%" style="max-width: ${width}px; height: auto; display: block;"
            xmlns="http://www.w3.org/2000/svg">
-        <!-- 수직선 주 축 -->
         <line x1="${lineStartX}" y1="${axisY}" x2="${lineEndX}" y2="${axisY}" stroke="#202124" stroke-width="2.5" />
-        <!-- 눈금 -->
         ${ticksSvg}
-        <!-- 목표 마커 -->
         ${markerSvg}
       </svg>
     </div>
@@ -217,22 +391,23 @@ export function renderNumberLine(spec) {
 }
 
 /**
- * EQUIVALENT_PAIR: 동치 분수 쌍 시각 렌더러
+ * EQUIVALENT_PAIR: 동치 분수 쌍 시각 렌더러 (fail-closed)
  * @param {Object} spec
  * @returns {string} HTML
  */
 export function renderEquivalentPair(spec) {
-  const pair1 = spec.pair1 || spec.fractionA || { type: "PART_WHOLE_BAR", numerator: 1, denominator: 2 };
-  const pair2 = spec.pair2 || spec.fractionB || { type: "PART_WHOLE_BAR", numerator: 2, denominator: 4 };
+  const normSpec = normalizeFractionRepresentationSpec({ ...spec, type: spec.type || "EQUIVALENT_PAIR" });
+  const pair1 = normSpec.pair1;
+  const pair2 = normSpec.pair2;
 
   const desc1 = getFractionAccessibleDescription(pair1);
   const desc2 = getFractionAccessibleDescription(pair2);
-  const accessibleDesc = spec.ariaLabel || `크기가 같은 두 분수 비교: ${desc1}와 ${desc2}`;
+  const accessibleDesc = normSpec.ariaLabel || `크기가 같은 두 분수 비교: ${desc1}와 ${desc2}`;
 
   const renderSingle = (p) => {
-    if (p.type === "PART_WHOLE_GRID") return renderPartWholeGrid({ ...p, width: spec.width || 280, height: 60 });
-    if (p.type === "NUMBER_LINE") return renderNumberLine({ ...p, width: spec.width || 320, height: 70 });
-    return renderPartWholeBar({ ...p, width: spec.width || 320, height: 50 });
+    if (p.type === "PART_WHOLE_GRID") return renderPartWholeGrid({ ...p, width: normSpec.width || 280, height: 60 });
+    if (p.type === "NUMBER_LINE") return renderNumberLine({ ...p, width: normSpec.width || 320, height: 70 });
+    return renderPartWholeBar({ ...p, width: normSpec.width || 320, height: 50 });
   };
 
   return `
@@ -251,16 +426,21 @@ export function renderEquivalentPair(spec) {
 }
 
 /**
- * SYMBOLIC_FRACTION: 기호 분수 표기 렌더러 (HTML/CSS)
+ * SYMBOLIC_FRACTION: 기호 분수 표기 렌더러 (HTML/CSS, fail-closed)
  * @param {Object} spec
  * @returns {string} HTML
  */
 export function renderSymbolicFraction(spec) {
-  const f = spec.fraction || spec;
-  const num = f.numerator !== undefined ? f.numerator : 1;
-  const denom = f.denominator !== undefined ? f.denominator : 2;
-  const whole = f.wholeNumber !== undefined ? f.wholeNumber : (f.whole !== undefined ? f.whole : 0);
-  const accessibleDesc = spec.ariaLabel || getFractionAccessibleDescription({ type: "SYMBOLIC_FRACTION", numerator: num, denominator: denom, wholeNumber: whole });
+  const normSpec = normalizeFractionRepresentationSpec({ ...spec, type: spec.type || "SYMBOLIC_FRACTION" });
+  const denom = normSpec.denominator;
+  const num = normSpec.numerator;
+  const whole = normSpec.wholeNumber;
+  const accessibleDesc = normSpec.ariaLabel || getFractionAccessibleDescription({
+    type: "SYMBOLIC_FRACTION",
+    numerator: num,
+    denominator: denom,
+    wholeNumber: whole
+  });
 
   return `
     <span class="symbolic-fraction-view" role="img" aria-label="${escapeAttr(accessibleDesc)}"
@@ -276,32 +456,47 @@ export function renderSymbolicFraction(spec) {
 }
 
 /**
- * 범용 분수 시각 표현 진입점
+ * 범용 분수 시각 표현 진입점 (fail-closed)
  * @param {Object} activityOrSpec - Activity 객체(activity.metadata.fractionRepresentation) 또는 시각화 spec
  * @returns {string} HTML 문자열
  */
 export function renderFractionRepresentation(activityOrSpec) {
   if (!activityOrSpec) return "";
 
-  const spec = activityOrSpec.metadata?.fractionRepresentation ||
-               activityOrSpec.fractionRepresentation ||
-               (activityOrSpec.type ? activityOrSpec : null);
+  // 1. Activity 객체에 fractionRepresentation 메타데이터가 명시된 경우
+  let spec = activityOrSpec.metadata?.fractionRepresentation ||
+             activityOrSpec.fractionRepresentation;
 
-  if (!spec || typeof spec !== "object") return "";
+  // 2. spec 객체가 직접 전달된 경우
+  if (!spec) {
+    // Activity/Question 객체이면서 분수 시각화 메타데이터가 없는 일반 액티비티(국어, 영어, 타 수학 등)는 시각화 없음
+    if (activityOrSpec.responseType || activityOrSpec.subjectId || activityOrSpec.choices || activityOrSpec.questionKey) {
+      return "";
+    }
+    if (activityOrSpec.type) {
+      spec = activityOrSpec;
+    } else {
+      return "";
+    }
+  }
 
-  switch (spec.type) {
+  if (!spec) return "";
+
+  const normSpec = normalizeFractionRepresentationSpec(spec);
+
+  switch (normSpec.type) {
     case "PART_WHOLE_BAR":
-      return renderPartWholeBar(spec);
+      return renderPartWholeBar(normSpec);
     case "PART_WHOLE_GRID":
-      return renderPartWholeGrid(spec);
+      return renderPartWholeGrid(normSpec);
     case "NUMBER_LINE":
-      return renderNumberLine(spec);
+      return renderNumberLine(normSpec);
     case "EQUIVALENT_PAIR":
-      return renderEquivalentPair(spec);
+      return renderEquivalentPair(normSpec);
     case "SYMBOLIC_FRACTION":
-      return renderSymbolicFraction(spec);
+      return renderSymbolicFraction(normSpec);
     default:
-      return `<div class="fraction-visual-container fraction-fallback" role="img" aria-label="분수 시각화"></div>`;
+      throw new Error(`지원되지 않는 분수 시각화 타입입니다: ${normSpec.type}`);
   }
 }
 
