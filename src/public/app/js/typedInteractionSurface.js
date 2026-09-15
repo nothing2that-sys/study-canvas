@@ -1,3 +1,10 @@
+//+_+// Math Canvas Pro - Typed Questions (CHOICE / TEXT) Interaction & Renderer Surface
+//+_+// Phase F10A / F13-R1 / F15A SSOT
+
+import { escapeHtml, SessionState } from "./sessionEngine.js";
+import { renderFractionRepresentation } from "./fractionRepresentationView.js";
+import { ResponseType, resolveActivityResponseType } from "./learningActivity.js";
+
 export function syncChoiceSurfaceSelection(radios, selectedRadio) {
   radios.forEach((candidate) => {
     candidate.closest?.(".typed-choice-item")?.classList?.toggle("selected-choice", candidate === selectedRadio);
@@ -22,6 +29,49 @@ export function bindChoiceResponseSurface(root, questionId, onSelection) {
   return radios;
 }
 
+export function bindTextResponseSurface(root, questionId, onInput, options = {}) {
+  if (!root || typeof root.querySelector !== "function") return null;
+  if (typeof onInput !== "function") {
+    throw new TypeError("TEXT 응답 처리 함수가 필요합니다.");
+  }
+
+  const inputEl = root.querySelector(`#textInput_${questionId}`);
+  if (!inputEl) return null;
+
+  let isComposing = false;
+  const scheduleFrame = options.scheduleFrame || globalThis.requestAnimationFrame;
+  const onDraftTrigger = typeof options.onDraftTrigger === "function" ? options.onDraftTrigger : null;
+
+  inputEl.addEventListener("compositionstart", () => {
+    isComposing = true;
+    inputEl.dataset.isComposing = "true";
+  });
+
+  inputEl.addEventListener("compositionend", (e) => {
+    isComposing = false;
+    inputEl.dataset.isComposing = "false";
+    onInput(e?.target?.value ?? inputEl.value, inputEl);
+    onDraftTrigger?.();
+    refreshScribbleCommitSurface(inputEl, scheduleFrame);
+  });
+
+  inputEl.addEventListener("input", (e) => {
+    if (isComposing || e?.isComposing || inputEl.dataset.isComposing === "true") {
+      return;
+    }
+    onInput(e?.target?.value ?? inputEl.value, inputEl);
+    onDraftTrigger?.();
+    refreshScribbleCommitSurface(inputEl, scheduleFrame);
+  });
+
+  inputEl.addEventListener("change", (e) => {
+    onInput(e?.target?.value ?? inputEl.value, inputEl);
+    onDraftTrigger?.();
+  });
+
+  return inputEl;
+}
+
 export function refreshScribbleCommitSurface(inputElement, scheduleFrame = globalThis.requestAnimationFrame) {
   if (!inputElement?.classList) return false;
   inputElement.classList.add("scribble-commit-refresh");
@@ -36,4 +86,104 @@ export function refreshScribbleCommitSurface(inputElement, scheduleFrame = globa
     });
   });
   return true;
+}
+
+export function renderTextActivityStage(q, options = {}) {
+  const isShowGuides = Boolean(options.showGuides);
+  const promptText = escapeHtml(q.prompt || q.question || "");
+  const expectedAns = escapeHtml(String(q.expectedAnswer !== undefined ? q.expectedAnswer : (q.answer !== undefined ? q.answer : "")));
+  //+_+// Phase F15A: 분수 시각 표현 (SVG/DOM)
+  const visualHtml = renderFractionRepresentation(q);
+
+  if (isShowGuides) {
+    return `
+      <div class="typed-activity-stage typed-model-answer" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
+        ${visualHtml}
+        <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
+        <div class="typed-expected-badge" style="background: #e6f4ea; color: #137333; padding: 0.5rem 0.75rem; border-radius: 6px; display: inline-block;">
+          🎯 기준 정답: <strong>${expectedAns}</strong>
+        </div>
+      </div>
+    `;
+  }
+
+  const savedRecord = options.responseRecord || options.responseSnapshots?.[q.id] || options.questionResponseRecordsMap?.get?.(q.id) || options.currentSubmission?.responseSnapshots?.[q.id];
+  const studentVal = escapeHtml(String(savedRecord?.value || ""));
+  const session = options.session;
+  const isLocked = Boolean(options.isLocked || options.readOnly || (session && session.state !== SessionState.PRACTICE_ACTIVE && session.state !== SessionState.SUBMITTING));
+  const isKorean = q.subjectId === "korean" || session?.config?.subjectId === "korean";
+  const isEnglish = q.subjectId === "english" || session?.config?.subjectId === "english";
+  const isTextSubject = isKorean || isEnglish;
+  const inputModeAttr = isTextSubject ? 'inputmode="text"' : 'inputmode="numeric"';
+
+  return `
+    <div class="typed-activity-stage" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
+      ${visualHtml}
+      <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
+      <div class="typed-input-area" style="margin-top: 0.5rem;">
+        <label for="textInput_${escapeHtml(q.id)}" class="sr-only">답안 입력</label>
+        <input type="text"
+               ${inputModeAttr}
+               class="typed-text-input"
+               id="textInput_${escapeHtml(q.id)}"
+               data-question-id="${escapeHtml(q.id)}"
+               value="${studentVal}"
+               placeholder="답을 입력하세요"
+               style="width: 100%; max-width: ${isTextSubject ? "480px" : "320px"}; padding: 0.5rem 0.75rem; font-size: 1.1rem; border: 2px solid #ccc; border-radius: 6px;"
+               ${isLocked ? "disabled" : ""} />
+      </div>
+    </div>
+  `;
+}
+
+export function renderChoiceActivityStage(q, options = {}) {
+  const isShowGuides = Boolean(options.showGuides);
+  const promptText = escapeHtml(q.prompt || q.question || "");
+  const expectedChoiceId = String(q.expectedAnswer !== undefined ? q.expectedAnswer : (q.answer !== undefined ? q.answer : ""));
+  const choices = Array.isArray(q.choices) ? q.choices : [];
+  //+_+// Phase F15A: 분수 시각 표현 (SVG/DOM)
+  const visualHtml = renderFractionRepresentation(q);
+
+  const savedRecord = options.responseRecord || options.responseSnapshots?.[q.id] || options.questionResponseRecordsMap?.get?.(q.id) || options.currentSubmission?.responseSnapshots?.[q.id];
+  const studentChoiceId = String(savedRecord?.value || "");
+  const session = options.session;
+  const isLocked = Boolean(options.isLocked || options.readOnly || (session && session.state !== SessionState.PRACTICE_ACTIVE && session.state !== SessionState.SUBMITTING));
+
+  return `
+    <div class="typed-activity-stage" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
+      ${visualHtml}
+      <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
+      <div class="typed-choices-list" role="radiogroup" aria-label="선택지" style="display: flex; flex-direction: column; gap: 0.5rem;">
+        ${choices.map((c) => {
+          const cId = escapeHtml(String(c.id));
+          const cLabel = escapeHtml(String(c.label || c.text || c.id));
+          const isExpected = isShowGuides && (String(c.id) === expectedChoiceId);
+          const isStudentSelected = !isShowGuides && (String(c.id) === studentChoiceId);
+          return `
+            <label class="typed-choice-item choice-label ${isExpected ? "expected-choice" : ""} ${isStudentSelected ? "selected-choice" : ""}"
+                   style="${isExpected ? "background: #e6f4ea; border-color: #34a853;" : (isStudentSelected ? "background: #e8f0fe; border-color: #1a73e8;" : "")}">
+              <input type="radio"
+                     name="choice_${escapeHtml(q.id)}"
+                     value="${cId}"
+                     data-question-id="${escapeHtml(q.id)}"
+                     ${String(c.id) === (isShowGuides ? expectedChoiceId : studentChoiceId) ? "checked" : ""}
+                     ${isLocked || isShowGuides ? "disabled" : ""} />
+              <span>${cLabel}</span>
+            </label>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
+export function renderTypedActivityStage(q, options = {}) {
+  const responseType = resolveActivityResponseType(q);
+  if (responseType === ResponseType.TEXT) {
+    return renderTextActivityStage(q, options);
+  }
+  if (responseType === ResponseType.CHOICE) {
+    return renderChoiceActivityStage(q, options);
+  }
+  throw new Error(`지원되지 않는 typed activity 타입입니다: ${responseType}`);
 }
