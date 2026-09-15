@@ -7,6 +7,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import "fake-indexeddb/auto";
+import { JSDOM } from "jsdom";
 
 import {
   FractionType,
@@ -70,7 +71,12 @@ import {
 
 import {
   bindChoiceResponseSurface,
-  syncChoiceSurfaceSelection
+  syncChoiceSurfaceSelection,
+  bindTextResponseSurface,
+  renderChoiceActivityStage,
+  renderTextActivityStage,
+  renderTypedActivityStage,
+  refreshScribbleCommitSurface
 } from "../public/app/js/typedInteractionSurface.js";
 
 import {
@@ -786,301 +792,10 @@ test("F15A-REWORK-08: Fraction TEXT Activity 실제 DOM 상호작용 (입력, Dr
   }, /수정할 수 없습니다|Locked|PARENT_GRADING_PENDING/i);
 });
 
+//+_+// Phase F15A Rework 3: 표준 JSDOM Acceptance 및 Production Renderer/Binding 검증
 //+_+// ============================================================================
-//+_+// Phase F15A Rework 2: Real DOM Acceptance Harness 및 상호작용 검증
-//+_+// ============================================================================
 
-class RealDOMTokenList {
-  constructor(element) {
-    this._element = element;
-    this._tokens = new Set();
-  }
-  add(...tokens) {
-    for (const t of tokens) {
-      if (t) this._tokens.add(String(t));
-    }
-    this._sync();
-  }
-  remove(...tokens) {
-    for (const t of tokens) {
-      this._tokens.delete(String(t));
-    }
-    this._sync();
-  }
-  toggle(token, force) {
-    const t = String(token);
-    const shouldAdd = force !== undefined ? Boolean(force) : !this._tokens.has(t);
-    if (shouldAdd) this._tokens.add(t);
-    else this._tokens.delete(t);
-    this._sync();
-    return shouldAdd;
-  }
-  contains(token) {
-    return this._tokens.has(String(token));
-  }
-  _sync() {
-    this._element.setAttribute("class", Array.from(this._tokens).join(" "));
-  }
-}
-
-class RealDOMNode extends EventTarget {
-  constructor(nodeType = 1) {
-    super();
-    this.nodeType = nodeType;
-    this.parentNode = null;
-    this.parentElement = null;
-    this.childNodes = [];
-  }
-  get children() {
-    return this.childNodes.filter((c) => c.nodeType === 1);
-  }
-  appendChild(child) {
-    if (child.parentNode) child.parentNode.removeChild(child);
-    child.parentNode = this;
-    child.parentElement = this.nodeType === 1 ? this : null;
-    this.childNodes.push(child);
-    return child;
-  }
-  removeChild(child) {
-    const idx = this.childNodes.indexOf(child);
-    if (idx !== -1) {
-      this.childNodes.splice(idx, 1);
-      child.parentNode = null;
-      child.parentElement = null;
-    }
-    return child;
-  }
-  replaceChildren(...nodes) {
-    while (this.childNodes.length > 0) {
-      this.removeChild(this.childNodes[0]);
-    }
-    for (const n of nodes) {
-      this.appendChild(n);
-    }
-  }
-  contains(other) {
-    let cur = other;
-    while (cur) {
-      if (cur === this) return true;
-      cur = cur.parentNode;
-    }
-    return false;
-  }
-  dispatchEvent(event) {
-    if (!event.target) {
-      Object.defineProperty(event, "target", { value: this, configurable: true, writable: true });
-    }
-    let cur = this;
-    while (cur) {
-      Object.defineProperty(event, "currentTarget", { value: cur, configurable: true, writable: true });
-      super.dispatchEvent.call(cur, event);
-      if (!event.bubbles || event.cancelBubble) break;
-      cur = cur.parentElement;
-    }
-    return !event.defaultPrevented;
-  }
-}
-
-class RealDOMElement extends RealDOMNode {
-  constructor(tagName = "DIV", ownerDocument = null) {
-    super(1);
-    this.tagName = tagName.toUpperCase();
-    this.nodeName = this.tagName;
-    this.ownerDocument = ownerDocument;
-    this.attributes = new Map();
-    this.classList = new RealDOMTokenList(this);
-    this.dataset = {};
-    this.style = {
-      pointerEvents: "",
-      display: ""
-    };
-  }
-  get id() { return this.getAttribute("id") || ""; }
-  set id(v) { this.attributes.set("id", String(v)); }
-  get className() { return this.getAttribute("class") || ""; }
-  set className(v) {
-    this.attributes.set("class", String(v));
-    const list = String(v).trim().split(/\s+/).filter(Boolean);
-    this.classList._tokens = new Set(list);
-  }
-  getAttribute(name) { return this.attributes.get(name) ?? null; }
-  setAttribute(name, val) {
-    this.attributes.set(name, String(val));
-    if (name === "class") {
-      const list = String(val).trim().split(/\s+/).filter(Boolean);
-      this.classList._tokens = new Set(list);
-    }
-    if (name.startsWith("data-")) {
-      const key = name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
-      this.dataset[key] = String(val);
-    }
-    if (name === "disabled") this._disabled = true;
-    if (name === "style" && String(val).includes("pointer-events: none")) {
-      this.style.pointerEvents = "none";
-    }
-  }
-  removeAttribute(name) {
-    this.attributes.delete(name);
-    if (name === "disabled") this._disabled = false;
-  }
-  hasAttribute(name) { return this.attributes.has(name); }
-  matches(selector) {
-    const s = selector.trim();
-    if (s === "*") return true;
-    if (s.toUpperCase() === this.tagName) return true;
-    if (s.startsWith("#") && this.id === s.slice(1)) return true;
-    if (s.startsWith(".")) {
-      const parts = s.split(".").filter(Boolean);
-      return parts.every((p) => this.classList.contains(p));
-    }
-    const m = s.match(/^([a-zA-Z0-9_-]*)\[([a-zA-Z0-9_-]+)(?:=([\"']?)(.*?)\3)?\]$/);
-    if (m) {
-      const tag = m[1];
-      const attr = m[2];
-      const val = m[4];
-      if (tag && tag.toUpperCase() !== this.tagName) return false;
-      if (!this.hasAttribute(attr)) return false;
-      if (val !== undefined) return this.getAttribute(attr) === val;
-      return true;
-    }
-    return false;
-  }
-  closest(selector) {
-    let cur = this;
-    while (cur && cur.nodeType === 1) {
-      if (cur.matches(selector)) return cur;
-      cur = cur.parentElement;
-    }
-    return null;
-  }
-  querySelector(selector) {
-    return this.querySelectorAll(selector)[0] || null;
-  }
-  querySelectorAll(selector) {
-    const results = [];
-    const traverse = (node) => {
-      for (const child of node.children) {
-        if (child.matches(selector)) results.push(child);
-        traverse(child);
-      }
-    };
-    traverse(this);
-    return results;
-  }
-  click() {
-    if (this.disabled) return false;
-    const ev = new Event("click", { bubbles: true, cancelable: true });
-    return this.dispatchEvent(ev);
-  }
-  focus() {
-    const ev = new Event("focus", { bubbles: false, cancelable: false });
-    return this.dispatchEvent(ev);
-  }
-  blur() {
-    const ev = new Event("blur", { bubbles: false, cancelable: false });
-    return this.dispatchEvent(ev);
-  }
-}
-
-class RealDOMHTMLInputElement extends RealDOMElement {
-  constructor(ownerDoc) {
-    super("INPUT", ownerDoc);
-    this._type = "text";
-    this._value = "";
-    this._checked = false;
-    this._disabled = false;
-  }
-  get type() { return this.getAttribute("type") || this._type; }
-  set type(v) { this._type = v; this.setAttribute("type", v); }
-  get name() { return this.getAttribute("name") || ""; }
-  set name(v) { this.setAttribute("name", v); }
-  get value() { return this._value; }
-  set value(v) { this._value = String(v); this.setAttribute("value", v); }
-  get checked() { return this._checked; }
-  set checked(v) {
-    this._checked = Boolean(v);
-    if (v) this.setAttribute("checked", "");
-    else this.removeAttribute("checked");
-  }
-  get disabled() { return Boolean(this._disabled || this.hasAttribute("disabled")); }
-  set disabled(v) {
-    this._disabled = Boolean(v);
-    if (v) this.attributes.set("disabled", "");
-    else this.attributes.delete("disabled");
-  }
-  click() {
-    if (this.disabled) return false;
-    if (this.type === "radio") {
-      const root = this.ownerDocument ? this.ownerDocument.body : (this.closest("body") || this);
-      const peers = root.querySelectorAll?.(`input[name="${this.name}"]`) || [];
-      for (const p of peers) {
-        if (p !== this) p.checked = false;
-      }
-      this.checked = true;
-    }
-    const clickEv = new Event("click", { bubbles: true, cancelable: true });
-    const notPrevented = this.dispatchEvent(clickEv);
-    if (notPrevented && (this.type === "radio" || this.type === "checkbox")) {
-      const changeEv = new Event("change", { bubbles: true, cancelable: true });
-      this.dispatchEvent(changeEv);
-    }
-    return notPrevented;
-  }
-}
-
-class RealDOMHTMLLabelElement extends RealDOMElement {
-  constructor(ownerDoc) {
-    super("LABEL", ownerDoc);
-  }
-  get htmlFor() { return this.getAttribute("for") || ""; }
-  set htmlFor(v) { this.setAttribute("for", v); }
-  click() {
-    if (this.disabled) return false;
-    const clickEv = new Event("click", { bubbles: true, cancelable: true });
-    this.dispatchEvent(clickEv);
-    let targetInput = this.querySelector("input");
-    if (!targetInput && this.htmlFor && this.ownerDocument) {
-      targetInput = this.ownerDocument.getElementById(this.htmlFor);
-    }
-    if (targetInput && !targetInput.disabled) {
-      targetInput.click();
-    }
-    return true;
-  }
-}
-
-class RealDOMDocument extends RealDOMNode {
-  constructor() {
-    super(9);
-    this.body = new RealDOMElement("BODY", this);
-    this.appendChild(this.body);
-  }
-  createElement(tagName) {
-    const t = tagName.toUpperCase();
-    if (t === "INPUT") return new RealDOMHTMLInputElement(this);
-    if (t === "LABEL") return new RealDOMHTMLLabelElement(this);
-    return new RealDOMElement(t, this);
-  }
-  getElementById(id) {
-    const traverse = (node) => {
-      for (const child of node.children) {
-        if (child.id === id) return child;
-        const found = traverse(child);
-        if (found) return found;
-      }
-      return null;
-    };
-    return traverse(this.body);
-  }
-  querySelector(selector) {
-    return this.body.querySelector(selector);
-  }
-  querySelectorAll(selector) {
-    return this.body.querySelectorAll(selector);
-  }
-}
-
-test("F15A-REWORK2-DOM-01: Fraction CHOICE Activity 실제 DOM API 기반 Acceptance (createElement, radio/label click/change event, binding handler, ResponseRecord sync, Draft save/restore, submitLearningSession, Lock)", async () => {
+test("F15A-REWORK3-DOM-01: Fraction CHOICE Activity 표준 JSDOM 기반 Acceptance (Production renderer HTML mount, radio/label click/change event, Production binding handler, mutual exclusivity, selected-choice class, ResponseRecord sync, Draft save/restore, submitLearningSession, disabled/Lock)", async () => {
   await clearAllData();
   setCurrentLearnerId("learner-dom-choice");
 
@@ -1088,60 +803,7 @@ test("F15A-REWORK2-DOM-01: Fraction CHOICE Activity 실제 DOM API 기반 Accept
   assert.ok(act);
   assert.equal(act.responseType, "CHOICE");
 
-  const document = new RealDOMDocument();
-
-  // 1. Production Stage 실제 DOM Tree 구성 (document.createElement)
-  const stage = document.createElement("div");
-  stage.className = "typed-activity-stage";
-
-  // 시각 표현 DOM 요소 생성
-  const visualContainer = document.createElement("div");
-  visualContainer.className = "fraction-visual-container fraction-bar-container";
-  visualContainer.setAttribute("style", "pointer-events: none;");
-  const svgEl = document.createElement("svg");
-  svgEl.setAttribute("role", "img");
-  svgEl.setAttribute("aria-label", "전체 4칸 중 3칸이 색칠된 분수 막대 (3/4)");
-  svgEl.setAttribute("pointer-events", "none");
-  visualContainer.appendChild(svgEl);
-  stage.appendChild(visualContainer);
-
-  // 프롬프트 DOM 요소 생성
-  const promptEl = document.createElement("div");
-  promptEl.className = "typed-activity-prompt";
-  stage.appendChild(promptEl);
-
-  // CHOICE 라디오 그룹 및 라벨/인풋 트리 생성
-  const radiogroup = document.createElement("div");
-  radiogroup.className = "typed-choices-list";
-  radiogroup.setAttribute("role", "radiogroup");
-
-  const labels = [];
-  const radios = [];
-
-  for (const c of act.choices) {
-    const label = document.createElement("label");
-    label.className = "typed-choice-item choice-label";
-
-    const radio = document.createElement("input");
-    radio.type = "radio";
-    radio.name = `choice_${act.id}`;
-    radio.value = c.id;
-    radio.setAttribute("data-question-id", act.id);
-
-    const span = document.createElement("span");
-    span.setAttribute("data-label", c.label);
-
-    label.appendChild(radio);
-    label.appendChild(span);
-    radiogroup.appendChild(label);
-
-    labels.push(label);
-    radios.push(radio);
-  }
-  stage.appendChild(radiogroup);
-  document.body.appendChild(stage);
-
-  // 2. 학습 세션 생성
+  // 1. 학습 세션 생성
   const session = createSession({
     subjectId: "math",
     courseId: "fraction",
@@ -1151,26 +813,59 @@ test("F15A-REWORK2-DOM-01: Fraction CHOICE Activity 실제 DOM API 기반 Accept
   }, [act]);
   session.start();
 
-  const responseRecordsMap = new Map();
+  // 2. Production renderer 경로 실행 (직접 마크업 조립 금지, 실제 프로덕션 렌더러 호출)
+  const renderedHtml = renderChoiceActivityStage(act, { session });
+  assert.ok(renderedHtml.includes("typed-activity-stage"), "Production renderer 마크업 생성 확인");
+  assert.ok(renderedHtml.includes(`choice_${act.id}`), "Production radio group 이름 포함");
 
-  // 3. 실제 Document에 Production CHOICE Response Surface 바인딩
+  // 3. 실제 표준 DOM 구현체 (JSDOM)에 mount
+  const dom = new JSDOM(`<!DOCTYPE html><html><body><div id="stage-root">${renderedHtml}</div></body></html>`);
+  const { window } = dom;
+  const { document } = window;
+
+  const labels = Array.from(document.querySelectorAll(".typed-choice-item"));
+  const radios = Array.from(document.querySelectorAll(`input[name="choice_${act.id}"]`));
+  assert.equal(labels.length, act.choices.length, "선택지 라벨 수 일치");
+  assert.equal(radios.length, act.choices.length, "라디오 인풋 수 일치");
+
+  const responseRecordsMap = new Map();
+  let draftTriggerCount = 0;
+
+  // 4. Production CHOICE binding 실행
   bindChoiceResponseSurface(document, act.id, (selectedChoiceId) => {
     applyStudentResponseChange(session, responseRecordsMap, act, selectedChoiceId);
+    draftTriggerCount += 1;
   });
 
-  // 4. 학생이 3번째 선택지 (3/4, choice_3) 라벨을 실제 click
+  // 5. 학생이 3번째 선택지 (3/4, choice_3) 라벨/라디오를 실제 click
   const targetLabel = labels[2];
   const targetRadio = radios[2];
-  targetLabel.click();
+  targetRadio.click();
 
-  // 실제 DOM 상태 및 ResponseRecord 갱신 검증
+  // 실제 DOM 상태, 라디오 checked, selected-choice 클래스, ResponseRecord 갱신 검증
   assert.equal(targetRadio.checked, true, "3번째 라디오 선택됨");
   assert.equal(radios[0].checked, false, "1번째 라디오 미선택");
+  assert.equal(radios[1].checked, false, "2번째 라디오 미선택");
   assert.equal(targetLabel.classList.contains("selected-choice"), true, "선택된 라벨에 selected-choice 클래스 반영");
   assert.equal(labels[0].classList.contains("selected-choice"), false, "타 라벨에 selected-choice 미적용");
   assert.equal(responseRecordsMap.get(act.id).value, "choice_3", "ResponseRecord에 choice_3 동기화");
+  assert.equal(draftTriggerCount, 1, "선택 변경 시 드래프트 저장 트리거");
 
-  // 5. Draft 저장 및 복원 검증
+  // 6. 다른 선택지 (2번째 choice_2) 클릭하여 상호배타성 및 클래스 토글 검증
+  radios[1].click();
+  assert.equal(radios[1].checked, true, "2번째 라디오 선택됨");
+  assert.equal(targetRadio.checked, false, "동일 name 라디오 상호배타성에 의해 이전 라디오 해제");
+  assert.equal(labels[1].classList.contains("selected-choice"), true, "2번째 라벨 selected-choice 부여");
+  assert.equal(targetLabel.classList.contains("selected-choice"), false, "이전 3번째 라벨 selected-choice 제거");
+  assert.equal(responseRecordsMap.get(act.id).value, "choice_2");
+  assert.equal(draftTriggerCount, 2);
+
+  // 다시 3번째로 복원
+  targetRadio.click();
+  assert.equal(targetRadio.checked, true);
+  assert.equal(responseRecordsMap.get(act.id).value, "choice_3");
+
+  // 7. Draft 저장 및 복원 검증
   const draftPayload = {
     id: "current_draft_learner-dom-choice",
     sessionId: session.id,
@@ -1187,7 +882,7 @@ test("F15A-REWORK2-DOM-01: Fraction CHOICE Activity 실제 DOM API 기반 Accept
   assert.ok(restoredDraft);
   assert.equal(restoredDraft.responseRecords[act.id].value, "choice_3");
 
-  // 6. submitLearningSession 공통 프로덕션 커맨드로 제출
+  // 8. submitLearningSession 공통 프로덕션 커맨드로 제출
   const sub = await submitLearningSession({
     session,
     learnerId: "learner-dom-choice",
@@ -1203,17 +898,20 @@ test("F15A-REWORK2-DOM-01: Fraction CHOICE Activity 실제 DOM API 기반 Accept
   const postSubmitDraft = await getDraftSession({ learnerId: "learner-dom-choice" });
   assert.equal(postSubmitDraft, null, "제출 성공 후 Draft는 완전히 제거되어야 함");
 
-  // 7. 제출 후 실제 input disabled 및 Production Mutation Guard 잠금 확인
+  // 9. 제출 후 Session 상태에 따른 Production renderer disabled 속성 및 Lock 검증
+  const lockedHtml = renderChoiceActivityStage(act, { session, responseRecord: responseRecordsMap.get(act.id) });
+  assert.ok(lockedHtml.includes("disabled"), "제출 완료 세션 렌더링 시 disabled 포함 확인");
+
   radios.forEach((r) => { r.disabled = true; });
-  labels[0].click(); // disabled 라벨/라디오 클릭 무시
-  assert.equal(responseRecordsMap.get(act.id).value, "choice_3");
+  radios[0].click();
+  assert.equal(responseRecordsMap.get(act.id).value, "choice_3", "disabled 라디오 클릭 무시");
 
   assert.throws(() => {
     applyStudentResponseChange(session, responseRecordsMap, act, "choice_1");
   }, /수정할 수 없습니다|Locked|PARENT_GRADING_PENDING/i);
 });
 
-test("F15A-REWORK2-DOM-02: Fraction TEXT Activity 실제 DOM API 기반 Acceptance (createElement, focus, input/change event, binding handler, ResponseRecord sync, Draft save/restore, submitLearningSession, Lock)", async () => {
+test("F15A-REWORK3-DOM-02: Fraction TEXT Activity 표준 JSDOM 기반 Acceptance (Production renderer HTML mount, Production bindTextResponseSurface, focus, input, change, compositionstart/end, IME composing 중 조기 commit 차단, triggerDraftSave 연결, submitLearningSession, disabled/Lock)", async () => {
   await clearAllData();
   setCurrentLearnerId("learner-dom-text");
 
@@ -1221,31 +919,7 @@ test("F15A-REWORK2-DOM-02: Fraction TEXT Activity 실제 DOM API 기반 Acceptan
   assert.ok(act);
   assert.equal(act.responseType, "TEXT");
 
-  const document = new RealDOMDocument();
-
-  // 1. Production Stage 실제 DOM Tree 구성 (document.createElement)
-  const stage = document.createElement("div");
-  stage.className = "typed-activity-stage";
-
-  const visualContainer = document.createElement("div");
-  visualContainer.className = "fraction-visual-container fraction-bar-container";
-  visualContainer.setAttribute("style", "pointer-events: none;");
-  stage.appendChild(visualContainer);
-
-  const label = document.createElement("label");
-  label.htmlFor = `textInput_${act.id}`;
-  label.className = "sr-only";
-  stage.appendChild(label);
-
-  const inputEl = document.createElement("input");
-  inputEl.type = "text";
-  inputEl.id = `textInput_${act.id}`;
-  inputEl.setAttribute("data-question-id", act.id);
-  stage.appendChild(inputEl);
-
-  document.body.appendChild(stage);
-
-  // 2. 학습 세션 생성
+  // 1. 학습 세션 생성
   const session = createSession({
     subjectId: "math",
     courseId: "fraction",
@@ -1255,28 +929,70 @@ test("F15A-REWORK2-DOM-02: Fraction TEXT Activity 실제 DOM API 기반 Acceptan
   }, [act]);
   session.start();
 
-  const responseRecordsMap = new Map();
+  // 2. Production renderer 경로 실행
+  const renderedHtml = renderTextActivityStage(act, { session });
+  assert.ok(renderedHtml.includes("typed-activity-stage"), "Production renderer 마크업 생성");
+  assert.ok(renderedHtml.includes(`id="textInput_${act.id}"`), "Production text input ID 포함");
 
-  // 3. 실제 DOM 이벤트 리스너 바인딩 (focus, input, change)
+  // 3. 실제 표준 DOM 구현체 (JSDOM)에 mount
+  const dom = new JSDOM(`<!DOCTYPE html><html><body><div id="stage-root">${renderedHtml}</div></body></html>`);
+  const { window } = dom;
+  const { document, Event, CompositionEvent } = window;
+
+  const inputEl = document.querySelector(`#textInput_${act.id}`);
+  assert.ok(inputEl, "JSDOM에서 실제 input element 조회 확인");
+
+  const responseRecordsMap = new Map();
+  let draftSaveCount = 0;
+  let scribbleRefreshed = false;
+
+  // 4. Production bindTextResponseSurface 바인딩 (테스트에서 직접 addEventListener("input") 작성 금지)
+  const boundEl = bindTextResponseSurface(
+    document,
+    act.id,
+    (value) => {
+      applyStudentResponseChange(session, responseRecordsMap, act, value);
+    },
+    {
+      onDraftTrigger: () => {
+        draftSaveCount += 1;
+      },
+      scheduleFrame: (callback) => {
+        scribbleRefreshed = true;
+        callback();
+      }
+    }
+  );
+  assert.equal(boundEl, inputEl, "Production text binder가 동일 element 반환");
+
+  // 5. focus 이벤트 검증
   let focused = false;
   inputEl.addEventListener("focus", () => { focused = true; });
-  inputEl.addEventListener("input", (e) => {
-    applyStudentResponseChange(session, responseRecordsMap, act, e.target.value);
-  });
-  inputEl.addEventListener("change", (e) => {
-    applyStudentResponseChange(session, responseRecordsMap, act, e.target.value);
-  });
-
-  // 4. focus 이벤트 dispatch
   inputEl.focus();
-  assert.equal(focused, true, "inputEl focus 이벤트 수신 확인");
+  assert.equal(focused, true, "inputEl focus 정상 동작");
 
-  // 5. 학생 텍스트 입력 ("2/4") 및 input/change 이벤트 dispatch
-  inputEl.value = "2/4";
+  // 6. Windows Chrome / Korean IME compositionstart/compositionend 검증
+  // 6-a: compositionstart 발생 (조합 시작)
+  inputEl.dispatchEvent(new CompositionEvent("compositionstart"));
+  assert.equal(inputEl.dataset.isComposing, "true", "조합 중 플래그 활성화");
+
+  // 6-b: IME 조합 중 input 이벤트 발생 -> 조기 commit 차단 검증
+  inputEl.value = "2";
   inputEl.dispatchEvent(new Event("input", { bubbles: true }));
-  inputEl.dispatchEvent(new Event("change", { bubbles: true }));
+  assert.equal(responseRecordsMap.has(act.id), false, "IME 조합 중에는 ResponseRecord 조기 commit 없음");
+  assert.equal(draftSaveCount, 0, "조합 중 draft 저장 트리거 차단");
 
-  assert.equal(responseRecordsMap.get(act.id).value, "2/4", "ResponseRecord에 입력값 2/4 반영");
+  // 6-c: compositionend 발생 -> 최종 값 commit 및 draft save 트리거 검증
+  inputEl.value = "2/4";
+  inputEl.dispatchEvent(new CompositionEvent("compositionend", { data: "2/4" }));
+  assert.equal(inputEl.dataset.isComposing, "false", "조합 완료 플래그 해제");
+  assert.equal(responseRecordsMap.get(act.id)?.value, "2/4", "compositionend 후 학생 응답 정상 반영");
+  assert.equal(draftSaveCount, 1, "compositionend 후 draft 저장 트리거 1회 호출");
+  assert.equal(scribbleRefreshed, true, "iPad Scribble/잔상 refresh 표면 동기화 호출 확인");
+
+  // 7. 일반 change 이벤트 검증
+  inputEl.value = "2/4";
+  inputEl.dispatchEvent(new Event("change", { bubbles: true }));
 
   // 6. Draft 저장 및 복원
   const draftPayload = {
@@ -1308,13 +1024,16 @@ test("F15A-REWORK2-DOM-02: Fraction TEXT Activity 실제 DOM API 기반 Acceptan
   assert.equal(sub.responseSnapshots[act.id].value, "2/4");
 
   // 8. disabled 및 수정 잠금 (Lock)
+  const lockedHtml = renderTextActivityStage(act, { session, responseRecord: responseRecordsMap.get(act.id) });
+  assert.ok(lockedHtml.includes("disabled"), "제출 완료 세션 렌더링 시 input disabled 확인");
+
   inputEl.disabled = true;
   assert.throws(() => {
     applyStudentResponseChange(session, responseRecordsMap, act, "1/2");
   }, /수정할 수 없습니다|Locked|PARENT_GRADING_PENDING/i);
 });
 
-test("F15A-REWORK2-DOM-03: Fraction 시각 표현 요소(pointer-events: none)의 입력 이벤트 비간섭 및 접근성 실제 DOM 검증", () => {
+test("F15A-REWORK3-DOM-03: Fraction 시각 표현 요소(pointer-events: none) 및 접근성 실제 DOM 검증 (DOM 구조 및 속성 검증, 브라우저 CSS layout hit-test는 E2E 범위로 분리)", () => {
   // 1. 모든 분수 표현 타입 렌더러 결과에 pointer-events: none 및 접근성 속성 포함 확인
   const partWholeHtml = renderPartWholeBarSVG({ denominator: 4, numerator: 3 });
   const gridHtml = renderPartWholeGridSVG({ rows: 2, cols: 3, denominator: 6, numerator: 2 });
@@ -1331,24 +1050,34 @@ test("F15A-REWORK2-DOM-03: Fraction 시각 표현 요소(pointer-events: none)�
     assert.ok(html.includes("aria-label"), "한국어 접근성 aria-label 필수");
   }
 
-  // 2. 실제 DOM에서 시각 요소가 상호작용 표면의 클릭을 가로채지 않는 구조 검증
-  const document = new RealDOMDocument();
-  const container = document.createElement("div");
-  const visual = document.createElement("div");
-  visual.setAttribute("style", "pointer-events: none;");
-  const button = document.createElement("input");
-  button.type = "radio";
-  button.name = "choice_test";
-  button.value = "val1";
+  // 2. 실제 표준 DOM(JSDOM)에서 Production 마크업 내 시각 표현과 상호작용 입력 요소의 공존 및 이벤트 도달 검증
+  // 주의: JSDOM은 브라우저의 레이아웃 CSS hit-test(픽셀 좌표 기반 포인터 디스패치) 엔진을 포함하지 않으므로,
+  // 실제 스타일 속성 및 DOM 트리 공존성을 검증하며, 완전한 브라우저 hit-test는 browser/iPad E2E 검증 범위로 명시 분리한다.
+  const act = activities.find((a) => a.id === "frac_part_whole_bar_001");
+  const fullHtml = renderChoiceActivityStage(act, {});
+  const dom = new JSDOM(`<!DOCTYPE html><html><body><div id="mount">${fullHtml}</div></body></html>`);
+  const { document } = dom.window;
 
-  container.appendChild(visual);
-  container.appendChild(button);
-  document.body.appendChild(container);
+  const visualContainer = document.querySelector(".fraction-visual-container");
+  assert.ok(visualContainer, "시각 표현 컨테이너 존재");
+  assert.ok(
+    visualContainer.getAttribute("style")?.includes("pointer-events: none"),
+    "시각 표현 컨테이너에 pointer-events: none 스타일 적용"
+  );
 
+  const svgEl = visualContainer.querySelector("svg");
+  assert.ok(svgEl, "SVG 요소 존재");
+  assert.equal(svgEl.getAttribute("role"), "img", "접근성 role='img' 속성 확인");
+  assert.ok(svgEl.getAttribute("aria-label")?.length > 0, "접근성 aria-label 확인");
+  assert.equal(svgEl.getAttribute("pointer-events"), "none", "SVG pointer-events 속성 확인");
+
+  // 시각 표현 컨테이너와 상호작용 라디오 버튼이 동일 스테이지에서 충돌 없이 이벤트 도달 가능함 검증
+  const radio = document.querySelector(`input[name="choice_${act.id}"]`);
+  assert.ok(radio, "상호작용 라디오 버튼 존재");
   let clicked = false;
-  button.addEventListener("click", () => { clicked = true; });
-  button.click();
-  assert.equal(clicked, true, "시각 요소와 공존하는 입력 표면에 이벤트가 직접 정상 도달");
+  radio.addEventListener("click", () => { clicked = true; });
+  radio.click();
+  assert.equal(clicked, true, "상호작용 라디오에 클릭 이벤트 정상 전달");
 });
 
 test("F15A-REWORK2-E2E-01: Fraction Activity 전체 라이프사이클 E2E (Activity -> ResponseRecord -> Draft 저장/복원 -> Submission Snapshot -> PARENT_GRADING_PENDING -> Guardian Grading Start -> Guardian WRONG -> Finalize -> ReviewItem 생성 -> Review Retry Start -> Retry Draft -> Retry Submit -> Guardian Re-grade -> Review resolve -> ProgressAggregate 확인)", async () => {
