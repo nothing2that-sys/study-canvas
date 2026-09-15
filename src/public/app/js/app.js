@@ -55,6 +55,8 @@ import { createVisualViewportController, getPreferredScrollBehavior } from "./vi
 import { setupModalManager } from "./modalEngine.js";
 import { GradeDecision, normalizeGradeDecision } from "./parentGrading.js";
 import { ResponseType, ActivityType, DEFAULT_PROBLEM_COUNT, resolveActivityResponseType, usesDrawingCanvas } from "./learningActivity.js";
+import { renderFractionRepresentation } from "./fractionRepresentationView.js";
+import { getWorkbookCatalogItem } from "./workbookCatalog.js";
 import { createResponseRecord, applyStudentResponseChange } from "./responseEngine.js";
 import { bindChoiceResponseSurface, refreshScribbleCommitSurface } from "./typedInteractionSurface.js";
 import {
@@ -360,7 +362,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260912T073832559Z-2748dbe",
+    appBuildId: "20260915T005109551Z-1661654",
     sessionId: currentSession.id,
     submissionId: currentSubmission?.id || `sub_${currentSession.id}`,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
@@ -1668,10 +1670,13 @@ function renderTextActivityStage(q, options = {}) {
   const isShowGuides = Boolean(options.showGuides);
   const promptText = escapeHtml(q.prompt || q.question || "");
   const expectedAns = escapeHtml(String(q.expectedAnswer !== undefined ? q.expectedAnswer : (q.answer !== undefined ? q.answer : "")));
+  //+_+// Phase F15A: 분수 시각 표현 (SVG/DOM)
+  const visualHtml = renderFractionRepresentation(q);
 
   if (isShowGuides) {
     return `
       <div class="typed-activity-stage typed-model-answer" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
+        ${visualHtml}
         <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
         <div class="typed-expected-badge" style="background: #e6f4ea; color: #137333; padding: 0.5rem 0.75rem; border-radius: 6px; display: inline-block;">
           🎯 기준 정답: <strong>${expectedAns}</strong>
@@ -1690,6 +1695,7 @@ function renderTextActivityStage(q, options = {}) {
 
   return `
     <div class="typed-activity-stage" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
+      ${visualHtml}
       <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
       <div class="typed-input-area" style="margin-top: 0.5rem;">
         <label for="textInput_${escapeHtml(q.id)}" class="sr-only">답안 입력</label>
@@ -1712,6 +1718,8 @@ function renderChoiceActivityStage(q, options = {}) {
   const promptText = escapeHtml(q.prompt || q.question || "");
   const expectedChoiceId = String(q.expectedAnswer !== undefined ? q.expectedAnswer : (q.answer !== undefined ? q.answer : ""));
   const choices = Array.isArray(q.choices) ? q.choices : [];
+  //+_+// Phase F15A: 분수 시각 표현 (SVG/DOM)
+  const visualHtml = renderFractionRepresentation(q);
 
   const savedRecord = options.responseRecord || options.responseSnapshots?.[q.id] || questionResponseRecordsMap.get(q.id) || currentSubmission?.responseSnapshots?.[q.id];
   const studentChoiceId = String(savedRecord?.value || "");
@@ -1719,6 +1727,7 @@ function renderChoiceActivityStage(q, options = {}) {
 
   return `
     <div class="typed-activity-stage" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
+      ${visualHtml}
       <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
       <div class="typed-choices-list" role="radiogroup" aria-label="선택지" style="display: flex; flex-direction: column; gap: 0.5rem;">
         ${choices.map((c) => {
@@ -3567,6 +3576,8 @@ async function checkDraftResumeOnStartup() {
             });
             if (targetPracticeRoute === ROUTES.MATH_MEASUREMENT_PRACTICE) {
               navigate(ROUTES.MATH_MEASUREMENT_PRACTICE);
+            } else if (targetPracticeRoute === ROUTES.MATH_FRACTION_PRACTICE) {
+              navigate(ROUTES.MATH_FRACTION_PRACTICE);
             } else {
               navigate(ROUTES.MATH_PRACTICE);
             }
@@ -3707,6 +3718,8 @@ if (typeof document !== "undefined") {
       await renderWorkbookRoute(path);
     } else if (path === ROUTES.MATH_MEASUREMENT) {
       await renderMeasurementLandingView();
+    } else if (path === ROUTES.MATH_FRACTION) {
+      await handleFractionLandingOrWorkbookLaunch();
     } else if (path === ROUTES.KOREAN_HOME || path === ROUTES.KOREAN_CORE) {
       await renderKoreanLandingView();
     } else if (path === ROUTES.ENGLISH_HOME || path === ROUTES.ENGLISH_CORE) {
@@ -3744,11 +3757,13 @@ if (typeof document !== "undefined") {
         await checkDraftResumeOnStartup();
       } else if (route === ROUTES.MATH_MEASUREMENT) {
         await renderMeasurementLandingView();
+      } else if (route === ROUTES.MATH_FRACTION) {
+        await handleFractionLandingOrWorkbookLaunch();
       } else if (route === ROUTES.KOREAN_HOME || route === ROUTES.KOREAN_CORE) {
         await renderKoreanLandingView();
       } else if (route === ROUTES.ENGLISH_HOME || route === ROUTES.ENGLISH_CORE) {
         await renderEnglishLandingView();
-      } else if (route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.KOREAN_CORE_PRACTICE || route === ROUTES.ENGLISH_CORE_PRACTICE || route === ROUTES.MATH_GRADING) {
+      } else if (route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.MATH_FRACTION_PRACTICE || route === ROUTES.KOREAN_CORE_PRACTICE || route === ROUTES.ENGLISH_CORE_PRACTICE || route === ROUTES.MATH_GRADING) {
         if (result.persistedDraft) {
           restoreSessionFromDraft(result.persistedDraft);
         } else if (route === ROUTES.MATH_GRADING && result.persistedSubmission) {
@@ -3880,6 +3895,56 @@ export function startMeasurementPracticeSession(skill, unitCatalog, manifest) {
   };
 
   startSessionWithQuestions(activities, sessionConfig);
+}
+
+//+_+// Phase F15A: 분수 개념 학습 세션 시작
+export function startFractionPracticeSession({ activities, workbookContext = null, pageSize = 2 } = {}) {
+  if (!Array.isArray(activities) || activities.length === 0) {
+    throw new Error("분수 학습 문제가 필요합니다.");
+  }
+  const firstAct = activities[0];
+  const sessionConfig = {
+    subjectId: "math",
+    courseId: "fraction",
+    moduleId: "fraction",
+    unitId: firstAct.unitId || "concepts",
+    skillId: firstAct.skillId || "MATH_FRACTION_PART_WHOLE",
+    stageId: firstAct.skillId || "MATH_FRACTION_PART_WHOLE",
+    macroLevelId: firstAct.skillId || "MATH_FRACTION_PART_WHOLE",
+    difficulty: String(firstAct.difficulty || "FOUNDATION"),
+    problemCount: activities.length,
+    pageSize,
+    mathFormat: "horizontal"
+  };
+  const effectiveConfig = workbookContext ? { ...sessionConfig, ...workbookContext } : sessionConfig;
+  startSessionWithQuestions(activities, effectiveConfig);
+}
+
+//+_+// Phase F15A: 분수 문제집 연계 실행 또는 랜딩 처리
+export async function handleFractionLandingOrWorkbookLaunch() {
+  const workbookContext = getActiveWorkbookContext();
+  let activities = [];
+  try {
+    const pkg = await loadPackage("math-fraction-concepts-v1");
+    if (workbookContext?.workbookPageId && pkg?.activities) {
+      const catalogItem = getWorkbookCatalogItem(workbookContext.workbookId);
+      const page = catalogItem?.edition?.pages?.find((p) => p.pageId === workbookContext.workbookPageId);
+      if (page?.activityRefs?.length > 0) {
+        const refIds = new Set(page.activityRefs.map((r) => r.activityId || r.id || r));
+        activities = pkg.activities.filter((a) => refIds.has(a.id));
+      }
+    }
+    if (activities.length === 0 && pkg?.activities?.length > 0) {
+      activities = pkg.activities.slice(0, 4);
+    }
+    if (activities.length > 0) {
+      startFractionPracticeSession({ activities, workbookContext, pageSize: 2 });
+      return;
+    }
+  } catch (err) {
+    console.warn("[app] math-fraction-concepts-v1 로드 실패:", err);
+  }
+  navigate(ROUTES.BOOKSHELF);
 }
 
 //+_+// Phase F12: Korean Landing View 렌더링 및 세션 생성

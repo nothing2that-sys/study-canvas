@@ -5316,3 +5316,57 @@ body.theme-midnight .active-learner-pill {
   .workbook-launch-btn,
   .workbook-toc-open-btn { min-height: 48px; }
 }
+
+/*+_+// Phase F15A: Fraction Visual Representation Styles */
+.fraction-visual-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0.75rem auto;
+  pointer-events: none;
+  user-select: none;
+}
+.fraction-visual-container svg {
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.symbolic-fraction-view {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  font-weight: 700;
+  font-family: inherit;
+  pointer-events: none;
+}
+.fraction-whole {
+  font-size: 1.35em;
+  margin-right: 0.25em;
+  line-height: 1;
+}
+.fraction-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  line-height: 1;
+}
+.fraction-numerator,
+.fraction-denominator {
+  font-size: 0.95em;
+  padding: 0 0.2em;
+}
+.fraction-bar {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: currentColor;
+  margin: 2px 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fraction-visual-container * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+

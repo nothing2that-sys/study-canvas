@@ -8,6 +8,9 @@ export const LEARNING_ROUTES = Object.freeze({
   ARITHMETIC_PRACTICE: "/math/arithmetic/practice",
   MEASUREMENT_LANDING: "/math/measurement",
   MEASUREMENT_PRACTICE: "/math/measurement/practice",
+  //+_+// Phase F15A: Fraction Concepts 라우트
+  FRACTION_LANDING: "/math/fraction",
+  FRACTION_PRACTICE: "/math/fraction/practice",
   //+_+// Phase F12: Korean Core 라우트
   KOREAN_LANDING: "/korean/core",
   KOREAN_PRACTICE: "/korean/core/practice",
@@ -24,7 +27,28 @@ export const LEARNING_ROUTES = Object.freeze({
  * @param {string} [params.moduleId]
  * @returns {string} 라우트 경로
  */
-export function resolvePracticeRoute({ subjectId = "math", courseId = "", moduleId = "" } = {}) {
+/**
+ * 학습 모듈 정보에 따라 올바른 Practice 풀이 라우트 경로 결정
+ * @param {Object|string} [arg1] - { subjectId, courseId, moduleId } 또는 subjectId
+ * @param {string} [maybeCourseId]
+ * @param {string} [maybeModuleId]
+ * @returns {string} 라우트 경로
+ */
+export function resolvePracticeRoute(arg1 = {}, maybeCourseId = "", maybeModuleId = "") {
+  let subjectId = "math";
+  let courseId = "";
+  let moduleId = "";
+
+  if (typeof arg1 === "object" && arg1 !== null) {
+    subjectId = arg1.subjectId !== undefined ? arg1.subjectId : "math";
+    courseId = arg1.courseId || "";
+    moduleId = arg1.moduleId || "";
+  } else if (typeof arg1 === "string") {
+    subjectId = arg1;
+    courseId = maybeCourseId || "";
+    moduleId = maybeModuleId || "";
+  }
+
   const normSubject = String(subjectId || "").toLowerCase();
   const normCourse = String(courseId || "").toLowerCase();
   const normModule = String(moduleId || "").toLowerCase();
@@ -37,6 +61,10 @@ export function resolvePracticeRoute({ subjectId = "math", courseId = "", module
     return LEARNING_ROUTES.KOREAN_PRACTICE;
   }
 
+  if (normCourse === "fraction" || normModule === "fraction") {
+    return LEARNING_ROUTES.FRACTION_PRACTICE;
+  }
+
   if (normCourse === "measurement" || normModule === "measurement") {
     return LEARNING_ROUTES.MEASUREMENT_PRACTICE;
   }
@@ -46,13 +74,26 @@ export function resolvePracticeRoute({ subjectId = "math", courseId = "", module
 
 /**
  * 학습 모듈 정보에 따라 올바른 학습 설정/랜딩 라우트 경로 결정
- * @param {Object} params
- * @param {string} [params.subjectId="math"]
- * @param {string} [params.courseId]
- * @param {string} [params.moduleId]
+ * @param {Object|string} [arg1] - { subjectId, courseId, moduleId } 또는 subjectId
+ * @param {string} [maybeCourseId]
+ * @param {string} [maybeModuleId]
  * @returns {string} 라우트 경로
  */
-export function resolveLandingRoute({ subjectId = "math", courseId = "", moduleId = "" } = {}) {
+export function resolveLandingRoute(arg1 = {}, maybeCourseId = "", maybeModuleId = "") {
+  let subjectId = "math";
+  let courseId = "";
+  let moduleId = "";
+
+  if (typeof arg1 === "object" && arg1 !== null) {
+    subjectId = arg1.subjectId !== undefined ? arg1.subjectId : "math";
+    courseId = arg1.courseId || "";
+    moduleId = arg1.moduleId || "";
+  } else if (typeof arg1 === "string") {
+    subjectId = arg1;
+    courseId = maybeCourseId || "";
+    moduleId = maybeModuleId || "";
+  }
+
   const normSubject = String(subjectId || "").toLowerCase();
   const normCourse = String(courseId || "").toLowerCase();
   const normModule = String(moduleId || "").toLowerCase();
@@ -63,6 +104,10 @@ export function resolveLandingRoute({ subjectId = "math", courseId = "", moduleI
 
   if (normSubject === "korean" || normCourse === "korean-core" || normModule === "korean-core") {
     return LEARNING_ROUTES.KOREAN_LANDING;
+  }
+
+  if (normCourse === "fraction" || normModule === "fraction") {
+    return LEARNING_ROUTES.FRACTION_LANDING;
   }
 
   if (normCourse === "measurement" || normModule === "measurement") {
@@ -78,6 +123,14 @@ export function resolveLandingRoute({ subjectId = "math", courseId = "", moduleI
 export function isMeasurementRoute(routePath) {
   if (!routePath) return false;
   return routePath === LEARNING_ROUTES.MEASUREMENT_LANDING || routePath === LEARNING_ROUTES.MEASUREMENT_PRACTICE;
+}
+
+/**
+ * 주어진 라우트가 Fraction 관련 경로인지 확인
+ */
+export function isFractionRoute(routePath) {
+  if (!routePath) return false;
+  return routePath === LEARNING_ROUTES.FRACTION_LANDING || routePath === LEARNING_ROUTES.FRACTION_PRACTICE;
 }
 
 /**

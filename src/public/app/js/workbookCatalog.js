@@ -93,6 +93,88 @@ const rawCatalog = [
   },
   {
     definition: {
+      workbookId: "math-fraction-g3",
+      type: "FIXED",
+      subjectId: "math",
+      courseId: "fraction",
+      title: "3학년 분수 개념: 분수의 이해와 크기 비교",
+      description: "부분과 전체, 단위분수, 분수의 기호와 수직선 표현을 익혀요.",
+      gradeLevel: 3,
+      semester: "ALL",
+      difficulty: "FOUNDATION",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["4수01-09", "4수01-11"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "math-fraction-g3",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "math-fraction-concepts-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "math-fraction-g3-p1", pageNumber: 1, unitId: "concepts", title: "부분과 전체", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_part_whole_bar_001" }, { activityId: "frac_part_whole_grid_002" }] },
+        { pageId: "math-fraction-g3-p2", pageNumber: 2, unitId: "concepts", title: "분수의 기호와 읽기", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_symbolic_parts_001" }, { activityId: "frac_symbolic_reading_002" }] },
+        { pageId: "math-fraction-g3-p3", pageNumber: 3, unitId: "number_line", title: "수직선과 분수의 크기", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_number_line_pos_001" }, { activityId: "frac_number_line_compare_002" }] }
+      ]
+    }
+  },
+  {
+    definition: {
+      workbookId: "math-fraction-g4",
+      type: "FIXED",
+      subjectId: "math",
+      courseId: "fraction",
+      title: "4학년 분수 개념: 진분수, 가분수, 대분수",
+      description: "진분수, 가분수, 대분수의 의미와 상호 변환 관계를 배워요.",
+      gradeLevel: 4,
+      semester: "ALL",
+      difficulty: "FOUNDATION",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["4수01-10"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "math-fraction-g4",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "math-fraction-concepts-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "math-fraction-g4-p1", pageNumber: 1, unitId: "fraction_types", title: "진분수와 가분수", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_types_identify_001" }] },
+        { pageId: "math-fraction-g4-p2", pageNumber: 2, unitId: "fraction_types", title: "대분수와 가분수의 관계", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_mixed_to_improper_002" }] }
+      ]
+    }
+  },
+  {
+    definition: {
+      workbookId: "math-fraction-g5",
+      type: "FIXED",
+      subjectId: "math",
+      courseId: "fraction",
+      title: "5학년 분수 개념: 크기가 같은 분수와 동치 표현",
+      description: "그림 모델과 수직선으로 크기가 같은 분수를 직관적으로 이해해요.",
+      gradeLevel: 5,
+      semester: "ALL",
+      difficulty: "STANDARD",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["6수01-06"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "math-fraction-g5",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "math-fraction-concepts-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "math-fraction-g5-p1", pageNumber: 1, unitId: "equivalent", title: "막대로 크기가 같은 분수 찾기", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_equiv_pair_choice_001" }] },
+        { pageId: "math-fraction-g5-p2", pageNumber: 2, unitId: "equivalent", title: "수직선에서 크기가 같은 분수 찾기", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_equiv_text_002" }] }
+      ]
+    }
+  },
+  {
+    definition: {
       workbookId: "english-vocabulary-review-g3",
       type: "REVIEW",
       subjectId: "english",

@@ -109,7 +109,7 @@ export async function updateShellHeader(options = {}) {
 
   //+_+// 풀이 또는 채점 중인 경우 상단 셸 최소화 스타일 조정
   const route = getCurrentRoute();
-  const isPracticeMode = route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.KOREAN_CORE_PRACTICE || route === ROUTES.ENGLISH_CORE_PRACTICE || route === ROUTES.MATH_GRADING;
+  const isPracticeMode = route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.MATH_FRACTION_PRACTICE || route === ROUTES.KOREAN_CORE_PRACTICE || route === ROUTES.ENGLISH_CORE_PRACTICE || route === ROUTES.MATH_GRADING;
   if (domElements.topbar) {
     if (isPracticeMode) {
       domElements.topbar.classList.add("topbar-compact");
@@ -146,12 +146,12 @@ export function renderRouteView(routePath) {
   });
 
   const isMathRoute = routePath.startsWith("/math");
-  const isPracticeRoute = routePath === ROUTES.MATH_PRACTICE || routePath === ROUTES.MATH_MEASUREMENT_PRACTICE || routePath === ROUTES.KOREAN_CORE_PRACTICE || routePath === ROUTES.ENGLISH_CORE_PRACTICE;
+  const isPracticeRoute = routePath === ROUTES.MATH_PRACTICE || routePath === ROUTES.MATH_MEASUREMENT_PRACTICE || routePath === ROUTES.MATH_FRACTION_PRACTICE || routePath === ROUTES.KOREAN_CORE_PRACTICE || routePath === ROUTES.ENGLISH_CORE_PRACTICE;
   if (domElements.mathAppRoot) {
     domElements.mathAppRoot.hidden = (!isMathRoute && !isPracticeRoute) || routePath === ROUTES.MATH_MEASUREMENT;
   }
   if (domElements.platformRoot) {
-    domElements.platformRoot.hidden = (isMathRoute && routePath !== ROUTES.MATH_HOME && routePath !== ROUTES.MATH_MEASUREMENT) || isPracticeRoute;
+    domElements.platformRoot.hidden = (isMathRoute && routePath !== ROUTES.MATH_HOME && routePath !== ROUTES.MATH_MEASUREMENT && routePath !== ROUTES.MATH_FRACTION) || isPracticeRoute;
   }
 
   switch (routePath) {
@@ -239,6 +239,7 @@ export function renderRouteView(routePath) {
 
     case ROUTES.MATH_PRACTICE:
     case ROUTES.MATH_MEASUREMENT_PRACTICE:
+    case ROUTES.MATH_FRACTION_PRACTICE:
     case ROUTES.KOREAN_CORE_PRACTICE:
     case ROUTES.ENGLISH_CORE_PRACTICE:
       if (domElements.mathAppRoot) domElements.mathAppRoot.hidden = false;
