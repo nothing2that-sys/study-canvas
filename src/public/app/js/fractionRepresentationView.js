@@ -73,10 +73,26 @@ export function normalizeFractionRepresentationSpec(spec) {
 
   // 2. NUMBER_LINE
   if (spec.type === "NUMBER_LINE") {
-    const f = (spec.fractions && spec.fractions[0]) || spec.fraction || spec;
-    const denom = spec.subdivisions !== undefined ? spec.subdivisions : f.denominator;
-    const num = spec.markerNumerator !== undefined ? spec.markerNumerator : (f.numerator !== undefined ? f.numerator : 1);
-    const whole = f.wholeNumber !== undefined ? f.wholeNumber : (f.whole !== undefined ? f.whole : 0);
+    const fractionObj = (spec.fractions && spec.fractions[0]) || spec.fraction;
+    
+    //+_+// Phase F15A Rework 2: subdivisions 유효성 및 fraction.denominator 충돌 검증 (fail-closed)
+    const hasSpecSubdiv = spec.subdivisions !== undefined;
+    if (hasSpecSubdiv) {
+      if (typeof spec.subdivisions !== "number" || Number.isNaN(spec.subdivisions) || !Number.isFinite(spec.subdivisions) || !Number.isInteger(spec.subdivisions) || spec.subdivisions < 2) {
+        throw new Error(`NUMBER_LINE subdivisions(분모)는 2 이상의 정수여야 합니다. 입력값: ${spec.subdivisions}`);
+      }
+    }
+
+    const hasFractionDenom = fractionObj ? fractionObj.denominator !== undefined : (spec.denominator !== undefined);
+    const fractionDenomVal = fractionObj ? fractionObj.denominator : spec.denominator;
+
+    if (hasSpecSubdiv && hasFractionDenom && spec.subdivisions !== fractionDenomVal) {
+      throw new Error(`NUMBER_LINE subdivisions(${spec.subdivisions})와 fraction.denominator(${fractionDenomVal})가 일치하지 않습니다 (불일치 충돌 거절).`);
+    }
+
+    const denom = hasSpecSubdiv ? spec.subdivisions : fractionDenomVal;
+    const num = spec.markerNumerator !== undefined ? spec.markerNumerator : (fractionObj?.numerator !== undefined ? fractionObj.numerator : (spec.numerator !== undefined ? spec.numerator : 1));
+    const whole = fractionObj?.wholeNumber !== undefined ? fractionObj.wholeNumber : (fractionObj?.whole !== undefined ? fractionObj.whole : (spec.wholeNumber || spec.whole || 0));
     const maxVal = spec.maxVal !== undefined ? spec.maxVal : (spec.max !== undefined ? spec.max : (spec.rangeEnd !== undefined ? spec.rangeEnd : 1));
 
     if (typeof denom !== "number" || Number.isNaN(denom) || !Number.isFinite(denom) || !Number.isInteger(denom) || denom < 2) {
