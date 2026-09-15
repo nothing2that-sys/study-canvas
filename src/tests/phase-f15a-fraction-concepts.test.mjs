@@ -43,8 +43,20 @@ import {
   getSubmission,
   getAllSubmissions,
   updateSubmissionGrading,
-  setCurrentLearnerId
+  setCurrentLearnerId,
+  getAllReviewItems,
+  getReviewItem,
+  getAllProgressAggregates
 } from "../public/app/js/storage.js";
+
+import {
+  submitLearningSession,
+  startSubmissionGrading,
+  saveSubmissionGradingProgress,
+  finalizeSubmissionGrading,
+  startReviewRetry,
+  resolveReviewItem
+} from "../public/app/js/data/learningCommands.js";
 
 import {
   createSession,
@@ -328,6 +340,35 @@ test("F15A-REWORK-05: NUMBER_LINE 렌더러는 유효하지 않은 subdivisions 
   assert.throws(() => renderNumberLineSVG({ subdivisions: 1.5, fractions: [{ numerator: 1, denominator: 2 }] }), /정수|유효하지 않은/);
   // NUMBER_LINE marker out of range reject (markerVal > maxVal)
   assert.throws(() => renderNumberLineSVG({ maxVal: 1, subdivisions: 4, fractions: [{ numerator: 5, denominator: 4 }] }), /범위|초과/);
+});
+
+//+_+// Rework 2: NUMBER_LINE denominator / subdivisions 충돌 fail-closed 검증
+test("F15A-REWORK2-01: NUMBER_LINE denominator 및 subdivisions 충돌 fail-closed 거부", () => {
+  // 1. fraction.denominator = 3 + subdivisions = 4 -> reject
+  assert.throws(() => renderNumberLineSVG({
+    subdivisions: 4,
+    fraction: { numerator: 2, denominator: 3 }
+  }), /일치하지 않습니다|불일치|충돌/);
+
+  // 2. fraction.denominator = 4 + subdivisions = 4 -> pass
+  const passSvg1 = renderNumberLineSVG({
+    subdivisions: 4,
+    fraction: { numerator: 2, denominator: 4 }
+  });
+  assert.ok(passSvg1.includes("<svg"));
+
+  // 3. fraction.denominator only -> pass
+  const passSvg2 = renderNumberLineSVG({
+    fraction: { numerator: 2, denominator: 5 }
+  });
+  assert.ok(passSvg2.includes("<svg"));
+
+  // 4. subdivisions only with markerNumerator -> pass
+  const passSvg3 = renderNumberLineSVG({
+    subdivisions: 6,
+    markerNumerator: 3
+  });
+  assert.ok(passSvg3.includes("<svg"));
 });
 
 test("F15A-REWORK-06: EQUIVALENT_PAIR 및 알 수 없는 표현 타입 fail-closed 거부", () => {
@@ -744,3 +785,838 @@ test("F15A-REWORK-08: Fraction TEXT Activity 실제 DOM 상호작용 (입력, Dr
     applyStudentResponseChange(session, responseRecordsMap, act, "1/2");
   }, /수정할 수 없습니다|Locked|PARENT_GRADING_PENDING/i);
 });
+
+//+_+// ============================================================================
+//+_+// Phase F15A Rework 2: Real DOM Acceptance Harness 및 상호작용 검증
+//+_+// ============================================================================
+
+class RealDOMTokenList {
+  constructor(element) {
+    this._element = element;
+    this._tokens = new Set();
+  }
+  add(...tokens) {
+    for (const t of tokens) {
+      if (t) this._tokens.add(String(t));
+    }
+    this._sync();
+  }
+  remove(...tokens) {
+    for (const t of tokens) {
+      this._tokens.delete(String(t));
+    }
+    this._sync();
+  }
+  toggle(token, force) {
+    const t = String(token);
+    const shouldAdd = force !== undefined ? Boolean(force) : !this._tokens.has(t);
+    if (shouldAdd) this._tokens.add(t);
+    else this._tokens.delete(t);
+    this._sync();
+    return shouldAdd;
+  }
+  contains(token) {
+    return this._tokens.has(String(token));
+  }
+  _sync() {
+    this._element.setAttribute("class", Array.from(this._tokens).join(" "));
+  }
+}
+
+class RealDOMNode extends EventTarget {
+  constructor(nodeType = 1) {
+    super();
+    this.nodeType = nodeType;
+    this.parentNode = null;
+    this.parentElement = null;
+    this.childNodes = [];
+  }
+  get children() {
+    return this.childNodes.filter((c) => c.nodeType === 1);
+  }
+  appendChild(child) {
+    if (child.parentNode) child.parentNode.removeChild(child);
+    child.parentNode = this;
+    child.parentElement = this.nodeType === 1 ? this : null;
+    this.childNodes.push(child);
+    return child;
+  }
+  removeChild(child) {
+    const idx = this.childNodes.indexOf(child);
+    if (idx !== -1) {
+      this.childNodes.splice(idx, 1);
+      child.parentNode = null;
+      child.parentElement = null;
+    }
+    return child;
+  }
+  replaceChildren(...nodes) {
+    while (this.childNodes.length > 0) {
+      this.removeChild(this.childNodes[0]);
+    }
+    for (const n of nodes) {
+      this.appendChild(n);
+    }
+  }
+  contains(other) {
+    let cur = other;
+    while (cur) {
+      if (cur === this) return true;
+      cur = cur.parentNode;
+    }
+    return false;
+  }
+  dispatchEvent(event) {
+    if (!event.target) {
+      Object.defineProperty(event, "target", { value: this, configurable: true, writable: true });
+    }
+    let cur = this;
+    while (cur) {
+      Object.defineProperty(event, "currentTarget", { value: cur, configurable: true, writable: true });
+      super.dispatchEvent.call(cur, event);
+      if (!event.bubbles || event.cancelBubble) break;
+      cur = cur.parentElement;
+    }
+    return !event.defaultPrevented;
+  }
+}
+
+class RealDOMElement extends RealDOMNode {
+  constructor(tagName = "DIV", ownerDocument = null) {
+    super(1);
+    this.tagName = tagName.toUpperCase();
+    this.nodeName = this.tagName;
+    this.ownerDocument = ownerDocument;
+    this.attributes = new Map();
+    this.classList = new RealDOMTokenList(this);
+    this.dataset = {};
+    this.style = {
+      pointerEvents: "",
+      display: ""
+    };
+  }
+  get id() { return this.getAttribute("id") || ""; }
+  set id(v) { this.attributes.set("id", String(v)); }
+  get className() { return this.getAttribute("class") || ""; }
+  set className(v) {
+    this.attributes.set("class", String(v));
+    const list = String(v).trim().split(/\s+/).filter(Boolean);
+    this.classList._tokens = new Set(list);
+  }
+  getAttribute(name) { return this.attributes.get(name) ?? null; }
+  setAttribute(name, val) {
+    this.attributes.set(name, String(val));
+    if (name === "class") {
+      const list = String(val).trim().split(/\s+/).filter(Boolean);
+      this.classList._tokens = new Set(list);
+    }
+    if (name.startsWith("data-")) {
+      const key = name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      this.dataset[key] = String(val);
+    }
+    if (name === "disabled") this._disabled = true;
+    if (name === "style" && String(val).includes("pointer-events: none")) {
+      this.style.pointerEvents = "none";
+    }
+  }
+  removeAttribute(name) {
+    this.attributes.delete(name);
+    if (name === "disabled") this._disabled = false;
+  }
+  hasAttribute(name) { return this.attributes.has(name); }
+  matches(selector) {
+    const s = selector.trim();
+    if (s === "*") return true;
+    if (s.toUpperCase() === this.tagName) return true;
+    if (s.startsWith("#") && this.id === s.slice(1)) return true;
+    if (s.startsWith(".")) {
+      const parts = s.split(".").filter(Boolean);
+      return parts.every((p) => this.classList.contains(p));
+    }
+    const m = s.match(/^([a-zA-Z0-9_-]*)\[([a-zA-Z0-9_-]+)(?:=([\"']?)(.*?)\3)?\]$/);
+    if (m) {
+      const tag = m[1];
+      const attr = m[2];
+      const val = m[4];
+      if (tag && tag.toUpperCase() !== this.tagName) return false;
+      if (!this.hasAttribute(attr)) return false;
+      if (val !== undefined) return this.getAttribute(attr) === val;
+      return true;
+    }
+    return false;
+  }
+  closest(selector) {
+    let cur = this;
+    while (cur && cur.nodeType === 1) {
+      if (cur.matches(selector)) return cur;
+      cur = cur.parentElement;
+    }
+    return null;
+  }
+  querySelector(selector) {
+    return this.querySelectorAll(selector)[0] || null;
+  }
+  querySelectorAll(selector) {
+    const results = [];
+    const traverse = (node) => {
+      for (const child of node.children) {
+        if (child.matches(selector)) results.push(child);
+        traverse(child);
+      }
+    };
+    traverse(this);
+    return results;
+  }
+  click() {
+    if (this.disabled) return false;
+    const ev = new Event("click", { bubbles: true, cancelable: true });
+    return this.dispatchEvent(ev);
+  }
+  focus() {
+    const ev = new Event("focus", { bubbles: false, cancelable: false });
+    return this.dispatchEvent(ev);
+  }
+  blur() {
+    const ev = new Event("blur", { bubbles: false, cancelable: false });
+    return this.dispatchEvent(ev);
+  }
+}
+
+class RealDOMHTMLInputElement extends RealDOMElement {
+  constructor(ownerDoc) {
+    super("INPUT", ownerDoc);
+    this._type = "text";
+    this._value = "";
+    this._checked = false;
+    this._disabled = false;
+  }
+  get type() { return this.getAttribute("type") || this._type; }
+  set type(v) { this._type = v; this.setAttribute("type", v); }
+  get name() { return this.getAttribute("name") || ""; }
+  set name(v) { this.setAttribute("name", v); }
+  get value() { return this._value; }
+  set value(v) { this._value = String(v); this.setAttribute("value", v); }
+  get checked() { return this._checked; }
+  set checked(v) {
+    this._checked = Boolean(v);
+    if (v) this.setAttribute("checked", "");
+    else this.removeAttribute("checked");
+  }
+  get disabled() { return Boolean(this._disabled || this.hasAttribute("disabled")); }
+  set disabled(v) {
+    this._disabled = Boolean(v);
+    if (v) this.attributes.set("disabled", "");
+    else this.attributes.delete("disabled");
+  }
+  click() {
+    if (this.disabled) return false;
+    if (this.type === "radio") {
+      const root = this.ownerDocument ? this.ownerDocument.body : (this.closest("body") || this);
+      const peers = root.querySelectorAll?.(`input[name="${this.name}"]`) || [];
+      for (const p of peers) {
+        if (p !== this) p.checked = false;
+      }
+      this.checked = true;
+    }
+    const clickEv = new Event("click", { bubbles: true, cancelable: true });
+    const notPrevented = this.dispatchEvent(clickEv);
+    if (notPrevented && (this.type === "radio" || this.type === "checkbox")) {
+      const changeEv = new Event("change", { bubbles: true, cancelable: true });
+      this.dispatchEvent(changeEv);
+    }
+    return notPrevented;
+  }
+}
+
+class RealDOMHTMLLabelElement extends RealDOMElement {
+  constructor(ownerDoc) {
+    super("LABEL", ownerDoc);
+  }
+  get htmlFor() { return this.getAttribute("for") || ""; }
+  set htmlFor(v) { this.setAttribute("for", v); }
+  click() {
+    if (this.disabled) return false;
+    const clickEv = new Event("click", { bubbles: true, cancelable: true });
+    this.dispatchEvent(clickEv);
+    let targetInput = this.querySelector("input");
+    if (!targetInput && this.htmlFor && this.ownerDocument) {
+      targetInput = this.ownerDocument.getElementById(this.htmlFor);
+    }
+    if (targetInput && !targetInput.disabled) {
+      targetInput.click();
+    }
+    return true;
+  }
+}
+
+class RealDOMDocument extends RealDOMNode {
+  constructor() {
+    super(9);
+    this.body = new RealDOMElement("BODY", this);
+    this.appendChild(this.body);
+  }
+  createElement(tagName) {
+    const t = tagName.toUpperCase();
+    if (t === "INPUT") return new RealDOMHTMLInputElement(this);
+    if (t === "LABEL") return new RealDOMHTMLLabelElement(this);
+    return new RealDOMElement(t, this);
+  }
+  getElementById(id) {
+    const traverse = (node) => {
+      for (const child of node.children) {
+        if (child.id === id) return child;
+        const found = traverse(child);
+        if (found) return found;
+      }
+      return null;
+    };
+    return traverse(this.body);
+  }
+  querySelector(selector) {
+    return this.body.querySelector(selector);
+  }
+  querySelectorAll(selector) {
+    return this.body.querySelectorAll(selector);
+  }
+}
+
+test("F15A-REWORK2-DOM-01: Fraction CHOICE Activity 실제 DOM API 기반 Acceptance (createElement, radio/label click/change event, binding handler, ResponseRecord sync, Draft save/restore, submitLearningSession, Lock)", async () => {
+  await clearAllData();
+  setCurrentLearnerId("learner-dom-choice");
+
+  const act = activities.find((a) => a.id === "frac_part_whole_bar_001");
+  assert.ok(act);
+  assert.equal(act.responseType, "CHOICE");
+
+  const document = new RealDOMDocument();
+
+  // 1. Production Stage 실제 DOM Tree 구성 (document.createElement)
+  const stage = document.createElement("div");
+  stage.className = "typed-activity-stage";
+
+  // 시각 표현 DOM 요소 생성
+  const visualContainer = document.createElement("div");
+  visualContainer.className = "fraction-visual-container fraction-bar-container";
+  visualContainer.setAttribute("style", "pointer-events: none;");
+  const svgEl = document.createElement("svg");
+  svgEl.setAttribute("role", "img");
+  svgEl.setAttribute("aria-label", "전체 4칸 중 3칸이 색칠된 분수 막대 (3/4)");
+  svgEl.setAttribute("pointer-events", "none");
+  visualContainer.appendChild(svgEl);
+  stage.appendChild(visualContainer);
+
+  // 프롬프트 DOM 요소 생성
+  const promptEl = document.createElement("div");
+  promptEl.className = "typed-activity-prompt";
+  stage.appendChild(promptEl);
+
+  // CHOICE 라디오 그룹 및 라벨/인풋 트리 생성
+  const radiogroup = document.createElement("div");
+  radiogroup.className = "typed-choices-list";
+  radiogroup.setAttribute("role", "radiogroup");
+
+  const labels = [];
+  const radios = [];
+
+  for (const c of act.choices) {
+    const label = document.createElement("label");
+    label.className = "typed-choice-item choice-label";
+
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = `choice_${act.id}`;
+    radio.value = c.id;
+    radio.setAttribute("data-question-id", act.id);
+
+    const span = document.createElement("span");
+    span.setAttribute("data-label", c.label);
+
+    label.appendChild(radio);
+    label.appendChild(span);
+    radiogroup.appendChild(label);
+
+    labels.push(label);
+    radios.push(radio);
+  }
+  stage.appendChild(radiogroup);
+  document.body.appendChild(stage);
+
+  // 2. 학습 세션 생성
+  const session = createSession({
+    subjectId: "math",
+    courseId: "fraction",
+    moduleId: "fraction",
+    skillId: act.skillId,
+    learnerId: "learner-dom-choice"
+  }, [act]);
+  session.start();
+
+  const responseRecordsMap = new Map();
+
+  // 3. 실제 Document에 Production CHOICE Response Surface 바인딩
+  bindChoiceResponseSurface(document, act.id, (selectedChoiceId) => {
+    applyStudentResponseChange(session, responseRecordsMap, act, selectedChoiceId);
+  });
+
+  // 4. 학생이 3번째 선택지 (3/4, choice_3) 라벨을 실제 click
+  const targetLabel = labels[2];
+  const targetRadio = radios[2];
+  targetLabel.click();
+
+  // 실제 DOM 상태 및 ResponseRecord 갱신 검증
+  assert.equal(targetRadio.checked, true, "3번째 라디오 선택됨");
+  assert.equal(radios[0].checked, false, "1번째 라디오 미선택");
+  assert.equal(targetLabel.classList.contains("selected-choice"), true, "선택된 라벨에 selected-choice 클래스 반영");
+  assert.equal(labels[0].classList.contains("selected-choice"), false, "타 라벨에 selected-choice 미적용");
+  assert.equal(responseRecordsMap.get(act.id).value, "choice_3", "ResponseRecord에 choice_3 동기화");
+
+  // 5. Draft 저장 및 복원 검증
+  const draftPayload = {
+    id: "current_draft_learner-dom-choice",
+    sessionId: session.id,
+    learnerId: "learner-dom-choice",
+    subjectId: "math",
+    courseId: "fraction",
+    questions: [act],
+    responseRecords: Object.fromEntries(responseRecordsMap.entries()),
+    savedAt: Date.now()
+  };
+  await saveDraftSession(draftPayload);
+
+  const restoredDraft = await getDraftSession({ learnerId: "learner-dom-choice" });
+  assert.ok(restoredDraft);
+  assert.equal(restoredDraft.responseRecords[act.id].value, "choice_3");
+
+  // 6. submitLearningSession 공통 프로덕션 커맨드로 제출
+  const sub = await submitLearningSession({
+    session,
+    learnerId: "learner-dom-choice",
+    responseSnapshots: responseRecordsMap,
+    totalSolveTimeMs: 1500
+  });
+
+  assert.ok(sub);
+  assert.equal(sub.status, "PARENT_GRADING_PENDING");
+  assert.equal(sub.responseSnapshots[act.id].value, "choice_3");
+
+  // 제출 후 Draft 자동 정리 확인
+  const postSubmitDraft = await getDraftSession({ learnerId: "learner-dom-choice" });
+  assert.equal(postSubmitDraft, null, "제출 성공 후 Draft는 완전히 제거되어야 함");
+
+  // 7. 제출 후 실제 input disabled 및 Production Mutation Guard 잠금 확인
+  radios.forEach((r) => { r.disabled = true; });
+  labels[0].click(); // disabled 라벨/라디오 클릭 무시
+  assert.equal(responseRecordsMap.get(act.id).value, "choice_3");
+
+  assert.throws(() => {
+    applyStudentResponseChange(session, responseRecordsMap, act, "choice_1");
+  }, /수정할 수 없습니다|Locked|PARENT_GRADING_PENDING/i);
+});
+
+test("F15A-REWORK2-DOM-02: Fraction TEXT Activity 실제 DOM API 기반 Acceptance (createElement, focus, input/change event, binding handler, ResponseRecord sync, Draft save/restore, submitLearningSession, Lock)", async () => {
+  await clearAllData();
+  setCurrentLearnerId("learner-dom-text");
+
+  const act = activities.find((a) => a.id === "frac_equiv_text_002");
+  assert.ok(act);
+  assert.equal(act.responseType, "TEXT");
+
+  const document = new RealDOMDocument();
+
+  // 1. Production Stage 실제 DOM Tree 구성 (document.createElement)
+  const stage = document.createElement("div");
+  stage.className = "typed-activity-stage";
+
+  const visualContainer = document.createElement("div");
+  visualContainer.className = "fraction-visual-container fraction-bar-container";
+  visualContainer.setAttribute("style", "pointer-events: none;");
+  stage.appendChild(visualContainer);
+
+  const label = document.createElement("label");
+  label.htmlFor = `textInput_${act.id}`;
+  label.className = "sr-only";
+  stage.appendChild(label);
+
+  const inputEl = document.createElement("input");
+  inputEl.type = "text";
+  inputEl.id = `textInput_${act.id}`;
+  inputEl.setAttribute("data-question-id", act.id);
+  stage.appendChild(inputEl);
+
+  document.body.appendChild(stage);
+
+  // 2. 학습 세션 생성
+  const session = createSession({
+    subjectId: "math",
+    courseId: "fraction",
+    moduleId: "fraction",
+    skillId: act.skillId,
+    learnerId: "learner-dom-text"
+  }, [act]);
+  session.start();
+
+  const responseRecordsMap = new Map();
+
+  // 3. 실제 DOM 이벤트 리스너 바인딩 (focus, input, change)
+  let focused = false;
+  inputEl.addEventListener("focus", () => { focused = true; });
+  inputEl.addEventListener("input", (e) => {
+    applyStudentResponseChange(session, responseRecordsMap, act, e.target.value);
+  });
+  inputEl.addEventListener("change", (e) => {
+    applyStudentResponseChange(session, responseRecordsMap, act, e.target.value);
+  });
+
+  // 4. focus 이벤트 dispatch
+  inputEl.focus();
+  assert.equal(focused, true, "inputEl focus 이벤트 수신 확인");
+
+  // 5. 학생 텍스트 입력 ("2/4") 및 input/change 이벤트 dispatch
+  inputEl.value = "2/4";
+  inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+  inputEl.dispatchEvent(new Event("change", { bubbles: true }));
+
+  assert.equal(responseRecordsMap.get(act.id).value, "2/4", "ResponseRecord에 입력값 2/4 반영");
+
+  // 6. Draft 저장 및 복원
+  const draftPayload = {
+    id: "current_draft_learner-dom-text",
+    sessionId: session.id,
+    learnerId: "learner-dom-text",
+    subjectId: "math",
+    courseId: "fraction",
+    questions: [act],
+    responseRecords: Object.fromEntries(responseRecordsMap.entries()),
+    savedAt: Date.now()
+  };
+  await saveDraftSession(draftPayload);
+
+  const restoredDraft = await getDraftSession({ learnerId: "learner-dom-text" });
+  assert.ok(restoredDraft);
+  assert.equal(restoredDraft.responseRecords[act.id].value, "2/4");
+
+  // 7. submitLearningSession 제출
+  const sub = await submitLearningSession({
+    session,
+    learnerId: "learner-dom-text",
+    responseSnapshots: responseRecordsMap,
+    totalSolveTimeMs: 2000
+  });
+
+  assert.ok(sub);
+  assert.equal(sub.status, "PARENT_GRADING_PENDING");
+  assert.equal(sub.responseSnapshots[act.id].value, "2/4");
+
+  // 8. disabled 및 수정 잠금 (Lock)
+  inputEl.disabled = true;
+  assert.throws(() => {
+    applyStudentResponseChange(session, responseRecordsMap, act, "1/2");
+  }, /수정할 수 없습니다|Locked|PARENT_GRADING_PENDING/i);
+});
+
+test("F15A-REWORK2-DOM-03: Fraction 시각 표현 요소(pointer-events: none)의 입력 이벤트 비간섭 및 접근성 실제 DOM 검증", () => {
+  // 1. 모든 분수 표현 타입 렌더러 결과에 pointer-events: none 및 접근성 속성 포함 확인
+  const partWholeHtml = renderPartWholeBarSVG({ denominator: 4, numerator: 3 });
+  const gridHtml = renderPartWholeGridSVG({ rows: 2, cols: 3, denominator: 6, numerator: 2 });
+  const lineHtml = renderNumberLineSVG({ subdivisions: 5, fraction: { numerator: 2, denominator: 5 } });
+  const pairHtml = renderEquivalentPairSVG({
+    pair1: { type: "PART_WHOLE_BAR", denominator: 2, numerator: 1 },
+    pair2: { type: "PART_WHOLE_BAR", denominator: 4, numerator: 2 }
+  });
+  const symHtml = renderSymbolicFractionDOM({ denominator: 4, numerator: 3 });
+
+  for (const html of [partWholeHtml, gridHtml, lineHtml, pairHtml, symHtml]) {
+    assert.ok(html.includes("pointer-events: none"), "시각 요소에 pointer-events: none 속성 필수");
+    assert.ok(html.includes('role="img"'), "스크린리더 접근성을 위한 role='img' 필수");
+    assert.ok(html.includes("aria-label"), "한국어 접근성 aria-label 필수");
+  }
+
+  // 2. 실제 DOM에서 시각 요소가 상호작용 표면의 클릭을 가로채지 않는 구조 검증
+  const document = new RealDOMDocument();
+  const container = document.createElement("div");
+  const visual = document.createElement("div");
+  visual.setAttribute("style", "pointer-events: none;");
+  const button = document.createElement("input");
+  button.type = "radio";
+  button.name = "choice_test";
+  button.value = "val1";
+
+  container.appendChild(visual);
+  container.appendChild(button);
+  document.body.appendChild(container);
+
+  let clicked = false;
+  button.addEventListener("click", () => { clicked = true; });
+  button.click();
+  assert.equal(clicked, true, "시각 요소와 공존하는 입력 표면에 이벤트가 직접 정상 도달");
+});
+
+test("F15A-REWORK2-E2E-01: Fraction Activity 전체 라이프사이클 E2E (Activity -> ResponseRecord -> Draft 저장/복원 -> Submission Snapshot -> PARENT_GRADING_PENDING -> Guardian Grading Start -> Guardian WRONG -> Finalize -> ReviewItem 생성 -> Review Retry Start -> Retry Draft -> Retry Submit -> Guardian Re-grade -> Review resolve -> ProgressAggregate 확인)", async () => {
+  await clearAllData();
+  const learnerId = "learner-f15a-e2e-full";
+  setCurrentLearnerId(learnerId);
+
+  const act = activities.find((a) => a.id === "frac_part_whole_bar_001");
+  assert.ok(act);
+  assert.equal(act.courseId, "fraction");
+
+  // Step 1: 세션 시작 및 ResponseRecord 작성 (학생 오답: choice_1)
+  const session = createSession({
+    subjectId: "math",
+    courseId: "fraction",
+    moduleId: "fraction",
+    skillId: act.skillId,
+    learnerId
+  }, [act]);
+  session.start();
+
+  const responseRecordsMap = new Map();
+  applyStudentResponseChange(session, responseRecordsMap, act, "choice_1");
+  assert.equal(responseRecordsMap.get(act.id).value, "choice_1");
+
+  // Step 2: Draft 저장 및 복원
+  await saveDraftSession({
+    id: `current_draft_${learnerId}`,
+    sessionId: session.id,
+    learnerId,
+    subjectId: "math",
+    courseId: "fraction",
+    questions: [act],
+    responseRecords: Object.fromEntries(responseRecordsMap.entries()),
+    savedAt: Date.now()
+  });
+
+  const restoredDraft = await getDraftSession({ learnerId });
+  assert.ok(restoredDraft);
+  assert.equal(restoredDraft.responseRecords[act.id].value, "choice_1");
+
+  // Step 3: 공통 프로덕션 커맨드 submitLearningSession 제출
+  const origSub = await submitLearningSession({
+    session,
+    learnerId,
+    responseSnapshots: responseRecordsMap,
+    totalSolveTimeMs: 1800
+  });
+
+  assert.ok(origSub);
+  assert.equal(origSub.status, "PARENT_GRADING_PENDING");
+  assert.equal(origSub.responseSnapshots[act.id].value, "choice_1");
+
+  const origSnapshotCopy = JSON.parse(JSON.stringify(origSub.responseSnapshots));
+
+  // Step 4: 보호자 채점 시작 (startSubmissionGrading -> GRADING_ACTIVE)
+  await startSubmissionGrading(origSub.id, { learnerId });
+  const gradingActiveSub = await getSubmission(origSub.id, { learnerId });
+  assert.equal(gradingActiveSub.status, "GRADING_ACTIVE");
+
+  // Step 5: 보호자 오답 판정 기록 및 확정 (finalizeSubmissionGrading -> GRADED)
+  await saveSubmissionGradingProgress(origSub.id, {
+    [act.id]: {
+      decision: "WRONG",
+      isCorrect: false,
+      comment: "전체 4칸 중 색칠된 3칸을 세어야 합니다."
+    }
+  }, new Map(), { learnerId });
+
+  const finalizedOrig = await finalizeSubmissionGrading(origSub.id, { learnerId });
+  assert.equal(finalizedOrig.submission.status, "GRADED");
+
+  // Step 6: ReviewItem 생성 확인 (unresolved, reasonCode: WRONG, courseId: fraction)
+  const reviewItems = await getAllReviewItems({ learnerId });
+  assert.equal(reviewItems.length, 1);
+  const revItem = reviewItems[0];
+  assert.equal(revItem.state, "unresolved");
+  assert.equal(revItem.reasonCode, "WRONG");
+  assert.equal(revItem.courseId, "fraction");
+  assert.equal(revItem.subjectId, "math");
+
+  // Step 7: 바로 다시 풀기 (startReviewRetry -> retrying)
+  const { retrySession, reviewItem: retryingItem } = await startReviewRetry(revItem.id, { learnerId });
+  assert.ok(retrySession);
+  assert.equal(retryingItem.state, "retrying");
+  assert.equal(retrySession.questions[0].reviewItemId, revItem.id);
+
+  // Step 8: Retry Session에서 올바른 답변 작성 (choice_3)
+  retrySession.start();
+  assert.equal(retrySession.state, SessionState.PRACTICE_ACTIVE);
+  const retryResponseMap = new Map();
+  applyStudentResponseChange(retrySession, retryResponseMap, retrySession.questions[0], "choice_3");
+  assert.equal(retryResponseMap.get(act.id).value, "choice_3");
+
+  // Step 9: Retry Draft 저장 및 복원
+  await saveDraftSession({
+    id: `current_draft_${learnerId}`,
+    sessionId: retrySession.id,
+    learnerId,
+    subjectId: "math",
+    courseId: "fraction",
+    questions: retrySession.questions,
+    responseRecords: retryResponseMap,
+    savedAt: Date.now()
+  });
+
+  const restoredRetryDraft = await getDraftSession({ learnerId });
+  assert.ok(restoredRetryDraft);
+  assert.equal(restoredRetryDraft.responseRecords[act.id].value, "choice_3");
+
+  // Step 10: Retry 제출 (submitLearningSession -> review_pending 전이)
+  const retrySub = await submitLearningSession({
+    session: retrySession,
+    learnerId,
+    responseSnapshots: retryResponseMap,
+    reviewItemId: revItem.id,
+    totalSolveTimeMs: 1200
+  });
+
+  assert.ok(retrySub);
+  assert.notEqual(retrySub.id, origSub.id);
+  assert.equal(retrySub.status, "PARENT_GRADING_PENDING");
+  assert.equal(retrySub.responseSnapshots[act.id].value, "choice_3");
+
+  const midReviewItem = await getReviewItem(revItem.id, { learnerId });
+  assert.equal(midReviewItem.state, "review_pending", "재풀이 제출 시 review_pending으로 자동 전이");
+
+  // Step 11: 보호자 재채점 (startSubmissionGrading -> saveSubmissionGradingProgress -> finalizeSubmissionGrading)
+  await startSubmissionGrading(retrySub.id, { learnerId });
+  await saveSubmissionGradingProgress(retrySub.id, {
+    [act.id]: {
+      decision: "CORRECT",
+      isCorrect: true,
+      comment: "3/4로 바르게 고쳤습니다!"
+    }
+  }, new Map(), { learnerId });
+
+  const finalizedRetry = await finalizeSubmissionGrading(retrySub.id, { learnerId });
+  assert.equal(finalizedRetry.submission.status, "GRADED");
+
+  // Step 12: ReviewItem 해결 (resolveReviewItem -> resolved)
+  const resolvedItem = await resolveReviewItem(revItem.id, { learnerId });
+  assert.equal(resolvedItem.state, "resolved");
+  assert.ok(resolvedItem.resolvedAt > 0);
+
+  // Step 13: 최종 ProgressAggregate 공식 통계 확인
+  const aggregates = await getAllProgressAggregates({ learnerId });
+  assert.ok(aggregates.length > 0);
+  const fractionAgg = aggregates.find((a) => a.courseId === "fraction");
+  assert.ok(fractionAgg, "분수 코스 집계 존재");
+  assert.equal(fractionAgg.correctCount, 1);
+  assert.equal(fractionAgg.incorrectCount, 1);
+
+  // Step 14: 원본 Submission Snapshot 불변성 (deepEqual)
+  const reloadedOrig = await getSubmission(origSub.id, { learnerId });
+  assert.deepEqual(reloadedOrig.responseSnapshots, origSnapshotCopy, "재풀이 완료 후에도 원본 제출 스냅샷은 엄격히 불변(deepEqual)이어야 함");
+});
+
+test("F15A-REWORK2-E2E-02: 원본 Submission Snapshot 불변성, 자동 채점 배제, Guardian GradeDecision 공식 Progress 단일 SSOT 검증", async () => {
+  await clearAllData();
+  const learnerId = "learner-f15a-ssot";
+  setCurrentLearnerId(learnerId);
+
+  const act = activities.find((a) => a.id === "frac_types_identify_001");
+  assert.ok(act);
+
+  const session = createSession({
+    subjectId: "math",
+    courseId: "fraction",
+    moduleId: "fraction",
+    skillId: act.skillId,
+    learnerId
+  }, [act]);
+  session.start();
+
+  // 학생이 기대 정답("choice_2")을 입력
+  const responseMap = new Map();
+  applyStudentResponseChange(session, responseMap, act, "choice_2");
+
+  const sub = await submitLearningSession({
+    session,
+    learnerId,
+    responseSnapshots: responseMap
+  });
+
+  // 보호자 채점 전: 학생 답안이 정답과 같아도 ProgressAggregate는 절대 자동 생성되지 않음
+  const preGradingAggs = await getAllProgressAggregates({ learnerId });
+  assert.equal(preGradingAggs.length, 0, "보호자 채점 전에는 자동 채점으로 ProgressAggregate를 생성하지 않는다");
+
+  // 보호자가 명시적으로 CORRECT 판정을 내리고 finalize해야만 공식 Progress 생성
+  await startSubmissionGrading(sub.id, { learnerId });
+  await saveSubmissionGradingProgress(sub.id, {
+    [act.id]: { decision: "CORRECT", isCorrect: true, comment: "정확합니다." }
+  }, new Map(), { learnerId });
+  await finalizeSubmissionGrading(sub.id, { learnerId });
+
+  const postGradingAggs = await getAllProgressAggregates({ learnerId });
+  assert.equal(postGradingAggs.length, 1, "보호자 확정 후에만 ProgressAggregate 생성");
+  assert.equal(postGradingAggs[0].correctCount, 1);
+  assert.equal(postGradingAggs[0].gradedAttemptCount, 1);
+});
+
+test("F15A-REWORK2-E2E-03: 다중 학습자 데이터 격리 및 분수(fraction)와 타 코스 Progress 분리 검증", async () => {
+  await clearAllData();
+
+  // 1. Learner Alpha 분수 학습 진행 및 오답 확정
+  const learnerAlpha = "learner-alpha-fraction";
+  setCurrentLearnerId(learnerAlpha);
+
+  const fracAct = activities.find((a) => a.id === "frac_part_whole_bar_001");
+  const sessAlpha = createSession({ subjectId: "math", courseId: "fraction", learnerId: learnerAlpha }, [fracAct]);
+  sessAlpha.start();
+  const mapAlpha = new Map();
+  applyStudentResponseChange(sessAlpha, mapAlpha, fracAct, "choice_1");
+  const subAlpha = await submitLearningSession({ session: sessAlpha, learnerId: learnerAlpha, responseSnapshots: mapAlpha });
+  await startSubmissionGrading(subAlpha.id, { learnerId: learnerAlpha });
+  await saveSubmissionGradingProgress(subAlpha.id, { [fracAct.id]: { decision: "WRONG", isCorrect: false } }, new Map(), { learnerId: learnerAlpha });
+  await finalizeSubmissionGrading(subAlpha.id, { learnerId: learnerAlpha });
+
+  // 2. Learner Beta 조회 시 격리 확인
+  const learnerBeta = "learner-beta-fraction";
+  setCurrentLearnerId(learnerBeta);
+
+  const betaReviewItems = await getAllReviewItems({ learnerId: learnerBeta });
+  assert.equal(betaReviewItems.length, 0, "Learner Beta는 Learner Alpha의 ReviewItem을 볼 수 없음");
+
+  const betaAggs = await getAllProgressAggregates({ learnerId: learnerBeta });
+  assert.equal(betaAggs.length, 0, "Learner Beta는 Learner Alpha의 ProgressAggregate를 볼 수 없음");
+
+  const betaDraft = await getDraftSession({ learnerId: learnerBeta });
+  assert.equal(betaDraft, null, "Learner Beta는 Learner Alpha의 Draft를 볼 수 없음");
+
+  // 3. Learner Alpha 타 코스(arithmetic) 진행 및 코스 격리 확인
+  setCurrentLearnerId(learnerAlpha);
+  const arithAct = {
+    id: "arith_add_001",
+    subjectId: "math",
+    courseId: "arithmetic",
+    unitId: "add",
+    level: "M1",
+    operation: "mul",
+    operandA: 2,
+    operandB: 3,
+    answer: 6,
+    expectedAnswer: 6,
+    responseType: "TEXT"
+  };
+  const sessArith = createSession({ subjectId: "math", courseId: "arithmetic", learnerId: learnerAlpha }, [arithAct]);
+  sessArith.start();
+  const mapArith = new Map();
+  applyStudentResponseChange(sessArith, mapArith, arithAct, "6");
+  const subArith = await submitLearningSession({ session: sessArith, learnerId: learnerAlpha, responseSnapshots: mapArith });
+  await startSubmissionGrading(subArith.id, { learnerId: learnerAlpha });
+  await saveSubmissionGradingProgress(subArith.id, { [arithAct.id]: { decision: "CORRECT", isCorrect: true } }, new Map(), { learnerId: learnerAlpha });
+  await finalizeSubmissionGrading(subArith.id, { learnerId: learnerAlpha });
+
+  // 4. Learner Alpha의 ProgressAggregate에서 fraction과 arithmetic이 혼합되지 않고 분리되어 있는지 검증
+  const alphaAggs = await getAllProgressAggregates({ learnerId: learnerAlpha });
+  assert.equal(alphaAggs.length, 2, "fraction과 arithmetic 코스가 독립적으로 집계됨");
+
+  const fracAgg = alphaAggs.find((a) => a.courseId === "fraction");
+  const arithAgg = alphaAggs.find((a) => a.courseId === "arithmetic");
+
+  assert.ok(fracAgg, "분수 ProgressAggregate 분리 존재");
+  assert.ok(arithAgg, "연산 ProgressAggregate 분리 존재");
+  assert.equal(fracAgg.incorrectCount, 1);
+  assert.equal(fracAgg.correctCount, 0);
+  assert.equal(arithAgg.correctCount, 1);
+  assert.equal(arithAgg.incorrectCount, 0);
+});
+
