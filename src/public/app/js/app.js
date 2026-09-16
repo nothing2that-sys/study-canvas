@@ -58,6 +58,7 @@ import { ResponseType, ActivityType, DEFAULT_PROBLEM_COUNT, resolveActivityRespo
 import { renderFractionRepresentation } from "./fractionRepresentationView.js";
 import { getWorkbookCatalogItem } from "./workbookCatalog.js";
 import { createResponseRecord, applyStudentResponseChange } from "./responseEngine.js";
+import { getActivityDisplayLabel, isInternalIdentifier } from "./displayLabels.js";
 import {
   bindChoiceResponseSurface,
   bindTextResponseSurface,
@@ -368,7 +369,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260915T072110132Z-3b283e4",
+    appBuildId: "20260916T061525758Z-c6db43e",
     sessionId: currentSession.id,
     submissionId: currentSubmission?.id || `sub_${currentSession.id}`,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
@@ -1413,7 +1414,7 @@ function renderQueuePreview(questions) {
     const item = document.createElement("li");
     const label = document.createElement("small");
     const expression = document.createElement("strong");
-    label.textContent = `${index + 1}번 · ${question.level}`;
+    label.textContent = `${index + 1}번 · ${getActivityDisplayLabel(question, currentSession?.config)}`;
     expression.textContent = `${question.operandA.toLocaleString()} ${symbol} ${question.operandB.toLocaleString()}`;
     item.append(label, expression);
     return item;
@@ -1731,7 +1732,7 @@ function renderCurrentWorksheetPage() {
   const pageData = currentSession.getPageQuestions();
 
   // 상단 진행 정보 갱신
-  practiceLevelBadge.textContent = pageData.questions[0]?.level || "연습";
+  practiceLevelBadge.textContent = getActivityDisplayLabel(pageData.questions[0], currentSession?.config);
   practicePageBadge.textContent = `페이지 ${pageData.pageNumber} / ${pageData.totalPages}`;
   practiceQuestionRange.textContent = `문제 ${pageData.startIndex + 1} ~ ${pageData.endIndex} / ${currentSession.totalQuestions}`;
 
@@ -1777,7 +1778,7 @@ function renderCurrentWorksheetPage() {
       <div class="card-header">
         <div class="card-header-left">
           <span class="card-order">${q.orderNumber}번 문제</span>
-          <span class="card-level">${q.level}</span>
+          <span class="card-level">${escapeHtml(getActivityDisplayLabel(q, currentSession?.config))}</span>
         </div>
       </div>
       <div class="card-problem-body" id="problemBody_${q.id}">
@@ -2158,6 +2159,7 @@ async function handleSubmitPractice() {
   if (parentGradingStartPanel) parentGradingStartPanel.hidden = false;
   if (gradingGrid) gradingGrid.hidden = true;
   if (finishGradingBtn?.parentElement) finishGradingBtn.parentElement.hidden = true;
+  updateGradingStatusUI();
 }
 
 async function handleStartParentGrading() {
@@ -2232,6 +2234,9 @@ function renderGradingView() {
     gradingGrid.classList.remove("view-quick");
     gradingGrid.style.gridTemplateColumns = "minmax(0, 1fr)";
 
+    //+_+// 현재 세션의 정규화된 페이지 크기를 채점 화면에서도 동일하게 사용
+    const pSize = currentSession.pageSize;
+
     gradingGrid.classList.remove("density-1x1", "density-1x2", "density-2x2", "density-2x3", "density-2x5");
     if (pSize === 1) {
       gradingGrid.classList.add("density-1x1");
@@ -2266,7 +2271,7 @@ function renderGradingView() {
       ? (typeof q.answer === "number" ? q.answer.toLocaleString() : String(q.answer))
       : String(q.expectedAnswer || "");
     const commentValue = currentGrade?.comment || "";
-    const cardLevel = escapeHtml(String(q.level || q.skillId || "연습"));
+    const cardLevel = escapeHtml(getActivityDisplayLabel(q, currentSession?.config));
     const isCanvasResponse = usesDrawingCanvas(q);
     card.innerHTML = `
       <div class="card-header">
@@ -2836,7 +2841,7 @@ function handlePrintWorksheet(isAnswerKey = false) {
   if (!currentSession) return;
 
   const allQuestions = currentSession.questions;
-  const levelText = allQuestions[0]?.level || "연습";
+  const levelText = escapeHtml(getActivityDisplayLabel(allQuestions[0], currentSession?.config));
   const opSymbol = allQuestions[0]?.operation === "div" ? "나눗셈" : "곱셈";
 
   // 사용자가 설정한 한 화면 문제 수(pageSize)와 100% 일치시켜 인쇄 페이지 분할!
@@ -2879,7 +2884,7 @@ function handlePrintWorksheet(isAnswerKey = false) {
           <div class="worksheet-card print-card">
             <div class="card-header">
               <span class="card-order">${p * questionsPerPage + idx + 1}번</span>
-              <span class="card-level">${q.level}</span>
+              <span class="card-level">${escapeHtml(getActivityDisplayLabel(q, currentSession?.config))}</span>
             </div>
             <div class="card-problem-body">
               ${renderProblemStageContent(q, { showGuides: isAnswerKey })}
@@ -3751,7 +3756,7 @@ export async function renderMeasurementLandingView() {
       card.innerHTML = `
         <div class="measurement-skill-header">
           <div>
-            <h3 class="measurement-skill-title">${escapeHtml(skill.name || skill.title || skill.skillId)}</h3>
+            <h3 class="measurement-skill-title">${escapeHtml(skill.name || skill.title || "단위 변환")}</h3>
             <p class="measurement-skill-desc">${escapeHtml(skill.description || "")}</p>
           </div>
         </div>
@@ -3759,7 +3764,7 @@ export async function renderMeasurementLandingView() {
           <span>📊 ${accuracyText}</span>
           <span>📝 20문제</span>
         </div>
-        <button type="button" class="measurement-start-btn" id="startSkill_${escapeHtml(skill.skillId)}" aria-label="${escapeHtml(skill.name || skill.skillId)} 20문제 학습 시작">
+        <button type="button" class="measurement-start-btn" id="startSkill_${escapeHtml(skill.skillId)}" aria-label="${escapeHtml(skill.name || skill.title || "단위 변환")} 20문제 학습 시작">
           학습 시작하기 (20문제) →
         </button>
       `;
@@ -3794,6 +3799,7 @@ export function startMeasurementPracticeSession(skill, unitCatalog, manifest) {
     skillId: skill.skillId,
     stageId: skill.skillId,
     macroLevelId: skill.skillId,
+    skillTitle: skill.name || skill.title || "단위 변환",
     difficulty: String(skill.difficulty || "1"),
     problemCount: DEFAULT_PROBLEM_COUNT,
     pageSize: 4,
@@ -3817,6 +3823,7 @@ export function startFractionPracticeSession({ activities, workbookContext = nul
     skillId: firstAct.skillId || "MATH_FRACTION_PART_WHOLE",
     stageId: firstAct.skillId || "MATH_FRACTION_PART_WHOLE",
     macroLevelId: firstAct.skillId || "MATH_FRACTION_PART_WHOLE",
+    skillTitle: firstAct.displayLabel || firstAct.skillTitle || firstAct.name || "분수 개념",
     difficulty: String(firstAct.difficulty || "FOUNDATION"),
     problemCount: activities.length,
     pageSize,
@@ -3912,7 +3919,7 @@ export async function renderKoreanLandingView() {
       card.innerHTML = `
         <div class="korean-skill-header">
           <div>
-            <h3 class="korean-skill-title">${escapeHtml(skill.title || skill.name || skill.skillId)}</h3>
+            <h3 class="korean-skill-title">${escapeHtml(skill.title || skill.name || "국어 어휘 익히기")}</h3>
             <p class="korean-skill-desc">${escapeHtml(skill.description || "")}</p>
           </div>
         </div>
@@ -3920,7 +3927,7 @@ export async function renderKoreanLandingView() {
           <span>📊 ${accuracyText}</span>
           <span>📝 ${DEFAULT_PROBLEM_COUNT}문제</span>
         </div>
-        <button type="button" class="korean-start-btn" id="startSkill_${escapeHtml(skill.skillId)}" aria-label="${escapeHtml(skill.title || skill.name || skill.skillId)} ${DEFAULT_PROBLEM_COUNT}문제 학습 시작">
+        <button type="button" class="korean-start-btn" id="startSkill_${escapeHtml(skill.skillId)}" aria-label="${escapeHtml(skill.title || skill.name || "국어 어휘 익히기")} ${DEFAULT_PROBLEM_COUNT}문제 학습 시작">
           학습 시작하기 (${DEFAULT_PROBLEM_COUNT}문제) →
         </button>
       `;
@@ -3954,6 +3961,7 @@ export function startKoreanPracticeSession(skill, allActivities, manifest) {
     skillId: skill.skillId,
     stageId: skill.skillId,
     macroLevelId: skill.skillId,
+    skillTitle: skill.title || skill.name || "국어 학습",
     difficulty: String(skill.difficulty || "1"),
     problemCount: DEFAULT_PROBLEM_COUNT,
     pageSize: 4,
@@ -4045,7 +4053,7 @@ export async function renderEnglishLandingView() {
       card.innerHTML = `
         <div class="english-skill-header">
           <div>
-            <h3 class="english-skill-title">${escapeHtml(skill.title || skill.name || skill.skillId)}</h3>
+            <h3 class="english-skill-title">${escapeHtml(skill.title || skill.name || "영어 단어 뜻 익히기")}</h3>
             <p class="english-skill-desc">${escapeHtml(skill.description || "")}</p>
           </div>
         </div>
@@ -4053,7 +4061,7 @@ export async function renderEnglishLandingView() {
           <span>📊 ${accuracyText}</span>
           <span>📝 ${DEFAULT_PROBLEM_COUNT}문제</span>
         </div>
-        <button type="button" class="english-start-btn" id="startSkill_${escapeHtml(skill.skillId)}" aria-label="${escapeHtml(skill.title || skill.name || skill.skillId)} ${DEFAULT_PROBLEM_COUNT}문제 학습 시작">
+        <button type="button" class="english-start-btn" id="startSkill_${escapeHtml(skill.skillId)}" aria-label="${escapeHtml(skill.title || skill.name || "영어 단어 뜻 익히기")} ${DEFAULT_PROBLEM_COUNT}문제 학습 시작">
           학습 시작하기 (${DEFAULT_PROBLEM_COUNT}문제) →
         </button>
       `;
@@ -4087,6 +4095,7 @@ export function startEnglishPracticeSession(skill, allActivities, manifest) {
     skillId: skill.skillId,
     stageId: skill.skillId,
     macroLevelId: skill.skillId,
+    skillTitle: skill.title || skill.name || "영어 학습",
     difficulty: String(skill.difficulty || "1"),
     problemCount: DEFAULT_PROBLEM_COUNT,
     pageSize: 4,
@@ -4108,6 +4117,7 @@ export function startEnglishVocabularyCheckSession({ activities, gradeLevel, top
     skillId: stageId,
     stageId,
     macroLevelId: stageId,
+    skillTitle: `${gradeLevel}학년 영단어 확인`,
     difficulty: String(activities[0]?.difficulty || "STANDARD"),
     problemCount: activities.length,
     pageSize: 4,
@@ -4141,5 +4151,15 @@ export {
   renderReviewModalItem,
   renderResultDetailItems,
   renderModalDetailItems,
-  renderProblemStageContent
+  renderProblemStageContent,
+  renderGradingView,
+  handleStartParentGrading,
+  handleGradeAllCorrect,
+  updateGradingStatusUI,
+  selectGradingQuestion,
+  handleGradeClick,
+  renderCurrentWorksheetPage,
+  handleSubmitPractice,
+  terminateSession,
+  getActivityDisplayLabel
 };
