@@ -337,6 +337,10 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
           if (!VALID_SUBJECTS.has(String(skill.subjectId).toLowerCase())) {
             recordError(`curriculum.json: 알 수 없는 subjectId (${sId}): ${skill.subjectId}`);
           }
+          const userTitle = String(skill.title || skill.name || "").trim();
+          if (!userTitle) {
+            recordError(`curriculum.json: 학생 노출용 title 또는 name이 누락되었습니다 (${manifestPkgId}): ${sId}`);
+          }
           if (typeof skill.difficulty !== "number" || skill.difficulty < 1 || skill.difficulty > 5) {
             recordError(`curriculum.json: difficulty는 1~5 숫자여야 합니다 (${sId}): ${skill.difficulty}`);
           }

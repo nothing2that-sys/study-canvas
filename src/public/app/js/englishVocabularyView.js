@@ -14,6 +14,9 @@ import {
   selectVocabularyWords,
   validateVocabularyCatalog
 } from "./englishVocabularyStudy.js";
+import { PRACTICE_MODE_LABELS, getPracticeModeLabel } from "./displayLabels.js";
+
+export { PRACTICE_MODE_LABELS, getPracticeModeLabel };
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -63,6 +66,7 @@ export async function initEnglishVocabularyStudy({ container, learner, onStartCh
     return { grade, eligibility };
   });
   const accessibleGrades = gradeAccess.filter((item) => item.eligibility.eligible).map((item) => item.grade);
+  const topicTitleMap = new Map((resource?.topics || []).map((t) => [t.topicId, t.title]));
   let gradeLevel = accessibleGrades.includes(preferredGrade) ? preferredGrade : (accessibleGrades[0] || null);
   let topicId = String(initialTopicId || "ALL");
   let queue = [];
@@ -88,14 +92,14 @@ export async function initEnglishVocabularyStudy({ container, learner, onStartCh
     <div id="vocabularyPracticeStage" class="vocabulary-practice-stage" hidden aria-live="polite"></div>
   `;
 
-  const gradeSelect = container.querySelector("#vocabularyGradeSelect");
-  const topicSelect = container.querySelector("#vocabularyTopicSelect");
-  const dueSummary = container.querySelector("#vocabularyDueSummary");
-  const stage = container.querySelector("#vocabularyPracticeStage");
-  const practiceButton = container.querySelector("#startVocabularyPracticeBtn");
-  const checkButton = container.querySelector("#startVocabularyCheckBtn");
-  practiceButton.disabled = gradeLevel === null;
-  checkButton.disabled = gradeLevel === null;
+  const gradeSelect = container.querySelector("#vocabularyGradeSelect") || container.querySelector(".vocabulary-study-toolbar select");
+  const topicSelect = container.querySelector("#vocabularyTopicSelect") || container.querySelectorAll(".vocabulary-study-toolbar select")[1];
+  const dueSummary = container.querySelector("#vocabularyDueSummary") || container.querySelector(".vocabulary-due-summary");
+  const stage = container.querySelector("#vocabularyPracticeStage") || container.querySelector(".vocabulary-practice-stage");
+  const practiceButton = container.querySelector("#startVocabularyPracticeBtn") || container.querySelector(".vocabulary-primary-btn");
+  const checkButton = container.querySelector("#startVocabularyCheckBtn") || container.querySelector(".vocabulary-secondary-btn");
+  if (practiceButton) practiceButton.disabled = gradeLevel === null;
+  if (checkButton) checkButton.disabled = gradeLevel === null;
 
   function renderTopics() {
     if (gradeLevel === null) {
@@ -192,6 +196,8 @@ export async function initEnglishVocabularyStudy({ container, learner, onStartCh
     currentPrompt = createVocabularyPracticePrompt(item.word, mode, { words: allWords });
     answerRevealed = false;
     const progress = `${queueIndex + 1} / ${queue.length}`;
+    const modeLabel = getPracticeModeLabel(mode);
+    const topicLabel = topicTitleMap.get(item.word.topicId) || "어휘 학습";
     let responseHtml = "";
     if (currentPrompt.responseType === "NONE") {
       responseHtml = `<button type="button" class="vocabulary-primary-btn vocabulary-reveal-answer">뜻과 예문 보기</button>`;
@@ -201,8 +207,8 @@ export async function initEnglishVocabularyStudy({ container, learner, onStartCh
       responseHtml = `<div class="vocabulary-choice-grid">${currentPrompt.choices.map((choice) => `<button type="button" data-choice="${escapeHtml(choice.id)}">${escapeHtml(choice.label)}</button>`).join("")}</div>`;
     }
     stage.innerHTML = `
-      <div class="vocabulary-card-head"><span>${progress}</span><span>${escapeHtml(mode)}</span></div>
-      <article class="vocabulary-study-card"><p class="vocabulary-card-topic">${escapeHtml(item.word.topicId)}</p><h3>${escapeHtml(currentPrompt.prompt)}</h3>${responseHtml}</article>
+      <div class="vocabulary-card-head"><span>${progress}</span><span>${escapeHtml(modeLabel)}</span></div>
+      <article class="vocabulary-study-card"><p class="vocabulary-card-topic">${escapeHtml(topicLabel)}</p><h3>${escapeHtml(currentPrompt.prompt)}</h3>${responseHtml}</article>
       <div class="vocabulary-practice-feedback" hidden></div>
       <div class="vocabulary-rating-controls" hidden aria-label="기억 상태 선택">
         <p>이 단어가 얼마나 기억났나요?</p>

@@ -56,12 +56,16 @@ export function normalizeSkillDefinition(raw) {
     throw new Error(`Skill(${skillId})은 자기 자신을 선수학습(prerequisite)으로 가질 수 없습니다.`);
   }
 
+  const userTitle = String(raw.title || raw.name || "").trim();
+  const userName = String(raw.name || raw.title || "").trim();
+
   return {
     skillId,
     subjectId,
     courseId,
     unitId,
-    name: String(raw.name || skillId).trim(),
+    title: userTitle || userName || null,
+    name: userName || userTitle || String(raw.name || skillId).trim(),
     description: String(raw.description || "").trim(),
     gradeBand,
     difficulty,
