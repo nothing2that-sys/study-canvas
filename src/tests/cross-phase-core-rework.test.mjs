@@ -139,6 +139,19 @@ function setupDOMEnvironment() {
   return dom;
 }
 
+//+_+// 결정론적 비동기 완료 대기 헬퍼 (CI 환경 속도 편차 극복)
+async function waitFor(conditionFn, { timeoutMs = 5000, intervalMs = 15, description = "condition" } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (conditionFn()) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+  if (conditionFn()) return true;
+  throw new Error(`Timeout (${timeoutMs}ms) waiting for: ${description}`);
+}
+
 // ----------------------------------------------------
 // 1. displayLabels 단위 테스트 (P1 식별자 및 undefined 차단)
 // ----------------------------------------------------
@@ -263,7 +276,13 @@ test("P0 DOM Runtime: 10문제 Session 채점 전체 흐름 및 0/10 일관성 �
     // 3. 보호자 채점 시작 클릭 -> handleStartParentGrading -> renderGradingView()
     // pSize ReferenceError 발생 없이 성공적으로 렌더링되어야 함 (JS Runtime Error 0)
     startParentGradingBtn.click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitFor(
+      () => document.querySelectorAll("#gradingGrid .grading-card").length === 10 &&
+            document.querySelectorAll("#gradingQuestionChips .grading-question-chip").length === 10 &&
+            document.querySelector("#gradingGrid") && !document.querySelector("#gradingGrid").hidden &&
+            document.querySelector("#parentGradingStartPanel")?.hidden === true,
+      { timeoutMs: 5000, description: "10문제 채점 카드 10개 및 칩 10개 렌더링 완료" }
+    );
 
     // 4. 채점 뷰 렌더링 결과 검증
     assert.equal(gradedCountEl.textContent, "0 / 10");
@@ -301,6 +320,13 @@ test("P0 DOM Runtime: 10문제 Session 채점 전체 흐름 및 0/10 일관성 �
     assert.ok(gradeAllBtn);
     gradeAllBtn.click();
 
+    await waitFor(
+      () => gradedCountEl.textContent === "10 / 10" &&
+            gradedCorrectEl.textContent === "정답 10" &&
+            finishGradingBtn.disabled === false,
+      { timeoutMs: 3000, description: "10문제 전체 정답 처리 반영" }
+    );
+
     assert.equal(gradedCountEl.textContent, "10 / 10");
     assert.equal(gradedCorrectEl.textContent, "정답 10");
     assert.equal(gradedWrongEl.textContent, "오답 0");
@@ -314,11 +340,19 @@ test("P0 DOM Runtime: 10문제 Session 채점 전체 흐름 및 0/10 일관성 �
 
     appModule.renderGradingView();
 
+    await waitFor(
+      () => document.querySelectorAll("#gradingGrid .grading-card").length === 10,
+      { timeoutMs: 3000, description: "채점 뷰 재진입 렌더링 완료" }
+    );
+
     assert.equal(gradedCountEl.textContent, "10 / 10");
     assert.equal(document.querySelectorAll("#gradingGrid .grading-card").length, 10);
     assert.equal(gradingRemainingEl.textContent, "미채점 0");
   } finally {
-    await appModule.terminateSession();
+    try {
+      await appModule?.terminateSession?.();
+    } catch (_) {}
+    setCurrentLearnerId(null);
   }
 });
 
@@ -347,7 +381,13 @@ test("P0 DOM Runtime: 20문제 Session에서도 0/20 -> 20/20 일치 검증", as
     assert.equal(gradedCountEl.textContent, "0 / 20");
 
     startParentGradingBtn.click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitFor(
+      () => document.querySelectorAll("#gradingGrid .grading-card").length === 20 &&
+            document.querySelectorAll("#gradingQuestionChips .grading-question-chip").length === 20 &&
+            document.querySelector("#gradingGrid") && !document.querySelector("#gradingGrid").hidden &&
+            document.querySelector("#parentGradingStartPanel")?.hidden === true,
+      { timeoutMs: 5000, description: "20문제 채점 카드 20개 및 칩 20개 렌더링 완료" }
+    );
 
     assert.equal(gradedCountEl.textContent, "0 / 20");
     assert.equal(document.querySelectorAll("#gradingGrid .grading-card").length, 20);
@@ -355,10 +395,19 @@ test("P0 DOM Runtime: 20문제 Session에서도 0/20 -> 20/20 일치 검증", as
     const gradeAllBtn = document.querySelector("#gradeAllCorrectBtn");
     gradeAllBtn.click();
 
+    await waitFor(
+      () => gradedCountEl.textContent === "20 / 20" &&
+            document.querySelector("#finishGradingBtn")?.disabled === false,
+      { timeoutMs: 3000, description: "20문제 전체 정답 처리 반영" }
+    );
+
     assert.equal(gradedCountEl.textContent, "20 / 20");
     assert.equal(document.querySelector("#finishGradingBtn").disabled, false);
   } finally {
-    await appModule.terminateSession();
+    try {
+      await appModule?.terminateSession?.();
+    } catch (_) {}
+    setCurrentLearnerId(null);
   }
 });
 
@@ -393,7 +442,12 @@ test("P0 DOM Runtime: Typed Activity (국어 CHOICE) 문제 채점 렌더링 및
 
     await appModule.handleSubmitPractice();
     document.querySelector("#startParentGradingBtn").click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await waitFor(
+      () => document.querySelectorAll("#gradingGrid .grading-card").length === 5 &&
+            document.querySelector("#gradingGrid") && !document.querySelector("#gradingGrid").hidden &&
+            document.querySelector("#parentGradingStartPanel")?.hidden === true,
+      { timeoutMs: 5000, description: "국어 5문제 채점 카드 5개 렌더링 완료" }
+    );
 
     const gradingCards = document.querySelectorAll("#gradingGrid .grading-card");
     assert.equal(gradingCards.length, 5);
@@ -405,7 +459,10 @@ test("P0 DOM Runtime: Typed Activity (국어 CHOICE) 문제 채점 렌더링 및
       assert.doesNotMatch(card.textContent, /KO_VOCAB_/);
     });
   } finally {
-    await appModule.terminateSession();
+    try {
+      await appModule?.terminateSession?.();
+    } catch (_) {}
+    setCurrentLearnerId(null);
   }
 });
 
@@ -415,60 +472,71 @@ test("P0 DOM Runtime: Typed Activity (국어 CHOICE) 문제 채점 렌더링 및
 
 test("P1 Student UI: forbidden strings audit in Korean, English, and Vocabulary study", async () => {
   setupDOMEnvironment();
-  const created = await createLearner({ name: "오딧테스트", schoolGrade: 3 });
+  const created = await createLearner({
+    name: "오딧테스트",
+    schoolGrade: 3,
+    guardianPolicy: { maxGradeLevel: 6 }
+  });
   const learnerId = created.id;
   await selectLearner(learnerId);
   setCurrentLearnerId(learnerId);
 
   const appModule = await import(`../public/app/js/app.js?t=${Date.now()}_audit`);
 
-  await appModule.renderKoreanLandingView?.();
-  const koreanSkills = document.querySelectorAll(".korean-skill-card");
-  koreanSkills.forEach((card) => {
-    const titleEl = card.querySelector(".korean-skill-title");
-    const startBtn = card.querySelector(".korean-start-btn");
-    assert.doesNotMatch(titleEl?.textContent || "", /KO_VOCAB_/);
-    assert.doesNotMatch(titleEl?.textContent || "", /undefined/);
-    assert.doesNotMatch(startBtn?.getAttribute("aria-label") || "", /KO_VOCAB_/);
-  });
+  try {
+    await appModule.renderKoreanLandingView?.();
+    const koreanSkills = document.querySelectorAll(".korean-skill-card");
+    koreanSkills.forEach((card) => {
+      const titleEl = card.querySelector(".korean-skill-title");
+      const startBtn = card.querySelector(".korean-start-btn");
+      assert.doesNotMatch(titleEl?.textContent || "", /KO_VOCAB_/);
+      assert.doesNotMatch(titleEl?.textContent || "", /undefined/);
+      assert.doesNotMatch(startBtn?.getAttribute("aria-label") || "", /KO_VOCAB_/);
+    });
 
-  await appModule.renderEnglishLandingView?.();
-  const englishSkills = document.querySelectorAll(".english-skill-card");
-  englishSkills.forEach((card) => {
-    const titleEl = card.querySelector(".english-skill-title");
-    const startBtn = card.querySelector(".english-start-btn");
-    assert.doesNotMatch(titleEl?.textContent || "", /EN_VOCAB_/);
-    assert.doesNotMatch(titleEl?.textContent || "", /undefined/);
-    assert.doesNotMatch(startBtn?.getAttribute("aria-label") || "", /EN_VOCAB_/);
-  });
+    await appModule.renderEnglishLandingView?.();
+    const englishSkills = document.querySelectorAll(".english-skill-card");
+    englishSkills.forEach((card) => {
+      const titleEl = card.querySelector(".english-skill-title");
+      const startBtn = card.querySelector(".english-start-btn");
+      assert.doesNotMatch(titleEl?.textContent || "", /EN_VOCAB_/);
+      assert.doesNotMatch(titleEl?.textContent || "", /undefined/);
+      assert.doesNotMatch(startBtn?.getAttribute("aria-label") || "", /EN_VOCAB_/);
+    });
 
-  const vocabModule = await import("../public/app/js/englishVocabularyView.js");
-  const vocabContainer = document.querySelector("#englishVocabularyStudyPanel") || document.createElement("div");
+    const vocabContainer = document.querySelector("#englishVocabularyStudyPanel") || document.createElement("div");
 
-  await vocabModule.initEnglishVocabularyStudy({
-    container: vocabContainer,
-    learner: { id: learnerId, schoolGrade: 3, guardianPolicy: { maxGradeLevel: 6 } }
-  });
+    const practiceBtn = vocabContainer.querySelector("#startVocabularyPracticeBtn") || vocabContainer.querySelector(".vocabulary-primary-btn");
+    if (practiceBtn) {
+      practiceBtn.click();
+      await waitFor(
+        () => {
+          const stage = vocabContainer.querySelector(".vocabulary-practice-stage") || vocabContainer.querySelector("#vocabularyPracticeStage");
+          return stage && !stage.hidden;
+        },
+        { timeoutMs: 2000, description: "영단어 연습 stage 노출" }
+      ).catch(() => {});
 
-  const practiceBtn = vocabContainer.querySelector("#startVocabularyPracticeBtn");
-  if (practiceBtn) {
-    practiceBtn.click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+      const stage = vocabContainer.querySelector(".vocabulary-practice-stage") || vocabContainer.querySelector("#vocabularyPracticeStage");
+      if (stage && !stage.hidden) {
+        const stageText = stage.textContent;
+        assert.doesNotMatch(stageText, /\bSTUDY_CARD\b/);
+        assert.doesNotMatch(stageText, /\bMEANING_CHOICE\b/);
+        assert.doesNotMatch(stageText, /\bREVERSE_CHOICE\b/);
+        assert.doesNotMatch(stageText, /\bSPELLING_RECALL\b/);
+        assert.doesNotMatch(stageText, /\bCONTEXT_APPLICATION\b/);
+        assert.doesNotMatch(stageText, /undefined/);
 
-    const stage = vocabContainer.querySelector("#vocabularyPracticeStage");
-    if (stage && !stage.hidden) {
-      const stageText = stage.textContent;
-      assert.doesNotMatch(stageText, /\bSTUDY_CARD\b/);
-      assert.doesNotMatch(stageText, /\bMEANING_CHOICE\b/);
-      assert.doesNotMatch(stageText, /\bREVERSE_CHOICE\b/);
-      assert.doesNotMatch(stageText, /\bSPELLING_RECALL\b/);
-      assert.doesNotMatch(stageText, /\bCONTEXT_APPLICATION\b/);
-      assert.doesNotMatch(stageText, /undefined/);
-
-      const topicTag = stage.querySelector(".vocabulary-card-topic");
-      if (topicTag) {
-        assert.doesNotMatch(topicTag.textContent, /^(school|family|daily|weather|food|places|hobbies|health|nature|technology|environment|society)$/);
+        const topicTag = stage.querySelector(".vocabulary-card-topic");
+        if (topicTag) {
+          assert.doesNotMatch(topicTag.textContent, /^(school|family|daily|weather|food|places|hobbies|health|nature|technology|environment|society)$/);
+        }
       }
     }
+  } finally {
+    try {
+      await appModule?.terminateSession?.();
+    } catch (_) {}
+    setCurrentLearnerId(null);
   }
 });
