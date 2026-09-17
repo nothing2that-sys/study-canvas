@@ -2,6 +2,7 @@
 
 문서 버전: v2.3  
 작성일: 2026-09-11  
+최종 갱신일: 2026-09-18  
 대상 저장소: `Study Canvas 개발 저장소`  
 문서 상태: PRODUCT_AND_ROADMAP_SSOT  
 대체 문서: `Docs/UNIFIED_CURRICULUM_ACTIVITY_PLATFORM_v2.2.md`  
@@ -17,8 +18,12 @@
 1. 본 문서 v2.3
 2. `Docs/Architecture/CURRICULUM_LEVEL_AND_CONTENT_ELIGIBILITY_V1.md`
 3. `Docs/Architecture/DIGITAL_WORKBOOK_UX_ARCHITECTURE_V1.md`
-4. 승인된 개별 Phase 문서와 승인 기록
-5. v2.2, v2.1 및 과거 계획 문서
+4. `Docs/Architecture/CONTENT_SCALE_AND_GENERATION_ARCHITECTURE_V1.md`
+5. `Docs/Architecture/MATH_CONTENT_SCALE_AND_GENERATION_ARCHITECTURE_V1.md`
+6. `Docs/Implementation_Phases/32_POST_F15_ROADMAP_V2_4.md`
+7. `Docs/Implementation_Phases/34_PHASE_F16_CONTENT_FACTORY_AND_SCALE_PROGRAM_V2.md`
+8. 승인된 개별 Phase 문서와 승인 기록
+9. v2.2, v2.1 및 과거 계획 문서
 
 과거 문서는 이력 보존용이며 본 문서와 충돌할 경우 v2.3을 따른다.
 
@@ -263,6 +268,15 @@ reviewStatus
 - 학년, 성취기준, 정답, 선택지, 문맥, 중복과 금칙어를 자동 검증한다.
 - 의미와 난이도는 사람의 검수를 통과해야 한다.
 
+대규모 콘텐츠와 생성기 확장의 현재 정본은 다음을 따른다.
+
+- 국어/영어 Bank, 생성, 검수, shard, provenance: `Docs/Architecture/CONTENT_SCALE_AND_GENERATION_ARCHITECTURE_V1.md`
+- 수학 Generator, Problem Space, Feature Vector, Coverage Matrix: `Docs/Architecture/MATH_CONTENT_SCALE_AND_GENERATION_ARCHITECTURE_V1.md`
+- F16A~F16E 통합 실행 및 Release Gate: `Docs/Implementation_Phases/34_PHASE_F16_CONTENT_FACTORY_AND_SCALE_PROGRAM_V2.md`
+- 현재 실행 순서: `Docs/Implementation_Phases/32_POST_F15_ROADMAP_V2_4.md`
+
+위 정본의 콘텐츠 수량 및 수학 Problem Space Release Gate는 구현자가 임의로 축소할 수 없다.
+
 # 11. 추천과 문제집 구성 규칙
 
 추천 후보는 다음 순서로 필터링한다.
@@ -315,12 +329,16 @@ Phase E는 아래 로드맵과 병행한다. 단, 실제 iPad 입력에 영향�
 | 4 | F15A | 분수 개념과 표현 | F14 승인 |
 | 5 | F15B | 분수 연산 | F15A 승인 |
 | 6 | F15C | 소수 개념과 연산 | F15B 승인 |
-| 7 | F16 | 콘텐츠 저작, 자동 검증과 승인 도구 | F13-R2 승인 후 병행 가능 |
-| 8 | F17 | 국어와 영어 공통 읽기 엔진 | F16 승인 |
-| 9 | F18A | 학년별 국어 읽기 콘텐츠 | F17 승인 |
-| 10 | F18B | 학년별 영어 읽기 콘텐츠 | F17 승인 |
-| 11 | F19 | 도형, 규칙, 자료와 그래프, 문장제 | 관련 콘텐츠 검증 기반 승인 |
-| 12 | F20 | 다과목 백업, 복원, 성능과 최종 릴리즈 수용 | 모든 목표 Phase 승인 |
+| 7 | F16A | Content Factory Foundation | F15C 승인 후 구현, 비충돌 설계는 선행 가능 |
+| 8 | F16B | English Large-Scale Content Bank | F16A 승인 |
+| 9 | F16C | Korean Large-Scale Content Bank | F16A 승인 |
+| 10 | F16D | Math Large-Scale Generator & Coverage | F16A 승인 및 관련 수학 계약 확인 |
+| 11 | F16E | 국어/영어/수학 반복 회피, Coverage, Migration, 대용량 성능 | F16B/C/D 승인 |
+| 12 | F17 | 국어와 영어 공통 읽기 엔진 | F16 기반 승인 |
+| 13 | F18A | 학년별 국어 읽기 콘텐츠 | F17 승인 |
+| 14 | F18B | 학년별 영어 읽기 콘텐츠 | F17 승인 |
+| 15 | F19 | 도형, 규칙, 자료와 그래프, 문장제의 실제 학습 모듈 확장 | F16D의 Coverage Matrix 및 이관 Gate 반영 |
+| 16 | F20 | 다과목 백업, 복원, 성능과 최종 릴리즈 수용 | 모든 목표 Phase 승인 |
 
 ## 14.1 재번호 원칙
 
@@ -342,11 +360,16 @@ Phase E는 아래 로드맵과 병행한다. 단, 실제 iPad 입력에 영향�
 
 # 16. 즉시 작업 우선순위
 
-1. F13-R1로 객관식과 텍스트 입력 차단 결함을 먼저 수정한다.
-2. F13-R2에서 현재 `elementary`, `3_4`, `5_6` 중심의 넓은 학년군을 1부터 6까지의 선택 가능한 학년 계약으로 확장한다.
-3. F13-R3에서 기존 Session UI 위에 Workbook 탐색과 페이지 상태를 추가한다.
-4. F14에서 영어 단어 암기 Practice와 공식 Check Session을 분리 구현한다.
-5. Phase E 실제 iPad 재검증은 독립적으로 계속 진행한다.
+2026-09-18 현재 실행 우선순위는 다음과 같다.
+
+1. F15B 분수 연산 독립 검토를 완료한다.
+2. F15B 승인 후 F15C 소수 개념과 연산을 진행한다.
+3. F15C 승인 후 F16A Content Factory Foundation을 구현한다.
+4. F16A 승인 후 F16B English, F16C Korean, F16D Math 대규모 확장을 각각 독립 검토한다.
+5. F16B/C/D 승인 후 F16E에서 공통 recent exposure, coverage, migration, scale performance를 닫는다.
+6. Phase E 실제 iPad/Apple Pencil 재검증은 독립 PENDING 트랙으로 유지한다.
+
+세부 순서와 Release Gate는 `Docs/Implementation_Phases/32_POST_F15_ROADMAP_V2_4.md`와 `34_PHASE_F16_CONTENT_FACTORY_AND_SCALE_PROGRAM_V2.md`를 따른다.
 
 # 17. 최종 결정
 
