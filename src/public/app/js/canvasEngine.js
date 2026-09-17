@@ -80,9 +80,14 @@ export function shouldAcceptPointer(event, profile, state = InputState.IDLE) {
     return pType === "pen";
   }
 
-  // PEN_COOLDOWN 중에는 pen만 즉시 수락, touch는 쿨다운 보호로 거부
+  // PEN_COOLDOWN 중에는 pen만 즉시 수락, touch는 쿨다운 보호(Palm Rejection)로 거부
+  // 단, DESKTOP_MOUSE_PEN 프로필의 정상 마우스 좌클릭은 고속 필기를 위해 허용
   if (state === InputState.PEN_COOLDOWN) {
-    return pType === "pen";
+    if (pType === "pen") return true;
+    if (profile === InputProfile.DESKTOP_MOUSE_PEN && pType === "mouse") {
+      return event.button === 0 || event.button === undefined;
+    }
+    return false;
   }
 
   if (profile === InputProfile.IPAD_PEN_ONLY) {
@@ -460,11 +465,14 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   // ----------------------------------------------------
   function onPointerDown(e) {
     if (destroyed || settings.readOnly) return;
-    //+_+// 직전 Pencil 종료 이벤트가 지연된 상태에서 새 pointerdown이 오면 기존 획을 보존하고 새 획을 즉시 수락한다.
-    if (activePenPointerId !== null) {
-      if (e.pointerType !== "pen") return;
-      //+_+// Apple Pencil은 연속 접촉에서 같은 pointerId를 재사용할 수 있으므로 ID가 같아도 이전 획을 확정하고 새 획을 시작한다.
-      resetActivePointers({ releaseCapture: e.pointerId !== activePenPointerId });
+    //+_+// [고속 필기 획 씹힘 방지 SSOT]
+    // 직전 획이 아직 완전히 종료되지 않은 상태(isDrawing이거나 활성 포인터가 남아있는 상태)에서
+    // 빠른 새 pointerdown이 들어오면, 진행 중이던 이전 획을 즉시 정상 commit하고 포인터 상태를 정리한다.
+    if (isDrawing || activePenPointerId !== null || activeTouchPointerId !== null) {
+      if (activePenPointerId !== null && e.pointerType !== "pen") return;
+      const isSamePen = activePenPointerId !== null && e.pointerType === "pen" && e.pointerId === activePenPointerId;
+      const isSameTouch = activeTouchPointerId !== null && e.pointerId === activeTouchPointerId;
+      resetActivePointers({ releaseCapture: !isSamePen && !isSameTouch });
     }
 
     // Cooldown 검사
@@ -742,6 +750,17 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   if (typeof window !== "undefined") {
     addManagedListener(window, "blur", resetActivePointers);
     addManagedListener(window, "pagehide", resetActivePointers);
+    //+_+// [캔버스 경계 이탈 획 씹힘 방지] 캔버스 밖으로 나가서 포인터를 떼거나 취소되었을 때도 획을 안전하게 확정/종료
+    addManagedListener(window, "pointerup", (e) => {
+      if (!destroyed && isDrawing && matchesActivePointer(e)) {
+        onPointerUp(e);
+      }
+    }, { passive: false });
+    addManagedListener(window, "pointercancel", (e) => {
+      if (!destroyed && isDrawing && matchesActivePointer(e)) {
+        onPointerCancel(e);
+      }
+    }, { passive: false });
   }
   if (typeof document !== "undefined") {
     addManagedListener(document, "visibilitychange", handleVisibilityChange);

@@ -118,3 +118,84 @@ test("E-R1-03: 250개 고속 짧은 획의 종료 좌표 및 Undo Redo 보존", 
 
   canvas.destroy();
 });
+
+test("Fix: 초고속 오버랩 연속 획 입력 시 이전 획 덮어쓰기 및 씹힘 0% 보존 검증", () => {
+  const listeners = new Map();
+  const mockCanvas = {
+    getContext: () => ({
+      clearRect: () => {}, beginPath: () => {}, moveTo: () => {}, lineTo: () => {},
+      quadraticCurveTo: () => {}, stroke: () => {}, arc: () => {}, fill: () => {},
+      save: () => {}, restore: () => {}, setTransform: () => {}
+    }),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 300 }),
+    addEventListener: (type, fn) => listeners.set(type, fn),
+    removeEventListener: (type) => listeners.delete(type),
+    setPointerCapture: () => {}, releasePointerCapture: () => {}, style: {}
+  };
+
+  const canvas = createDrawingCanvas(mockCanvas, { profile: InputProfile.DESKTOP_MOUSE_PEN });
+
+  // 10개 획 연속 입력: 각 획의 pointerup이 지연되어 새 pointerdown이 먼저 발생해도 이전 획이 commit되어야 함
+  for (let i = 0; i < 10; i++) {
+    listeners.get("pointerdown")({ pointerType: "mouse", pointerId: 1, button: 0, clientX: 10 + i * 20, clientY: 10 });
+    listeners.get("pointermove")({ pointerType: "mouse", pointerId: 1, button: 0, clientX: 20 + i * 20, clientY: 20 });
+    // up 없이 바로 다음 down이 들어오는 극단적 오버랩 상황!
+  }
+  // 마지막 획만 pointerup
+  listeners.get("pointerup")({ pointerType: "mouse", pointerId: 1, button: 0, clientX: 200, clientY: 20 });
+
+  const strokes = canvas.getStrokes();
+  assert.equal(strokes.length, 10, "오버랩 연속 필기에서도 10개 획이 씹히지 않고 전수 보존되어야 함");
+  assert.ok(strokes.every((s) => s.points.length >= 2), "모든 획이 정상 좌표를 포함해야 함");
+
+  canvas.destroy();
+});
+
+test("Fix: 캔버스 경계 밖 이탈 후 window pointerup 발생 시 획 안전 확정 및 다음 획 입력 보장", () => {
+  const canvasListeners = new Map();
+  const windowListeners = new Map();
+
+  const mockCanvas = {
+    getContext: () => ({
+      clearRect: () => {}, beginPath: () => {}, moveTo: () => {}, lineTo: () => {},
+      quadraticCurveTo: () => {}, stroke: () => {}, arc: () => {}, fill: () => {},
+      save: () => {}, restore: () => {}, setTransform: () => {}
+    }),
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 300 }),
+    addEventListener: (type, fn) => canvasListeners.set(type, fn),
+    removeEventListener: (type) => canvasListeners.delete(type),
+    setPointerCapture: () => {}, releasePointerCapture: () => {}, style: {}
+  };
+
+  const originalWindow = globalThis.window;
+  globalThis.window = {
+    addEventListener: (type, fn) => windowListeners.set(type, fn),
+    removeEventListener: (type) => windowListeners.delete(type)
+  };
+
+  try {
+    const canvas = createDrawingCanvas(mockCanvas, { profile: InputProfile.DESKTOP_MOUSE_PEN });
+
+    // 1번 획: 캔버스 안에서 시작하여 캔버스 밖으로 이동
+    canvasListeners.get("pointerdown")({ pointerType: "mouse", pointerId: 1, button: 0, clientX: 350, clientY: 250 });
+    canvasListeners.get("pointermove")({ pointerType: "mouse", pointerId: 1, button: 0, clientX: 450, clientY: 350 }); // 밖으로 이탈
+
+    // canvasElement 대신 window에서 pointerup 발생 (캔버스 밖에서 손을 뗀 상황)
+    assert.ok(windowListeners.has("pointerup"), "window pointerup 리스너가 등록되어 있어야 함");
+    windowListeners.get("pointerup")({ pointerType: "mouse", pointerId: 1, button: 0, clientX: 450, clientY: 350 });
+
+    assert.equal(canvas.getStrokes().length, 1, "경계 이탈 획이 정상 확정되어야 함");
+
+    // 2번 획: 곧바로 다음 획을 정상 시작할 수 있어야 함 (isDrawing이 풀렸으므로)
+    canvasListeners.get("pointerdown")({ pointerType: "mouse", pointerId: 1, button: 0, clientX: 100, clientY: 100 });
+    canvasListeners.get("pointermove")({ pointerType: "mouse", pointerId: 1, button: 0, clientX: 120, clientY: 120 });
+    canvasListeners.get("pointerup")({ pointerType: "mouse", pointerId: 1, button: 0, clientX: 120, clientY: 120 });
+
+    assert.equal(canvas.getStrokes().length, 2, "경계 이탈 후 다음 획도 씹힘 없이 2개로 완벽 저장되어야 함");
+
+    canvas.destroy();
+  } finally {
+    globalThis.window = originalWindow;
+  }
+});
+
