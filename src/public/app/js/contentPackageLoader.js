@@ -19,9 +19,13 @@ async function fetchJsonResource(pathOrUrl) {
   // 브라우저 환경이거나 HTTP/HTTPS 요청인 경우 fetch 사용
   const isBrowser = typeof window !== "undefined" && typeof window.document !== "undefined";
   if (isBrowser || pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
-    const res = await fetch(pathOrUrl);
+    let targetUrl = pathOrUrl;
+    if (isBrowser && !pathOrUrl.startsWith("http://") && !pathOrUrl.startsWith("https://") && !pathOrUrl.startsWith("/")) {
+      targetUrl = `/${pathOrUrl.replace(/^\.\//, "")}`;
+    }
+    const res = await fetch(targetUrl);
     if (!res.ok) {
-      throw new Error(`콘텐츠 파일 로드 실패 (HTTP ${res.status}): ${pathOrUrl}`);
+      throw new Error(`콘텐츠 파일 로드 실패 (HTTP ${res.status}): ${targetUrl}`);
     }
     return await res.json();
   }

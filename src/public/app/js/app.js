@@ -369,7 +369,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260917T105214983Z-31ad6a2",
+    appBuildId: "20260917T112006610Z-276bdf5",
     sessionId: currentSession.id,
     learnerId: getActiveLearnerId(),
     subjectId: currentSession.subjectId || lastSessionConfig?.subjectId || "math",
@@ -3812,7 +3812,7 @@ export function startMeasurementPracticeSession(skill, unitCatalog, manifest) {
   startSessionWithQuestions(activities, sessionConfig);
 }
 
-//+_+// Phase F15A: 분수 개념 학습 세션 시작
+//+_+// Phase F15A: 분수 개념 및 연산 학습 세션 시작
 export function startFractionPracticeSession({ activities, workbookContext = null, pageSize = 2 } = {}) {
   if (!Array.isArray(activities) || activities.length === 0) {
     throw new Error("분수 학습 문제가 필요합니다.");
@@ -3821,12 +3821,12 @@ export function startFractionPracticeSession({ activities, workbookContext = nul
   const sessionConfig = {
     subjectId: "math",
     courseId: "fraction",
-    moduleId: "fraction",
+    moduleId: firstAct.moduleId || "operations",
     unitId: firstAct.unitId || "concepts",
     skillId: firstAct.skillId || "MATH_FRACTION_PART_WHOLE",
     stageId: firstAct.skillId || "MATH_FRACTION_PART_WHOLE",
     macroLevelId: firstAct.skillId || "MATH_FRACTION_PART_WHOLE",
-    skillTitle: firstAct.displayLabel || firstAct.skillTitle || firstAct.name || "분수 개념",
+    skillTitle: firstAct.displayLabel || firstAct.skillTitle || firstAct.name || "분수 연산",
     difficulty: String(firstAct.difficulty || "FOUNDATION"),
     problemCount: activities.length,
     pageSize,
@@ -3836,12 +3836,24 @@ export function startFractionPracticeSession({ activities, workbookContext = nul
   startSessionWithQuestions(activities, effectiveConfig);
 }
 
-//+_+// Phase F15A: 분수 문제집 연계 실행 또는 랜딩 처리
+//+_+// Phase F15A / F15B: 분수 문제집 연계 실행 또는 랜딩 처리
 export async function handleFractionLandingOrWorkbookLaunch() {
   const workbookContext = getActiveWorkbookContext();
+  let targetPackageId = "math-fraction-operations-v1";
+  if (workbookContext?.workbookId) {
+    const catalogItem = getWorkbookCatalogItem(workbookContext.workbookId);
+    const refPkgId = catalogItem?.edition?.contentPackageRefs?.[0]?.packageId;
+    if (refPkgId) {
+      targetPackageId = refPkgId;
+    }
+  }
   let activities = [];
   try {
-    const pkg = await loadPackage("math-fraction-concepts-v1");
+    let pkg = await loadPackage(targetPackageId);
+    if (!pkg?.activities || pkg.activities.length === 0) {
+      targetPackageId = "math-fraction-concepts-v1";
+      pkg = await loadPackage(targetPackageId);
+    }
     if (workbookContext?.workbookPageId && pkg?.activities) {
       const catalogItem = getWorkbookCatalogItem(workbookContext.workbookId);
       const page = catalogItem?.edition?.pages?.find((p) => p.pageId === workbookContext.workbookPageId);
@@ -3858,7 +3870,7 @@ export async function handleFractionLandingOrWorkbookLaunch() {
       return;
     }
   } catch (err) {
-    console.warn("[app] math-fraction-concepts-v1 로드 실패:", err);
+    console.warn(`[app] ${targetPackageId} 로드 실패:`, err);
   }
   navigate(ROUTES.BOOKSHELF);
 }
