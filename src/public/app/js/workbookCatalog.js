@@ -175,6 +175,60 @@ const rawCatalog = [
   },
   {
     definition: {
+      workbookId: "math-fractionops-g4",
+      type: "FIXED",
+      subjectId: "math",
+      courseId: "fraction",
+      title: "4학년 분수 연산: 동분모 덧셈과 뺄셈",
+      description: "분모가 같은 진분수와 대분수의 덧셈과 뺄셈을 연습해요.",
+      gradeLevel: 4,
+      semester: "ALL",
+      difficulty: "FOUNDATION",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["4수01-12"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "math-fractionops-g4",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "math-fraction-operations-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "math-fractionops-g4-p1", pageNumber: 1, unitId: "same_denominator", title: "동분모 분수의 덧셈", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_op_same_add_001" }, { activityId: "frac_op_same_add_text_002" }] },
+        { pageId: "math-fractionops-g4-p2", pageNumber: 2, unitId: "same_denominator", title: "동분모 분수의 뺄셈", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_op_same_sub_001" }, { activityId: "frac_op_same_sub_text_002" }] }
+      ]
+    }
+  },
+  {
+    definition: {
+      workbookId: "math-fractionops-g5",
+      type: "FIXED",
+      subjectId: "math",
+      courseId: "fraction",
+      title: "5학년 분수 연산: 이분모 통분과 덧셈·뺄셈",
+      description: "공통분모로 통분하여 분모가 다른 분수의 덧셈과 뺄셈을 연습해요.",
+      gradeLevel: 5,
+      semester: "ALL",
+      difficulty: "STANDARD",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["6수01-07"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "math-fractionops-g5",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "math-fraction-operations-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "math-fraction-ops-g5-p1", pageNumber: 1, unitId: "unlike_denominator", title: "이분모 분수의 통분", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_op_common_denom_001" }] },
+        { pageId: "math-fraction-ops-g5-p2", pageNumber: 2, unitId: "unlike_denominator", title: "이분모 분수의 덧셈과 뺄셈", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_op_unlike_add_text_001" }, { activityId: "frac_op_unlike_sub_text_001" }] }
+      ]
+    }
+  },
+  {
+    definition: {
       workbookId: "english-vocabulary-review-g3",
       type: "REVIEW",
       subjectId: "english",

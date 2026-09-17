@@ -41,11 +41,19 @@ export function normalizeFractionRepresentationSpec(spec) {
     "PART_WHOLE_GRID",
     "NUMBER_LINE",
     "SYMBOLIC_FRACTION",
-    "EQUIVALENT_PAIR"
+    "EQUIVALENT_PAIR",
+    "FRACTION_OPERATION_ADD",
+    "FRACTION_OPERATION_SUB",
+    "FRACTION_COMMON_DENOMINATOR"
   ]);
 
   if (!spec.type || !validTypes.has(spec.type)) {
     throw new Error(`지원되지 않거나 알 수 없는 분수 시각 표현 타입입니다: ${spec.type}`);
+  }
+
+  // 0. FRACTION OPERATIONS (ADD, SUB, COMMON_DENOMINATOR)
+  if (spec.type === "FRACTION_OPERATION_ADD" || spec.type === "FRACTION_OPERATION_SUB" || spec.type === "FRACTION_COMMON_DENOMINATOR") {
+    return { ...spec };
   }
 
   // 1. EQUIVALENT_PAIR
@@ -472,6 +480,115 @@ export function renderSymbolicFraction(spec) {
 }
 
 /**
+ * 분수 연산(덧셈, 뺄셈, 통분) 시각화 렌더러 (순수 SVG, pointer-events: none, role="img")
+ * @param {Object} spec - { type, f1, f2, result, converted1, converted2 }
+ * @returns {string} SVG HTML 문자열
+ */
+export function renderFractionOperationSVG(spec) {
+  const patternId = `hatch_op_${Math.random().toString(36).substring(2, 9)}`;
+  const defs = createHatchPatternDef(patternId);
+
+  const f1 = spec.f1 || { numerator: 1, denominator: 2, wholeNumber: 0 };
+  const f2 = spec.f2 || { numerator: 1, denominator: 2, wholeNumber: 0 };
+  const res = spec.result || { numerator: 1, denominator: 1, wholeNumber: 0 };
+
+  const s1 = `${f1.wholeNumber ? f1.wholeNumber + ' ' : ''}${f1.numerator}/${f1.denominator}`;
+  const s2 = `${f2.wholeNumber ? f2.wholeNumber + ' ' : ''}${f2.numerator}/${f2.denominator}`;
+
+  let ariaLabel = "";
+  let innerSvg = "";
+
+  if (spec.type === "FRACTION_OPERATION_ADD") {
+    ariaLabel = `분수 덧셈 시각화: ${s1} 더하기 ${s2}`;
+    const barWidth = 120;
+    const barHeight = 24;
+
+    // Bar 1
+    const p1Width = barWidth / f1.denominator;
+    let segs1 = "";
+    for (let i = 0; i < f1.denominator; i++) {
+      const isFilled = i < f1.numerator;
+      segs1 += `<rect x="${i * p1Width}" y="0" width="${p1Width}" height="${barHeight}" fill="${isFilled ? '#1a73e8' : '#f8f9fa'}" stroke="#70757a" stroke-width="1" />`;
+    }
+
+    // Bar 2
+    const p2Width = barWidth / f2.denominator;
+    let segs2 = "";
+    for (let i = 0; i < f2.denominator; i++) {
+      const isFilled = i < f2.numerator;
+      segs2 += `<rect x="${i * p2Width}" y="0" width="${p2Width}" height="${barHeight}" fill="${isFilled ? '#34a853' : '#f8f9fa'}" stroke="#70757a" stroke-width="1" />`;
+    }
+
+    innerSvg = `
+      <g transform="translate(10, 10)">
+        <g transform="translate(0, 0)">
+          <text x="${barWidth / 2}" y="-4" text-anchor="middle" font-size="12" font-weight="bold" fill="#202124">${escapeAttr(s1)}</text>
+          ${segs1}
+        </g>
+        <text x="140" y="16" text-anchor="middle" font-size="18" font-weight="bold" fill="#5f6368">+</text>
+        <g transform="translate(160, 0)">
+          <text x="${barWidth / 2}" y="-4" text-anchor="middle" font-size="12" font-weight="bold" fill="#202124">${escapeAttr(s2)}</text>
+          ${segs2}
+        </g>
+      </g>
+    `;
+  } else if (spec.type === "FRACTION_OPERATION_SUB") {
+    ariaLabel = `분수 뺄셈 시각화: ${s1} 빼기 ${s2}`;
+    const barWidth = 180;
+    const barHeight = 28;
+    const pWidth = barWidth / f1.denominator;
+
+    let segs = "";
+    for (let i = 0; i < f1.denominator; i++) {
+      const isOriginal = i < f1.numerator;
+      const isSubtracted = i >= (f1.numerator - f2.numerator) && i < f1.numerator;
+      let fill = "#f8f9fa";
+      if (isSubtracted) {
+        fill = `url(#${patternId})`;
+      } else if (isOriginal) {
+        fill = "#1a73e8";
+      }
+      segs += `<rect x="${i * pWidth}" y="0" width="${pWidth}" height="${barHeight}" fill="${fill}" stroke="#70757a" stroke-width="1" />`;
+      if (isSubtracted) {
+        // 차감 표시 사선
+        segs += `<line x1="${i * pWidth}" y1="0" x2="${(i + 1) * pWidth}" y2="${barHeight}" stroke="#d93025" stroke-width="2" />`;
+      }
+    }
+
+    innerSvg = `
+      <g transform="translate(10, 15)">
+        <text x="${barWidth / 2}" y="-4" text-anchor="middle" font-size="12" font-weight="bold" fill="#202124">${escapeAttr(s1)} - ${escapeAttr(s2)}</text>
+        ${segs}
+      </g>
+    `;
+  } else {
+    // FRACTION_COMMON_DENOMINATOR
+    const c1 = spec.converted1 || f1;
+    const c2 = spec.converted2 || f2;
+    ariaLabel = `분수 통분 시각화: ${s1}과 ${s2}의 공통분모 비교`;
+
+    innerSvg = `
+      <g transform="translate(10, 15)">
+        <text x="140" y="0" text-anchor="middle" font-size="13" font-weight="bold" fill="#202124">공통분모 통분: ${c1.denominator}</text>
+        <g transform="translate(0, 15)">
+          <text x="50" y="16" text-anchor="middle" font-size="12" fill="#1a73e8" font-weight="bold">${escapeAttr(s1)} = ${c1.numerator}/${c1.denominator}</text>
+          <text x="210" y="16" text-anchor="middle" font-size="12" fill="#34a853" font-weight="bold">${escapeAttr(s2)} = ${c2.numerator}/${c2.denominator}</text>
+        </g>
+      </g>
+    `;
+  }
+
+  return `
+    <div class="fraction-operation-visual-container" style="display: flex; justify-content: center; margin: 12px 0; pointer-events: none;">
+      <svg role="img" aria-label="${escapeAttr(ariaLabel)}" width="320" height="70" viewBox="0 0 320 70" xmlns="http://www.w3.org/2000/svg" style="pointer-events: none; max-width: 100%;">
+        ${defs}
+        ${innerSvg}
+      </svg>
+    </div>
+  `.trim();
+}
+
+/**
  * 범용 분수 시각 표현 진입점 (fail-closed)
  * @param {Object} activityOrSpec - Activity 객체(activity.metadata.fractionRepresentation) 또는 시각화 spec
  * @returns {string} HTML 문자열
@@ -479,13 +596,15 @@ export function renderSymbolicFraction(spec) {
 export function renderFractionRepresentation(activityOrSpec) {
   if (!activityOrSpec) return "";
 
-  // 1. Activity 객체에 fractionRepresentation 메타데이터가 명시된 경우
+  // 1. Activity 객체에 fractionRepresentation 또는 fractionOperation 메타데이터가 명시된 경우
   let spec = activityOrSpec.metadata?.fractionRepresentation ||
-             activityOrSpec.fractionRepresentation;
+             activityOrSpec.metadata?.fractionOperation ||
+             activityOrSpec.fractionRepresentation ||
+             activityOrSpec.fractionOperation;
 
   // 2. spec 객체가 직접 전달된 경우
   if (!spec) {
-    // Activity/Question 객체이면서 분수 시각화 메타데이터가 없는 일반 액티비티(국어, 영어, 타 수학 등)는 시각화 없음
+    // Activity/Question 객체이면서 분수 시각화 메타데이터가 없는 일반 액티비티는 시각화 없음
     if (activityOrSpec.responseType || activityOrSpec.subjectId || activityOrSpec.choices || activityOrSpec.questionKey) {
       return "";
     }
@@ -511,6 +630,10 @@ export function renderFractionRepresentation(activityOrSpec) {
       return renderEquivalentPair(normSpec);
     case "SYMBOLIC_FRACTION":
       return renderSymbolicFraction(normSpec);
+    case "FRACTION_OPERATION_ADD":
+    case "FRACTION_OPERATION_SUB":
+    case "FRACTION_COMMON_DENOMINATOR":
+      return renderFractionOperationSVG(normSpec);
     default:
       throw new Error(`지원되지 않는 분수 시각화 타입입니다: ${normSpec.type}`);
   }
@@ -531,3 +654,4 @@ function escapeAttr(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
+

@@ -1,11 +1,11 @@
-const CACHE_NAME = "math-canvas-pro-v20260917T102606017Z-74eff4e";
+const CACHE_NAME = "math-canvas-pro-v20260917T105214983Z-31ad6a2";
 
 //+_+// PWA 오프라인 구동을 위한 필수 App Shell 자산 목록
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/app.css?v=20260917T102606017Z-74eff4e",
-  "./js/app.js?v=20260917T102606017Z-74eff4e",
+  "./css/app.css?v=20260917T105214983Z-31ad6a2",
+  "./js/app.js?v=20260917T105214983Z-31ad6a2",
   "./js/canvasEngine.js",
   "./js/sessionEngine.js",
   "./js/parentGrading.js",
@@ -53,6 +53,8 @@ const APP_SHELL = [
   "./js/englishVocabularyStudy.js",
   "./js/englishVocabularyView.js",
   "./js/fractionConcepts.js",
+  "./js/fractionOperations.js",
+  "./js/fractionOperationGenerator.js",
   "./js/fractionRepresentationView.js",
   /* CONTENT_PACKAGES_PRECACHE_START */
   "./content/registry.json",
@@ -74,6 +76,9 @@ const APP_SHELL = [
   "./content/packages/math-fraction-concepts-v1/activities.json",
   "./content/packages/math-fraction-concepts-v1/curriculum.json",
   "./content/packages/math-fraction-concepts-v1/manifest.json",
+  "./content/packages/math-fraction-operations-v1/activities.json",
+  "./content/packages/math-fraction-operations-v1/curriculum.json",
+  "./content/packages/math-fraction-operations-v1/manifest.json",
   "./content/packages/math-measurement-v1/activities.json",
   "./content/packages/math-measurement-v1/curriculum.json",
   "./content/packages/math-measurement-v1/manifest.json",

@@ -101,11 +101,11 @@ export const SUBJECTS = Object.freeze([
       {
         id: "fraction",
         title: "분수 연산",
-        description: "진분수·가분수·대분수 사칙연산",
-        badgeText: "준비 중",
+        description: "진분수·가분수·대분수의 덧셈과 뺄셈 및 통분",
+        badgeText: "학습 가능",
         icon: "½",
-        status: "coming_soon",
-        enabled: false,
+        status: "active",
+        enabled: true,
         route: "/math/fraction"
       },
       {
