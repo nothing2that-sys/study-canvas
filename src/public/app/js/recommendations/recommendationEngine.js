@@ -42,6 +42,24 @@ export function isQuestionAnswered() {
 }
 
 /**
+ * 한국어 목적격 조사(을/를)를 종성(받침) 여부에 따라 자연스럽게 부착하는 헬퍼
+ * @param {string} word - 조사 대상 단어 (예: '수학', '국어', '영어')
+ * @returns {string} 조사 부착 단어 (예: '수학을', '국어를', '영어를')
+ */
+export function appendKoreanObjectParticle(word) {
+  if (!word || typeof word !== "string") return word || "";
+  const trimmed = word.trim();
+  if (!trimmed) return "";
+  const lastChar = trimmed[trimmed.length - 1];
+  const code = lastChar.charCodeAt(0);
+  if (code >= 0xac00 && code <= 0xd7a3) {
+    const hasBatchim = (code - 0xac00) % 28 !== 0;
+    return `${trimmed}${hasBatchim ? "을" : "를"}`;
+  }
+  return `${trimmed}를`;
+}
+
+/**
  * 통합 추천 후보 목록 생성 및 정렬 (순수 함수)
  * @param {Object} params
  * @param {string} params.learnerId - 대상 학습자 ID
@@ -444,7 +462,7 @@ export function buildLearningRecommendations({
         subjectId: leastStudied.id,
         actor: "learner",
         reasonCode: "SUBJECT_NOT_RECENTLY_STUDIED",
-        reasonText: `${leastStudied.title}을(를) 오랫동안 공부하지 않았어요`,
+        reasonText: `${appendKoreanObjectParticle(leastStudied.title)} 오랫동안 공부하지 않았어요`,
         estimatedProblemCount: defaultNewLearningCount,
         estimatedDurationMs: newLearningEstDuration,
         action: {

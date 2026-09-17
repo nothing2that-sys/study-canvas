@@ -224,14 +224,24 @@ export async function getLearnerDashboard(learnerId, options = {}) {
         draft.sessionState !== "GRADING_ACTIVE";
 
       if (policy.canResumePractice && isPracticeActive && (!submissionForDraft || submissionForDraft.status === "PRACTICE_ACTIVE")) {
+        const solvedKeys = new Set([
+          ...Object.keys(draft.studentStrokesMap || {}),
+          ...Object.keys(draft.responseRecords || {})
+        ]);
+        const defaultLevelName = draft.subjectId === "korean" ? "국어 학습"
+          : draft.subjectId === "english" ? "영어 학습"
+          : (draft.courseId === "measurement" || draft.config?.courseId === "measurement") ? "단위 변환"
+          : (draft.courseId === "fraction" || draft.config?.courseId === "fraction") ? "분수 개념"
+          : "2자리 입문";
+
         inProgressCards.push({
           sessionId: draft.sessionId,
-          subjectId: draft.subjectId || "math",
-          courseId: draft.config?.courseId || "arithmetic",
+          subjectId: draft.subjectId || draft.config?.subjectId || "math",
+          courseId: draft.config?.courseId || draft.courseId || "arithmetic",
           levelId: draft.config?.difficulty || draft.config?.level || "Lv.2",
-          levelName: draft.config?.levelName || "2자리 입문",
+          levelName: draft.config?.skillTitle || draft.config?.title || draft.config?.name || draft.config?.levelName || defaultLevelName,
           totalQuestions: draft.questions.length,
-          solvedQuestions: Object.keys(draft.studentStrokesMap || {}).length,
+          solvedQuestions: solvedKeys.size,
           savedAt: draft.updatedAt || draft.createdAt || Date.now(),
           rawDraft: draft
         });

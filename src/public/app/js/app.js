@@ -369,8 +369,12 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260916T093200079Z-931b554",
+    appBuildId: "20260917T012510773Z-700fd5b",
     sessionId: currentSession.id,
+    learnerId: getActiveLearnerId(),
+    subjectId: currentSession.subjectId || lastSessionConfig?.subjectId || "math",
+    courseId: currentSession.courseId || lastSessionConfig?.courseId || null,
+    moduleId: currentSession.moduleId || lastSessionConfig?.moduleId || null,
     submissionId: currentSubmission?.id || `sub_${currentSession.id}`,
     sessionType: currentSession.state === SessionState.GRADING_ACTIVE ? "grading" : "practice",
     sessionState: currentSession.state,
@@ -3443,6 +3447,7 @@ function restoreSessionFromSubmission(submission) {
     if (parentGradingStartPanel) parentGradingStartPanel.hidden = false;
     if (gradingGrid) gradingGrid.hidden = true;
     if (finishGradingBtn?.parentElement) finishGradingBtn.parentElement.hidden = true;
+    updateGradingStatusUI();
   }
   return true;
 }
@@ -3485,10 +3490,8 @@ async function checkDraftResumeOnStartup() {
               courseId: draft.config?.courseId || draft.courseId,
               moduleId: draft.config?.moduleId || draft.moduleId
             });
-            if (targetPracticeRoute === ROUTES.MATH_MEASUREMENT_PRACTICE) {
-              navigate(ROUTES.MATH_MEASUREMENT_PRACTICE);
-            } else if (targetPracticeRoute === ROUTES.MATH_FRACTION_PRACTICE) {
-              navigate(ROUTES.MATH_FRACTION_PRACTICE);
+            if (targetPracticeRoute && targetPracticeRoute !== ROUTES.MATH_PRACTICE) {
+              navigate(targetPracticeRoute);
             } else {
               navigate(ROUTES.MATH_PRACTICE);
             }

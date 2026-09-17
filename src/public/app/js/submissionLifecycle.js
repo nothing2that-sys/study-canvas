@@ -115,7 +115,13 @@ export function evaluateStartupDraftResumePolicy({ draft, submission }) {
   }
 
   // 같은 세션의 SubmissionSnapshot이 이미 제출/채점 완료 상태인 경우
-  if (submission && isSubmittedSnapshotStatus(submission.status)) {
+  const isSameSession = Boolean(
+    submission &&
+    submission.sessionId &&
+    draft.sessionId &&
+    submission.sessionId === draft.sessionId
+  );
+  if (isSameSession && isSubmittedSnapshotStatus(submission.status)) {
     const isPracticeDraft = draft.sessionState !== SessionState.GRADING_ACTIVE && draft.sessionType !== "grading";
     if (isPracticeDraft) {
       return {

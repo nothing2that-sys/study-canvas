@@ -102,6 +102,7 @@ export async function bootstrapApp(options = {}) {
     //+_+// 6.1 Persisted Draft 및 Submission-First Policy 조회 (active learner 기준 deep link 검증에 활용)
     let persistedDraft = null;
     let persistedSubmission = null;
+    let activeGradingSubmission = null;
     let draftResumePolicy = null;
 
     if (restoredLearnerId) {
@@ -116,16 +117,24 @@ export async function bootstrapApp(options = {}) {
             console.warn("[Bootstrap] Submission query failed:", subErr);
           }
         }
-        if (!persistedSubmission) {
-          const submissions = await getAllSubmissions({ learnerId: restoredLearnerId });
-          persistedSubmission = submissions.find((submission) => (
-            submission.status === "PARENT_GRADING_PENDING" || submission.status === "GRADING_ACTIVE"
-          )) || null;
-        }
+        //+_+// 동일 세션 Submission이 아닌 다른 제출본이 Draft 복구 정책을 방해하지 않도록 격리
         draftResumePolicy = evaluateStartupDraftResumePolicy({
           draft: persistedDraft,
           submission: persistedSubmission
         });
+
+        //+_+// 채점 화면 전용 대기/진행 중 제출본 조회
+        activeGradingSubmission = persistedSubmission;
+        if (!activeGradingSubmission || (activeGradingSubmission.status !== "PARENT_GRADING_PENDING" && activeGradingSubmission.status !== "GRADING_ACTIVE")) {
+          try {
+            const submissions = await getAllSubmissions({ learnerId: restoredLearnerId });
+            activeGradingSubmission = submissions.find((submission) => (
+              submission.status === "PARENT_GRADING_PENDING" || submission.status === "GRADING_ACTIVE"
+            )) || null;
+          } catch (subErr) {
+            console.warn("[Bootstrap] Active grading submission query failed:", subErr);
+          }
+        }
       } catch (draftErr) {
         console.warn("[Bootstrap] Persisted draft query failed:", draftErr);
       }
@@ -141,8 +150,8 @@ export async function bootstrapApp(options = {}) {
         return false;
       }
       if (mode === "grading" && (
-        persistedSubmission?.status === "PARENT_GRADING_PENDING" ||
-        persistedSubmission?.status === "GRADING_ACTIVE"
+        activeGradingSubmission?.status === "PARENT_GRADING_PENDING" ||
+        activeGradingSubmission?.status === "GRADING_ACTIVE"
       )) {
         return true;
       }
@@ -197,7 +206,7 @@ export async function bootstrapApp(options = {}) {
       restoredLearnerId,
       learnerCount: activeLearners.length,
       persistedDraft: resumableDraft,
-      persistedSubmission,
+      persistedSubmission: finalRoute === ROUTES.MATH_GRADING ? (persistedSubmission || activeGradingSubmission) : persistedSubmission,
       draftResumePolicy
     };
 
