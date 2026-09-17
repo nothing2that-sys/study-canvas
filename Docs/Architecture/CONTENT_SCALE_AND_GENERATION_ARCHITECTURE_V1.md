@@ -4,7 +4,7 @@
 작성일: 2026-09-17  
 적용 대상: Korean Core, English Core, English Vocabulary, 후속 Reading Content  
 상위 정본: `Docs/UNIFIED_CURRICULUM_ACTIVITY_PLATFORM_v2.3.md`  
-실행 문서: `Docs/Implementation_Phases/31_PHASE_F16_CONTENT_FACTORY_AND_SCALE_PROGRAM.md`
+F16 통합 실행 정본: `Docs/Implementation_Phases/34_PHASE_F16_CONTENT_FACTORY_AND_SCALE_PROGRAM_V2.md`
 
 ---
 
