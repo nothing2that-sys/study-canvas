@@ -178,6 +178,22 @@ export function validateSchema(schemaName, entity) {
       break;
     }
 
+    case "SentencePattern": {
+      if (!entity.patternId || typeof entity.patternId !== "string") {
+        errors.push("[SentencePattern] patternId is required");
+      }
+      if (!entity.pattern || typeof entity.pattern !== "string" || !entity.pattern.trim()) {
+        errors.push("[SentencePattern] pattern is required");
+      }
+      if (!entity.meaning || typeof entity.meaning !== "string" || !entity.meaning.trim()) {
+        errors.push("[SentencePattern] meaning is required");
+      }
+      if (typeof entity.gradeLevel !== "number" || entity.gradeLevel < 1 || entity.gradeLevel > 6) {
+        errors.push("[SentencePattern] gradeLevel must be an integer between 1 and 6");
+      }
+      break;
+    }
+
     case "KnowledgeRule": {
       if (!entity.ruleId || typeof entity.ruleId !== "string") {
         errors.push("[KnowledgeRule] ruleId is required");

@@ -410,18 +410,31 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
       }
     }
 
-    // Activities 검증
-    const activitiesRel = manifest.files?.activities || manifest.activitiesPath || "activities.json";
-    const activitiesPath = path.resolve(packageDir, activitiesRel);
-    const activitiesData = readJsonFile(activitiesPath);
-
-    if (activitiesData) {
-      if (activitiesData.packageId && activitiesData.packageId !== manifestPkgId) {
-        recordError(`activities.json: packageId 불일치 (manifest: ${manifestPkgId}, activities: ${activitiesData.packageId})`);
+    // Activities / Shard 검증
+    if (manifest.isSharded) {
+      const catalogRel = manifest.files?.catalog || "catalog.json";
+      const catalogPath = path.resolve(packageDir, catalogRel);
+      const catalogData = readJsonFile(catalogPath);
+      if (catalogData) {
+        if (!Array.isArray(catalogData.shards) || catalogData.shards.length === 0) {
+          recordError(`catalog.json: 패키지 ${manifestPkgId}의 shards 목록이 비어있습니다.`);
+        }
+        if (!catalogData.catalogHash) {
+          recordError(`catalog.json: 패키지 ${manifestPkgId}의 catalogHash가 누락되었습니다.`);
+        }
       }
-      if (!Array.isArray(activitiesData.activities)) {
-        recordError(`activities.json: 패키지 ${manifestPkgId}의 activities는 배열이어야 합니다.`);
-      } else {
+    } else {
+      const activitiesRel = manifest.files?.activities || manifest.activitiesPath || "activities.json";
+      const activitiesPath = path.resolve(packageDir, activitiesRel);
+      const activitiesData = readJsonFile(activitiesPath);
+
+      if (activitiesData) {
+        if (activitiesData.packageId && activitiesData.packageId !== manifestPkgId) {
+          recordError(`activities.json: packageId 불일치 (manifest: ${manifestPkgId}, activities: ${activitiesData.packageId})`);
+        }
+        if (!Array.isArray(activitiesData.activities)) {
+          recordError(`activities.json: 패키지 ${manifestPkgId}의 activities는 배열이어야 합니다.`);
+        } else {
         const seenActivityIds = new Set();
         const skillActivityCounts = new Map();
         for (const act of activitiesData.activities) {
@@ -550,6 +563,7 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
         }
       }
     }
+  }
 
     //+_+// Phase F14: 학년별 영단어 카탈로그 검증
     const wordsRel = manifest.files?.words;

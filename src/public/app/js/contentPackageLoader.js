@@ -121,7 +121,7 @@ export async function loadPackageManifest(manifestPath, baseDir = DEFAULT_CONTEN
   if (!data.files.curriculum) {
     throw new Error("manifest files에 curriculum 파일 경로가 필요합니다.");
   }
-  if (!data.files.activities) {
+  if (!data.isSharded && !data.files.activities) {
     throw new Error("manifest files에 activities 파일 경로가 필요합니다.");
   }
 
@@ -302,6 +302,17 @@ export async function loadPackage(packageId, baseDir = DEFAULT_CONTENT_BASE) {
   }
 
   const curriculum = await loadCurriculumPackage(manifest.files.curriculum, manifest._manifestDir, manifest.packageId);
+  registerPackageSkills(curriculum.skills);
+
+  if (manifest.isSharded) {
+    return {
+      manifest,
+      curriculum,
+      isSharded: true,
+      activities: []
+    };
+  }
+
   const activities = await loadActivityPackage(
     manifest.files.activities,
     manifest._manifestDir,
@@ -309,9 +320,6 @@ export async function loadPackage(packageId, baseDir = DEFAULT_CONTENT_BASE) {
     manifest.packageId,
     manifest.packageVersion
   );
-
-  // Curriculum Skills 자동 Registry 등록
-  registerPackageSkills(curriculum.skills);
 
   return {
     manifest,
