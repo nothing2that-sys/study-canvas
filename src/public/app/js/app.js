@@ -374,7 +374,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260918T063224087Z-ab80954",
+    appBuildId: "20260918T065817045Z-83f7847",
     sessionId: currentSession.id,
     learnerId: getActiveLearnerId(),
     subjectId: currentSession.subjectId || lastSessionConfig?.subjectId || "math",
