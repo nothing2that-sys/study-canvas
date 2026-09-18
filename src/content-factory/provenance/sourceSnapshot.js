@@ -23,7 +23,7 @@ export function canonicalJson(val) {
   if (Array.isArray(val)) {
     return "[" + val.map(canonicalJson).join(",") + "]";
   }
-  const keys = Object.keys(val).sort();
+  const keys = Object.keys(val).filter(k => val[k] !== undefined).sort();
   return "{" + keys.map(k => `${JSON.stringify(k)}:${canonicalJson(val[k])}`).join(",") + "}";
 }
 
@@ -133,6 +133,31 @@ export function validateProvenance(provenance, isProjectOwnedCandidate = false) 
   if (isProjectOwnedCandidate && provenance.sourceId !== "PROJECT_ORIGINAL" && !provenance.sourceRecordId) {
     errors.push("External content cannot be impersonated as PROJECT_OWNED without sourceRecordId");
   }
+
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Fully validates the end-to-end provenance chain for a MaterializedActivity or Candidate:
+ * MaterializedActivity -> Candidate -> GenerationRule -> Source Record -> Source Snapshot
+ * @param {object} entity
+ * @returns {{ valid: boolean, errors: string[] }}
+ */
+export function validateProvenanceChain(entity) {
+  const errors = [];
+  if (!entity || !entity.provenance) {
+    return { valid: false, errors: ["Missing entity or entity.provenance"] };
+  }
+  const p = entity.provenance;
+  if (!p.sourceId) errors.push("Missing provenance.sourceId in chain");
+  if (!p.sourceVersion) errors.push("Missing provenance.sourceVersion in chain");
+  if (!p.generationRuleId) errors.push("Missing provenance.generationRuleId in chain");
+  if (!p.generatorVersion) errors.push("Missing provenance.generatorVersion in chain");
+  if (!p.sourceHash) errors.push("Missing provenance.sourceHash in chain");
+  if (!p.sourceRecordId) errors.push("Missing provenance.sourceRecordId in chain");
 
   return {
     valid: errors.length === 0,

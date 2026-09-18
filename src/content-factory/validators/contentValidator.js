@@ -27,7 +27,7 @@ export function validateCandidate(candidate, context = {}) {
 
   // 2. License check
   if (candidate.license) {
-    const licRes = validateLicenseForMaterialization(candidate.license);
+    const licRes = validateLicenseForMaterialization(candidate.license, candidate.provenance);
     if (!licRes.valid) {
       errors.push(licRes.error);
     }
