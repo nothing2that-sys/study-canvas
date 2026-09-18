@@ -201,12 +201,12 @@ function escapeNavHtml(str) {
 export function updateGlobalLearningNav(currentPath, context = {}, options = {}) {
   const doc = options.documentRef || (typeof document !== "undefined" ? document : null);
   if (!doc) return;
-  const navEl = doc.getElementById ? doc.getElementById("globalLearningNav") : doc.querySelector?.("#globalLearningNav");
+  const navEl = doc.getElementById ? doc.getElementById("topbarNavActions") : doc.querySelector?.("#topbarNavActions");
   if (!navEl) return;
 
   const normPath = normalizePath(currentPath || "/");
 
-  // Home 및 Learners 화면에서는 상단 글로벌 네비게이션을 숨김 (루트/선택 화면)
+  // Home 및 Learners 화면에서는 Topbar 네비게이션 버튼을 숨김 (루트/선택 화면)
   if (normPath === ROUTES.HOME || normPath === ROUTES.LEARNERS) {
     navEl.hidden = true;
     return;
@@ -217,7 +217,6 @@ export function updateGlobalLearningNav(currentPath, context = {}, options = {})
 
   const homeBtn = doc.getElementById ? doc.getElementById("globalNavHomeBtn") : doc.querySelector?.("#globalNavHomeBtn");
   const upBtn = doc.getElementById ? doc.getElementById("globalNavUpBtn") : doc.querySelector?.("#globalNavUpBtn");
-  const breadcrumbsEl = doc.getElementById ? doc.getElementById("globalNavBreadcrumbs") : doc.querySelector?.("#globalNavBreadcrumbs");
 
   if (upBtn) {
     upBtn.disabled = !hierarchy.parentRoute;
@@ -227,16 +226,6 @@ export function updateGlobalLearningNav(currentPath, context = {}, options = {})
 
   if (homeBtn) {
     if (homeBtn.dataset) homeBtn.dataset.targetRoute = hierarchy.homeRoute || ROUTES.HOME;
-  }
-
-  if (breadcrumbsEl) {
-    breadcrumbsEl.innerHTML = hierarchy.breadcrumbs.map((crumb, idx) => {
-      const isCurrent = idx === hierarchy.breadcrumbs.length - 1;
-      if (isCurrent) {
-        return `<li class="global-nav-crumb is-current" aria-current="page"><span>${escapeNavHtml(crumb.label)}</span></li>`;
-      }
-      return `<li class="global-nav-crumb"><a href="#${crumb.route}" data-route="${crumb.route}">${escapeNavHtml(crumb.label)}</a></li>`;
-    }).join("");
   }
 }
 

@@ -5396,101 +5396,67 @@ body.theme-midnight .active-learner-pill {
   border-color: inherit !important;
 }
 
-/* 2. Global Learning Navigation Bar */
-.global-learning-nav {
-  position: sticky;
-  top: 56px;
-  z-index: 95;
+/* 2. Compact Topbar Navigation Buttons (Compact Global Navigation SSOT) */
+.topbar-nav-actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 16px;
-  background: var(--surface-header, rgba(255, 255, 255, 0.95));
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
-  box-sizing: border-box;
-  min-height: 52px;
-}
-
-.global-nav-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-.global-nav-btn {
+.topbar-nav-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   min-height: 44px;
   min-width: 44px;
-  padding: 0 14px;
-  border-radius: 8px;
+  padding: 0 12px;
+  border-radius: 10px;
   border: 1px solid var(--border-color, #dadce0);
-  background: var(--card-bg, #ffffff);
+  background: var(--card-bg, rgba(255,255,255,0.82));
   color: var(--text-color, #202124);
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 0.88rem;
+  font-weight: 700;
   cursor: pointer;
   touch-action: manipulation;
   user-select: none;
   transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
 }
 
-.global-nav-btn:hover {
+.topbar-nav-btn:hover {
   background: var(--bg-hover, #f1f3f4);
   border-color: #bdc1c6;
 }
 
-.global-nav-btn:active {
+.topbar-nav-btn:active {
   background: var(--bg-active, #e8eaed);
 }
 
-.global-nav-breadcrumbs {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.9rem;
-  color: #5f6368;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.topbar-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  pointer-events: none;
 }
 
-.breadcrumb-item {
-  display: inline-flex;
-  align-items: center;
+.topbar-nav-icon {
+  font-size: 1rem;
+  line-height: 1;
 }
 
-.breadcrumb-link {
-  color: #1a73e8;
-  text-decoration: none;
-  font-weight: 500;
-  cursor: pointer;
+.topbar-nav-label {
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
-.breadcrumb-link:hover {
-  text-decoration: underline;
-}
-
-.breadcrumb-sep {
-  color: #9aa0a6;
-  font-size: 0.8rem;
-  margin: 0 4px;
-}
-
-.breadcrumb-current {
-  font-weight: 600;
-  color: #202124;
-}
-
-@media (max-width: 600px) {
-  .global-nav-breadcrumbs {
+@media (max-width: 480px) {
+  .topbar-nav-label {
     display: none;
+  }
+  .topbar-nav-btn {
+    padding: 0 10px;
+    min-width: 40px;
   }
 }
 

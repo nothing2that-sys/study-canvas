@@ -6,28 +6,39 @@
     <meta name="theme-color" content="#173f35">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="Math Canvas">
+    <meta name="apple-mobile-web-app-title" content="Study Canvas">
     <meta name="robots" content="noindex, nofollow">
-    <meta name="description" content="직접 쓰고 정확하게 익히는 연산 학습 도구">
-    <meta property="og:title" content="Math Canvas Pro">
-    <meta property="og:description" content="손으로 익히는 연산">
+    <meta name="description" content="수학 · 국어 · 영어를 함께 배우는 디지털 학습 공간">
+    <meta property="og:title" content="Study Canvas">
+    <meta property="og:description" content="수학 · 국어 · 영어 학습">
     <meta property="og:type" content="website">
     <meta name="twitter:card" content="summary_large_image">
-    <title>Math Canvas Pro</title>
+    <title>Study Canvas</title>
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-180.png">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
-    <link rel="stylesheet" href="./css/app.css?v=20260918T012235644Z-659aa7e">
+    <link rel="stylesheet" href="./css/app.css?v=20260918T014556112Z-1cfab0d">
   </head>
   <body>
     <div class="app-shell">
       <!-- 상단 네비게이션 바 -->
       <header class="topbar">
-        <a class="brand" href="./" id="homeBrandLink" aria-label="Math Canvas Pro 홈">
-          <span class="brand-mark" aria-hidden="true">M</span>
-          <span><strong>Math Canvas</strong><small>손으로 익히는 연산</small></span>
+        <a class="brand" href="./" id="homeBrandLink" aria-label="Study Canvas 홈">
+          <span class="brand-mark" aria-hidden="true">S</span>
+          <span><strong>Study Canvas</strong><small>수학 · 국어 · 영어 학습</small></span>
         </a>
+        <!-- 🌟 Compact Topbar Navigation (Compact Global Navigation SSOT) -->
+        <div class="topbar-nav-actions" id="topbarNavActions" hidden>
+          <button type="button" id="globalNavHomeBtn" class="topbar-nav-btn topbar-nav-home-btn" aria-label="홈으로 이동">
+            <span class="topbar-nav-icon" aria-hidden="true">🏠</span>
+            <span class="topbar-nav-label">홈</span>
+          </button>
+          <button type="button" id="globalNavUpBtn" class="topbar-nav-btn topbar-nav-up-btn" aria-label="상위 단계로 이동">
+            <span class="topbar-nav-icon" aria-hidden="true">↑</span>
+            <span class="topbar-nav-label">위로</span>
+          </button>
+        </div>
         <div class="active-learner-pill" id="activeLearnerBadge" hidden>
           <span class="active-learner-avatar" id="activeLearnerAvatar">🌱</span>
           <strong class="active-learner-name" id="activeLearnerName">학습자</strong>
@@ -48,26 +59,10 @@
         </div>
       </header>
 
-      <!-- 🌟 Global Learning Navigation (Cross-Phase SSOT) -->
-      <nav id="globalLearningNav" class="global-learning-nav" aria-label="학습 네비게이션" hidden>
-        <div class="global-nav-container">
-          <div class="global-nav-actions">
-            <button type="button" id="globalNavHomeBtn" class="global-nav-btn global-nav-home-btn" aria-label="홈으로 이동">
-              <span class="global-nav-icon">🏠</span>
-              <span class="global-nav-label">홈</span>
-            </button>
-            <button type="button" id="globalNavUpBtn" class="global-nav-btn global-nav-up-btn" aria-label="상위 단계로 이동">
-              <span class="global-nav-icon">⬆️</span>
-              <span class="global-nav-label">위로</span>
-            </button>
-          </div>
-          <ol id="globalNavBreadcrumbs" class="global-nav-breadcrumbs" aria-label="현재 위치"></ol>
-        </div>
-      </nav>
 
       <!-- 🌟 PWA 새 버전 업데이트 안내 배너 -->
       <aside class="update-banner" id="updateBanner" hidden aria-live="polite">
-        <span>✨ 새 버전의 Math Canvas Pro가 준비되었습니다.</span>
+        <span>✨ 새 버전의 Study Canvas가 준비되었습니다.</span>
         <div class="update-banner-actions">
           <button type="button" class="btn-update-apply" id="applyUpdateBtn">지금 업데이트</button>
           <button type="button" class="btn-update-dismiss" id="dismissUpdateBtn" aria-label="닫기">✕</button>
@@ -1037,6 +1032,6 @@
         }).catch(() => {});
       })();
     </script>
-    <script type="module" src="./js/app.js?v=20260918T012235644Z-659aa7e"></script>
+    <script type="module" src="./js/app.js?v=20260918T014556112Z-1cfab0d"></script>
   </body>
 </html>

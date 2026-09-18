@@ -374,7 +374,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260918T012235644Z-659aa7e",
+    appBuildId: "20260918T014556112Z-1cfab0d",
     sessionId: currentSession.id,
     learnerId: getActiveLearnerId(),
     subjectId: currentSession.subjectId || lastSessionConfig?.subjectId || "math",
@@ -3691,8 +3691,8 @@ if (typeof document !== "undefined") {
     beforePageChange: () => draftSaveCoordinator?.flush?.()
   });
 
-  // Global Learning Navigation 바인딩
-  const globalNavEl = document.getElementById("globalLearningNav");
+  // Compact Topbar Navigation 바인딩
+  const globalNavEl = document.getElementById("topbarNavActions");
   if (globalNavEl) {
     document.getElementById("globalNavHomeBtn")?.addEventListener("click", () => {
       handleSafeLearningNavigation(ROUTES.HOME);
@@ -3701,12 +3701,6 @@ if (typeof document !== "undefined") {
       const btn = e.currentTarget;
       const target = btn.dataset.targetRoute || ROUTES.HOME;
       handleSafeLearningNavigation(target);
-    });
-    document.getElementById("globalNavBreadcrumbs")?.addEventListener("click", (e) => {
-      const link = e.target.closest("a[data-route]");
-      if (!link) return;
-      e.preventDefault();
-      handleSafeLearningNavigation(link.dataset.route);
     });
   }
 

@@ -164,13 +164,12 @@ test("Cross-Phase Navigation: Dynamic workbook context customizes breadcrumbs", 
   assert.equal(lastCrumb.label, "기적의 분수 마스터 1단계");
 });
 
-test("Cross-Phase Navigation DOM: updateGlobalLearningNav controls visibility and target routes", async () => {
-  // Create mock DOM structure
+test("Cross-Phase Navigation DOM: updateGlobalLearningNav controls topbar nav visibility and target routes", async () => {
+  // Create mock DOM structure — nav container is now topbarNavActions (inside topbar)
   const elements = {
-    globalLearningNav: { hidden: false },
+    topbarNavActions: { hidden: false },
     globalNavHomeBtn: { dataset: {} },
-    globalNavUpBtn: { disabled: false, dataset: {}, title: "" },
-    globalNavBreadcrumbs: { innerHTML: "" }
+    globalNavUpBtn: { disabled: false, dataset: {}, title: "" }
   };
 
   const fakeDocument = {
@@ -179,26 +178,45 @@ test("Cross-Phase Navigation DOM: updateGlobalLearningNav controls visibility an
 
   const { updateGlobalLearningNav } = await import("../public/app/js/navigationHierarchy.js");
 
-  // 1. On Home route, nav must be hidden
+  // 1. On Home route, topbar nav must be hidden
   updateGlobalLearningNav(ROUTES.HOME, {}, { documentRef: fakeDocument });
-  assert.equal(elements.globalLearningNav.hidden, true, "Nav must be hidden on HOME");
+  assert.equal(elements.topbarNavActions.hidden, true, "Topbar nav must be hidden on HOME");
 
-  // 2. On Learners route, nav must be hidden
+  // 2. On Learners route, topbar nav must be hidden
   updateGlobalLearningNav(ROUTES.LEARNERS, {}, { documentRef: fakeDocument });
-  assert.equal(elements.globalLearningNav.hidden, true, "Nav must be hidden on LEARNERS");
+  assert.equal(elements.topbarNavActions.hidden, true, "Topbar nav must be hidden on LEARNERS");
 
-  // 3. On Math Fraction Practice route, nav must be visible, Up pointing to /math/fractions
+  // 3. On Math Fraction Practice route, topbar nav must be visible, Up pointing to /math/fractions
   updateGlobalLearningNav(ROUTES.MATH_FRACTION_PRACTICE, {}, { documentRef: fakeDocument });
-  assert.equal(elements.globalLearningNav.hidden, false, "Nav must be visible on practice");
+  assert.equal(elements.topbarNavActions.hidden, false, "Topbar nav must be visible on practice");
   assert.equal(elements.globalNavHomeBtn.dataset.targetRoute, ROUTES.HOME);
   assert.equal(elements.globalNavUpBtn.dataset.targetRoute, ROUTES.MATH_FRACTION);
   assert.equal(elements.globalNavUpBtn.disabled, false);
-  assert.match(elements.globalNavBreadcrumbs.innerHTML, /문제풀이/);
-  assert.match(elements.globalNavBreadcrumbs.innerHTML, /분수/);
 
   // 4. On Guardian Grading route, Up must point to Home
   updateGlobalLearningNav(ROUTES.MATH_GRADING, {}, { documentRef: fakeDocument });
-  assert.equal(elements.globalLearningNav.hidden, false);
+  assert.equal(elements.topbarNavActions.hidden, false);
   assert.equal(elements.globalNavUpBtn.dataset.targetRoute, ROUTES.HOME);
+});
+
+// ============================================================================
+// Study Canvas Branding Verification
+// ============================================================================
+test("Branding: navigationHierarchy module exports are intact after Study Canvas rework", () => {
+  // The navigation hierarchy data must still be intact (breadcrumbs data preserved)
+  const hierarchy = getNavigationHierarchy(ROUTES.MATH_FRACTION_PRACTICE);
+  assert.equal(hierarchy.homeRoute, ROUTES.HOME);
+  assert.ok(Array.isArray(hierarchy.breadcrumbs), "Breadcrumbs array must still be present in hierarchy data");
+  assert.equal(hierarchy.breadcrumbs.length, 4, "MATH_FRACTION_PRACTICE must have 4-item breadcrumb data");
+  // parentRoute and parentLabel must be intact for Up button logic
+  assert.equal(hierarchy.parentRoute, ROUTES.MATH_FRACTION, "Up button target must be MATH_FRACTION");
+  assert.equal(hierarchy.parentLabel, "분수");
+});
+
+test("Branding: Decimal domain hierarchy also intact after rework", () => {
+  const hierarchy = getNavigationHierarchy(ROUTES.MATH_DECIMAL_PRACTICE);
+  assert.equal(hierarchy.parentRoute, ROUTES.MATH_DECIMAL, "Decimal Up target must be MATH_DECIMAL");
+  assert.equal(hierarchy.parentLabel, "소수");
+  assert.ok(Array.isArray(hierarchy.breadcrumbs));
 });
 

@@ -90,18 +90,18 @@ Math Canvas Pro는 기초 연산(Phase F1~F9)에서 시작하여 측정 및 단�
 
 ---
 
-## 4. Requirement C: 2-Tier 글로벌 학습 네비게이션 체계
+## 4. Requirement C: Compact Topbar 글로벌 학습 네비게이션 체계
+
+> **Updated**: Phase F15C UX Rework — Breadcrumb UI 제거, Home/Up 버튼 Topbar 내부 통합
 
 ### 4.1 UI 구조 및 배치
-- `<nav id="globalLearningNav" class="global-learning-nav">`가 `<header class="topbar">` 바로 아래 고정 렌더링된다.
-- **2-Tier 액션 버튼**:
-  1. `홈(Home)`: 어떤 깊이의 화면에서든 1클릭으로 통합 학습 대시보드(`/home`)로 복귀.
-  2. `위로(Up)`: 현재 학습 컨텍스트의 논리적 1단계 상위 뷰로 복귀 (예: 문제풀이 -> 단원/문제집 랜딩).
-- **시맨틱 Breadcrumbs**:
-  - `홈 > 수학 > 분수 > 문제풀이`
-  - `홈 > 국어 > 국어 기초 > 문제풀이`
-  - `홈 > 영어 > 영어 기초 > 문제풀이`
-  - `홈 > 책장 > [문제집 제목]`
+- `<div id="topbarNavActions" class="topbar-nav-actions">` 가 `<header class="topbar">` **내부** (Brand 옆)에 위치한다.
+- **2개 액션 버튼 (Topbar 내 통합)**:
+  1. `홈(Home)` `[id="globalNavHomeBtn"]`: 어떤 깊이의 화면에서든 1클릭으로 통합 학습 대시보드(`/home`)로 복귀.
+  2. `위로(Up)` `[id="globalNavUpBtn"]`: 현재 학습 컨텍스트의 논리적 1단계 상위 뷰로 복귀.
+- **Breadcrumb UI는 제거되었으나**, `getNavigationHierarchy()`가 반환하는 `breadcrumbs[]` 배열 데이터는 내부적으로 **유지**된다 (미래 확장 및 Up 버튼 로직에 활용).
+- Home 및 Learners 화면에서는 `topbarNavActions` 컨테이너 전체가 `hidden` 처리된다.
+- **이전 `<nav id="globalLearningNav">` 요소는 DOM에서 완전히 제거**되었다.
 
 ### 4.2 안전 상태 보존 (Data Loss Prevention)
 네비게이션 클릭(`handleSafeLearningNavigation(targetRoute)`) 시 다음 무손실 보존 로직이 필수 실행된다:
@@ -122,5 +122,6 @@ Math Canvas Pro는 기초 연산(Phase F1~F9)에서 시작하여 측정 및 단�
 |---|---|---|---|---|
 | **REQ-A** | Choice/Text Read-only + 캔버스 전면 탑재 | `typedInteractionSurface.js`, `app.js` | `phase-cross-phase-grading-nav.test.mjs` | ✅ PASS |
 | **REQ-B** | 교과 특화 채점 피드백 프리셋 | `guardianFeedbackPresets.js` | `phase-cross-phase-grading-nav.test.mjs` | ✅ PASS |
-| **REQ-C** | 2-Tier 학습 네비게이션 및 데이터 무손실 이동 | `navigationHierarchy.js`, `app.js` | `phase-cross-phase-grading-nav.test.mjs` | ✅ PASS |
-| **REG-ALL**| 전체 플랫폼 858개 단위/통합/E2E 테스트 | 전체 시스템 | `npm run test:unit` | ✅ 858/858 PASS |
+| **REQ-C** | Compact Topbar 네비게이션 (Home/Up in Topbar) | `navigationHierarchy.js`, `app.js` | `phase-cross-phase-grading-nav.test.mjs` | ✅ PASS |
+| **REQ-BRAND**| Study Canvas 브랜딩 (title, manifest, aria) | `index.html`, `manifest.webmanifest` | `phase-cross-phase-grading-nav.test.mjs` | ✅ PASS |
+| **REG-ALL**| 전체 플랫폼 883개+ 단위/통합/E2E 테스트 | 전체 시스템 | `npm run test:unit` | ✅ PASS |

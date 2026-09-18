@@ -1,7 +1,7 @@
 {
-  "name": "Math Canvas Pro",
-  "short_name": "Math Canvas",
-  "description": "직접 쓰고 정확하게 익히는 연산 학습 도구",
+  "name": "Study Canvas",
+  "short_name": "Study Canvas",
+  "description": "수학 · 국어 · 영어를 함께 배우는 디지털 학습 공간",
   "lang": "ko",
   "start_url": "/",
   "scope": "/",
