@@ -229,6 +229,87 @@ const rawCatalog = [
   },
   {
     definition: {
+      workbookId: "math-decimal-g3",
+      type: "FIXED",
+      subjectId: "math",
+      courseId: "decimal",
+      title: "3학년 소수 개념: 소수의 이해와 자릿값",
+      description: "0.1 단위 소수, 0.01 단위 소수와 자릿값의 기초를 배워요.",
+      gradeLevel: 3,
+      semester: "ALL",
+      difficulty: "FOUNDATION",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["4수01-12", "4수01-13"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "math-decimal-g3",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "math-decimal-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "math-decimal-g3-p1", pageNumber: 1, unitId: "concepts", title: "0.1 단위의 소수", launchTarget: "/math/decimal", activityRefs: [{ activityId: "dec_tenths_bar_001" }, { activityId: "dec_tenths_text_002" }] },
+        { pageId: "math-decimal-g3-p2", pageNumber: 2, unitId: "concepts", title: "0.01 단위 소수와 자릿값", launchTarget: "/math/decimal", activityRefs: [{ activityId: "dec_hundredths_grid_001" }, { activityId: "dec_place_value_text_001" }] }
+      ]
+    }
+  },
+  {
+    definition: {
+      workbookId: "math-decimal-g4",
+      type: "FIXED",
+      subjectId: "math",
+      courseId: "decimal",
+      title: "4학년 소수 연산: 크기 비교와 덧셈·뺄셈",
+      description: "소수의 크기를 비교하고 자리맞춤 덧셈과 뺄셈을 연습해요.",
+      gradeLevel: 4,
+      semester: "ALL",
+      difficulty: "STANDARD",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["4수01-14", "4수01-16"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "math-decimal-g4",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "math-decimal-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "math-decimal-g4-p1", pageNumber: 1, unitId: "compare", title: "소수의 크기 비교", launchTarget: "/math/decimal", activityRefs: [{ activityId: "dec_compare_choice_001" }] },
+        { pageId: "math-decimal-g4-p2", pageNumber: 2, unitId: "operations", title: "소수의 덧셈과 뺄셈", launchTarget: "/math/decimal", activityRefs: [{ activityId: "dec_add_text_001" }, { activityId: "dec_sub_text_001" }] }
+      ]
+    }
+  },
+  {
+    definition: {
+      workbookId: "math-decimal-g5",
+      type: "FIXED",
+      subjectId: "math",
+      courseId: "decimal",
+      title: "5~6학년 소수 연산: 소수 곱셈과 나눗셈",
+      description: "소수점 이동을 이해하고 소수의 곱셈과 나눗셈을 연습해요.",
+      gradeLevel: 5,
+      semester: "ALL",
+      difficulty: "STANDARD",
+      status: "ACTIVE",
+      curriculumVersion: "2022-revised",
+      achievementStandardIds: ["6수01-13", "6수01-14", "6수01-15"],
+      reviewStatus: "APPROVED"
+    },
+    edition: {
+      workbookId: "math-decimal-g5",
+      editionVersion: 1,
+      contentPackageRefs: [{ packageId: "math-decimal-v1", packageVersion: "1.0.0" }],
+      reviewStatus: "APPROVED",
+      pages: [
+        { pageId: "math-decimal-g5-p1", pageNumber: 1, unitId: "operations", title: "소수의 곱셈", launchTarget: "/math/decimal", activityRefs: [{ activityId: "dec_mul_text_001" }] },
+        { pageId: "math-decimal-g5-p2", pageNumber: 2, unitId: "operations", title: "소수의 나눗셈", launchTarget: "/math/decimal", activityRefs: [{ activityId: "dec_div_text_001" }] }
+      ]
+    }
+  },
+  {
+    definition: {
       workbookId: "english-vocabulary-review-g3",
       type: "REVIEW",
       subjectId: "english",

@@ -73,6 +73,18 @@ const ROUTE_HIERARCHY_CONFIG = Object.freeze({
     parentLabel: "분수",
     breadcrumbs: [{ label: "홈", route: ROUTES.HOME }, { label: "수학", route: ROUTES.MATH_HOME }, { label: "분수", route: ROUTES.MATH_FRACTION }, { label: "문제풀이", route: ROUTES.MATH_FRACTION_PRACTICE }]
   },
+  [ROUTES.MATH_DECIMAL]: {
+    label: "소수",
+    parentRoute: ROUTES.MATH_HOME,
+    parentLabel: "수학",
+    breadcrumbs: [{ label: "홈", route: ROUTES.HOME }, { label: "수학", route: ROUTES.MATH_HOME }, { label: "소수", route: ROUTES.MATH_DECIMAL }]
+  },
+  [ROUTES.MATH_DECIMAL_PRACTICE]: {
+    label: "문제풀이",
+    parentRoute: ROUTES.MATH_DECIMAL,
+    parentLabel: "소수",
+    breadcrumbs: [{ label: "홈", route: ROUTES.HOME }, { label: "수학", route: ROUTES.MATH_HOME }, { label: "소수", route: ROUTES.MATH_DECIMAL }, { label: "문제풀이", route: ROUTES.MATH_DECIMAL_PRACTICE }]
+  },
   [ROUTES.KOREAN_HOME]: {
     label: "국어",
     parentRoute: ROUTES.HOME,

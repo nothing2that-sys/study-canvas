@@ -56,6 +56,8 @@ import { setupModalManager } from "./modalEngine.js";
 import { GradeDecision, normalizeGradeDecision } from "./parentGrading.js";
 import { ResponseType, ActivityType, DEFAULT_PROBLEM_COUNT, resolveActivityResponseType, usesDrawingCanvas } from "./learningActivity.js";
 import { renderFractionRepresentation } from "./fractionRepresentationView.js";
+import { renderDecimalRepresentation } from "./decimalRepresentationView.js";
+import { generateDecimalProblemSet } from "./decimalGenerator.js";
 import { getWorkbookCatalogItem } from "./workbookCatalog.js";
 import { createResponseRecord, applyStudentResponseChange } from "./responseEngine.js";
 import { getActivityDisplayLabel, isInternalIdentifier } from "./displayLabels.js";
@@ -372,7 +374,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260918T002258483Z-db8dd1b",
+    appBuildId: "20260918T012112939Z-4de8f3e",
     sessionId: currentSession.id,
     learnerId: getActiveLearnerId(),
     subjectId: currentSession.subjectId || lastSessionConfig?.subjectId || "math",
@@ -2285,7 +2287,8 @@ function renderGradingView() {
     const cardLevel = escapeHtml(getActivityDisplayLabel(q, currentSession?.config));
     const isCanvasResponse = usesDrawingCanvas(q);
     const questionSubject = q.subjectId || currentSession?.config?.subjectId || currentSubmission?.subjectId || "math";
-    const feedbackPresets = getGuardianFeedbackPresets(questionSubject);
+    const questionCourse = q.courseId || currentSession?.config?.courseId || currentSubmission?.courseId || "";
+    const feedbackPresets = getGuardianFeedbackPresets({ subjectId: questionSubject, courseId: questionCourse });
     card.innerHTML = `
       <div class="card-header">
         <span class="card-order">${idx + 1}번 문제</span>
@@ -3720,6 +3723,8 @@ if (typeof document !== "undefined") {
       await renderMeasurementLandingView();
     } else if (path === ROUTES.MATH_FRACTION) {
       await handleFractionLandingOrWorkbookLaunch();
+    } else if (path === ROUTES.MATH_DECIMAL) {
+      await handleDecimalLandingOrWorkbookLaunch();
     } else if (path === ROUTES.KOREAN_HOME || path === ROUTES.KOREAN_CORE) {
       await renderKoreanLandingView();
     } else if (path === ROUTES.ENGLISH_HOME || path === ROUTES.ENGLISH_CORE) {
@@ -3763,11 +3768,13 @@ if (typeof document !== "undefined") {
         await renderMeasurementLandingView();
       } else if (route === ROUTES.MATH_FRACTION) {
         await handleFractionLandingOrWorkbookLaunch();
+      } else if (route === ROUTES.MATH_DECIMAL) {
+        await handleDecimalLandingOrWorkbookLaunch();
       } else if (route === ROUTES.KOREAN_HOME || route === ROUTES.KOREAN_CORE) {
         await renderKoreanLandingView();
       } else if (route === ROUTES.ENGLISH_HOME || route === ROUTES.ENGLISH_CORE) {
         await renderEnglishLandingView();
-      } else if (route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.MATH_FRACTION_PRACTICE || route === ROUTES.KOREAN_CORE_PRACTICE || route === ROUTES.ENGLISH_CORE_PRACTICE || route === ROUTES.MATH_GRADING) {
+      } else if (route === ROUTES.MATH_PRACTICE || route === ROUTES.MATH_MEASUREMENT_PRACTICE || route === ROUTES.MATH_FRACTION_PRACTICE || route === ROUTES.MATH_DECIMAL_PRACTICE || route === ROUTES.KOREAN_CORE_PRACTICE || route === ROUTES.ENGLISH_CORE_PRACTICE || route === ROUTES.MATH_GRADING) {
         if (result.persistedDraft) {
           restoreSessionFromDraft(result.persistedDraft);
         } else if (route === ROUTES.MATH_GRADING && result.persistedSubmission) {
@@ -3961,6 +3968,65 @@ export async function handleFractionLandingOrWorkbookLaunch() {
     }
     if (activities.length > 0) {
       startFractionPracticeSession({ activities, workbookContext, pageSize: 2 });
+      return;
+    }
+  } catch (err) {
+    console.warn(`[app] ${targetPackageId} 로드 실패:`, err);
+  }
+  navigate(ROUTES.BOOKSHELF);
+}
+
+//+_+// Phase F15C: 소수 개념 및 연산 학습 세션 시작
+export function startDecimalPracticeSession({ activities, workbookContext = null, pageSize = 2 } = {}) {
+  if (!Array.isArray(activities) || activities.length === 0) {
+    throw new Error("소수 학습 문제가 필요합니다.");
+  }
+  const firstAct = activities[0];
+  const sessionConfig = {
+    subjectId: "math",
+    courseId: "decimal",
+    moduleId: firstAct.moduleId || "concepts",
+    unitId: firstAct.unitId || "concepts",
+    skillId: firstAct.skillId || "MATH_DECIMAL_TENTHS",
+    stageId: firstAct.skillId || "MATH_DECIMAL_TENTHS",
+    macroLevelId: firstAct.skillId || "MATH_DECIMAL_TENTHS",
+    skillTitle: firstAct.displayLabel || firstAct.skillTitle || firstAct.name || "소수 개념과 연산",
+    difficulty: String(firstAct.difficulty || "FOUNDATION"),
+    problemCount: activities.length,
+    pageSize,
+    mathFormat: "horizontal"
+  };
+  const effectiveConfig = workbookContext ? { ...sessionConfig, ...workbookContext } : sessionConfig;
+  startSessionWithQuestions(activities, effectiveConfig);
+}
+
+//+_+// Phase F15C: 소수 문제집 연계 실행 또는 랜딩 처리
+export async function handleDecimalLandingOrWorkbookLaunch() {
+  const workbookContext = getActiveWorkbookContext();
+  let targetPackageId = "math-decimal-v1";
+  if (workbookContext?.workbookId) {
+    const catalogItem = getWorkbookCatalogItem(workbookContext.workbookId);
+    const refPkgId = catalogItem?.edition?.contentPackageRefs?.[0]?.packageId;
+    if (refPkgId) {
+      targetPackageId = refPkgId;
+    }
+  }
+  let activities = [];
+  try {
+    let pkg = await loadPackage(targetPackageId);
+    if (workbookContext?.workbookPageId && pkg?.activities) {
+      const catalogItem = getWorkbookCatalogItem(workbookContext.workbookId);
+      const page = catalogItem?.edition?.pages?.find((p) => p.pageId === workbookContext.workbookPageId);
+      if (page?.activityRefs?.length > 0) {
+        const refIds = new Set(page.activityRefs.map((r) => r.activityId || r.id || r));
+        activities = pkg.activities.filter((a) => refIds.has(a.id));
+      }
+    }
+    if (activities.length === 0 && pkg?.activities?.length > 0) {
+      activities = pkg.activities.slice(0, 4);
+    }
+    if (activities.length > 0) {
+      startDecimalPracticeSession({ activities, workbookContext, pageSize: 2 });
       return;
     }
   } catch (err) {

@@ -11,6 +11,9 @@ export const LEARNING_ROUTES = Object.freeze({
   //+_+// Phase F15A: Fraction Concepts 라우트
   FRACTION_LANDING: "/math/fraction",
   FRACTION_PRACTICE: "/math/fraction/practice",
+  //+_+// Phase F15C: Decimal Concepts 라우트
+  DECIMAL_LANDING: "/math/decimal",
+  DECIMAL_PRACTICE: "/math/decimal/practice",
   //+_+// Phase F12: Korean Core 라우트
   KOREAN_LANDING: "/korean/core",
   KOREAN_PRACTICE: "/korean/core/practice",
@@ -61,6 +64,10 @@ export function resolvePracticeRoute(arg1 = {}, maybeCourseId = "", maybeModuleI
     return LEARNING_ROUTES.KOREAN_PRACTICE;
   }
 
+  if (normCourse === "decimal" || normModule === "decimal") {
+    return LEARNING_ROUTES.DECIMAL_PRACTICE;
+  }
+
   if (normCourse === "fraction" || normModule === "fraction") {
     return LEARNING_ROUTES.FRACTION_PRACTICE;
   }
@@ -106,6 +113,10 @@ export function resolveLandingRoute(arg1 = {}, maybeCourseId = "", maybeModuleId
     return LEARNING_ROUTES.KOREAN_LANDING;
   }
 
+  if (normCourse === "decimal" || normModule === "decimal") {
+    return LEARNING_ROUTES.DECIMAL_LANDING;
+  }
+
   if (normCourse === "fraction" || normModule === "fraction") {
     return LEARNING_ROUTES.FRACTION_LANDING;
   }
@@ -131,6 +142,14 @@ export function isMeasurementRoute(routePath) {
 export function isFractionRoute(routePath) {
   if (!routePath) return false;
   return routePath === LEARNING_ROUTES.FRACTION_LANDING || routePath === LEARNING_ROUTES.FRACTION_PRACTICE;
+}
+
+/**
+ * 주어진 라우트가 Decimal 관련 경로인지 확인
+ */
+export function isDecimalRoute(routePath) {
+  if (!routePath) return false;
+  return routePath === LEARNING_ROUTES.DECIMAL_LANDING || routePath === LEARNING_ROUTES.DECIMAL_PRACTICE;
 }
 
 /**

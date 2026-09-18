@@ -111,11 +111,11 @@ export const SUBJECTS = Object.freeze([
       {
         id: "decimal",
         title: "소수 연산",
-        description: "소수의 덧셈·뺄셈·곱셈·나눗셈",
-        badgeText: "준비 중",
+        description: "소수의 개념, 자릿값, 크기 비교 및 덧셈·뺄셈·곱셈·나눗셈",
+        badgeText: "학습 가능",
         icon: "0.5",
-        status: "coming_soon",
-        enabled: false,
+        status: "active",
+        enabled: true,
         route: "/math/decimal"
       }
     ],

@@ -24,6 +24,14 @@ export const MATH_FEEDBACK_PRESETS = Object.freeze([
   { id: "math_unit", text: "📏 단위 확인", label: "📏 단위 확인", category: FeedbackCategory.MATH }
 ]);
 
+export const DECIMAL_FEEDBACK_PRESETS = Object.freeze([
+  { id: "decimal_point", text: "🔍 소수점 위치 확인", label: "🔍 소수점 위치 확인", category: FeedbackCategory.MATH },
+  { id: "decimal_place_value", text: "📐 자릿값 다시 확인", label: "📐 자릿값 다시 확인", category: FeedbackCategory.MATH },
+  { id: "decimal_alignment", text: "📏 소수점 자리맞춤 확인", label: "📏 소수점 자리맞춤 확인", category: FeedbackCategory.MATH },
+  { id: "decimal_carry_borrow", text: "⚠️ 받아올림/받아내림 확인", label: "⚠️ 받아올림/받아내림 확인", category: FeedbackCategory.MATH },
+  { id: "decimal_calc_process", text: "✏️ 계산 과정 다시 확인", label: "✏️ 계산 과정 다시 확인", category: FeedbackCategory.MATH }
+]);
+
 export const KOREAN_FEEDBACK_PRESETS = Object.freeze([
   { id: "korean_final_consonant", text: "📝 받침 확인", label: "📝 받침 확인", category: FeedbackCategory.KOREAN },
   { id: "korean_spacing", text: "📐 띄어쓰기 확인", label: "📐 띄어쓰기 확인", category: FeedbackCategory.KOREAN },
@@ -50,6 +58,7 @@ export const ENGLISH_FEEDBACK_PRESETS = Object.freeze([
  */
 export function getGuardianFeedbackPresets(params = {}) {
   const subjectId = typeof params === "string" ? params : (params?.subjectId || "math");
+  const courseId = typeof params === "object" ? String(params?.courseId || "").toLowerCase() : "";
   const normSubject = String(subjectId || "math").trim().toLowerCase();
 
   let subjectPresets = MATH_FEEDBACK_PRESETS;
@@ -58,13 +67,17 @@ export function getGuardianFeedbackPresets(params = {}) {
   } else if (normSubject === "english") {
     subjectPresets = ENGLISH_FEEDBACK_PRESETS;
   } else if (normSubject === "math") {
-    subjectPresets = MATH_FEEDBACK_PRESETS;
+    if (courseId === "decimal") {
+      subjectPresets = DECIMAL_FEEDBACK_PRESETS;
+    } else {
+      subjectPresets = MATH_FEEDBACK_PRESETS;
+    }
   } else {
     // 알 수 없는 과목의 경우 공통 프리셋만 안전 제공
     return [...COMMON_FEEDBACK_PRESETS];
   }
 
-  // 공통 칭찬/재시도 프리셋 + 과목 도메인 특화 프리셋
+  // 공통 칭찬/재시도 프리셋 + 과목/도메인 특화 프리셋
   return [
     COMMON_FEEDBACK_PRESETS[0], // 완벽해요!
     ...subjectPresets,

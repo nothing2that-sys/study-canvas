@@ -27,6 +27,9 @@ export const ROUTES = Object.freeze({
   //+_+// Phase F15A: Fraction Concepts 모듈 라우트
   MATH_FRACTION: "/math/fraction",
   MATH_FRACTION_PRACTICE: "/math/fraction/practice",
+  //+_+// Phase F15C: Decimal Concepts & Operations 모듈 라우트
+  MATH_DECIMAL: "/math/decimal",
+  MATH_DECIMAL_PRACTICE: "/math/decimal/practice",
   //+_+// Phase F12: Korean Core 모듈 라우트
   KOREAN_HOME: "/korean",
   KOREAN_CORE: "/korean/core",
@@ -52,6 +55,8 @@ const PROTECTED_ROUTES = new Set([
   ROUTES.MATH_MEASUREMENT_PRACTICE,
   ROUTES.MATH_FRACTION,
   ROUTES.MATH_FRACTION_PRACTICE,
+  ROUTES.MATH_DECIMAL,
+  ROUTES.MATH_DECIMAL_PRACTICE,
   ROUTES.KOREAN_HOME,
   ROUTES.KOREAN_CORE,
   ROUTES.KOREAN_CORE_PRACTICE,
@@ -98,9 +103,10 @@ export function resolveGuardedPath(targetPath) {
     const isPracticeActive = sessionCheckCallback("practice_active");
     const isGradingActive = sessionCheckCallback("grading_active");
 
-    if (isPracticeActive && normalized !== ROUTES.MATH_PRACTICE && normalized !== ROUTES.MATH_MEASUREMENT_PRACTICE && normalized !== ROUTES.MATH_FRACTION_PRACTICE && normalized !== ROUTES.KOREAN_CORE_PRACTICE && normalized !== ROUTES.ENGLISH_CORE_PRACTICE) {
+    if (isPracticeActive && normalized !== ROUTES.MATH_PRACTICE && normalized !== ROUTES.MATH_MEASUREMENT_PRACTICE && normalized !== ROUTES.MATH_FRACTION_PRACTICE && normalized !== ROUTES.MATH_DECIMAL_PRACTICE && normalized !== ROUTES.KOREAN_CORE_PRACTICE && normalized !== ROUTES.ENGLISH_CORE_PRACTICE) {
       if (currentPath === ROUTES.ENGLISH_CORE_PRACTICE) return ROUTES.ENGLISH_CORE_PRACTICE;
       if (currentPath === ROUTES.KOREAN_CORE_PRACTICE) return ROUTES.KOREAN_CORE_PRACTICE;
+      if (currentPath === ROUTES.MATH_DECIMAL_PRACTICE) return ROUTES.MATH_DECIMAL_PRACTICE;
       if (currentPath === ROUTES.MATH_FRACTION_PRACTICE) return ROUTES.MATH_FRACTION_PRACTICE;
       if (currentPath === ROUTES.MATH_MEASUREMENT_PRACTICE) return ROUTES.MATH_MEASUREMENT_PRACTICE;
       return ROUTES.MATH_PRACTICE;
@@ -138,6 +144,13 @@ export function resolveGuardedPath(targetPath) {
   if (normalized === ROUTES.MATH_FRACTION_PRACTICE) {
     if (sessionCheckCallback && !sessionCheckCallback("practice")) {
       return ROUTES.MATH_FRACTION;
+    }
+  }
+
+  //+_+// Phase F15C: Decimal Concepts 풀이 화면 직접 진입 가드
+  if (normalized === ROUTES.MATH_DECIMAL_PRACTICE) {
+    if (sessionCheckCallback && !sessionCheckCallback("practice")) {
+      return ROUTES.MATH_DECIMAL;
     }
   }
 

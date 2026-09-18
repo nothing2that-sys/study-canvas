@@ -3,6 +3,7 @@
 
 import { escapeHtml, SessionState } from "./sessionEngine.js";
 import { renderFractionRepresentation } from "./fractionRepresentationView.js";
+import { renderDecimalRepresentation } from "./decimalRepresentationView.js";
 import { ResponseType, resolveActivityResponseType } from "./learningActivity.js";
 
 export function syncChoiceSurfaceSelection(radios, selectedRadio) {
@@ -92,8 +93,8 @@ export function renderTextActivityStage(q, options = {}) {
   const isShowGuides = Boolean(options.showGuides);
   const promptText = escapeHtml(q.prompt || q.question || "");
   const expectedAns = escapeHtml(String(q.expectedAnswer !== undefined ? q.expectedAnswer : (q.answer !== undefined ? q.answer : "")));
-  //+_+// Phase F15A: 분수 시각 표현 (SVG/DOM)
-  const visualHtml = renderFractionRepresentation(q);
+  //+_+// Phase F15A / F15C: 분수 및 소수 시각 표현 (SVG/DOM)
+  const visualHtml = renderFractionRepresentation(q) || renderDecimalRepresentation(q);
 
   if (isShowGuides) {
     return `
@@ -141,8 +142,8 @@ export function renderChoiceActivityStage(q, options = {}) {
   const promptText = escapeHtml(q.prompt || q.question || "");
   const expectedChoiceId = String(q.expectedAnswer !== undefined ? q.expectedAnswer : (q.answer !== undefined ? q.answer : ""));
   const choices = Array.isArray(q.choices) ? q.choices : [];
-  //+_+// Phase F15A: 분수 시각 표현 (SVG/DOM)
-  const visualHtml = renderFractionRepresentation(q);
+  //+_+// Phase F15A / F15C: 분수 및 소수 시각 표현 (SVG/DOM)
+  const visualHtml = renderFractionRepresentation(q) || renderDecimalRepresentation(q);
 
   const savedRecord = options.responseRecord || options.responseSnapshots?.[q.id] || options.questionResponseRecordsMap?.get?.(q.id) || options.currentSubmission?.responseSnapshots?.[q.id];
   const studentChoiceId = String(savedRecord?.value || "");
