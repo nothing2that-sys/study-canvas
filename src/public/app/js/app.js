@@ -38,7 +38,7 @@ import {
 import { getActiveLearner, getActiveLearnerId, getLearners } from "./learners/learnerQueries.js";
 import { selectLearner, createLearner, configureLearnerSessionGuard } from "./learners/learnerCommands.js";
 import { bootstrapApp } from "./platform/appBootstrap.js";
-import { navigate, replace, ROUTES, initRouter, addRouteListener, getCurrentRoute, resolveGuardedPath } from "./platform/appRouter.js";
+import { navigate, replace, ROUTES, initRouter, addRouteListener, getCurrentRoute, resolveGuardedPath, normalizePath } from "./platform/appRouter.js";
 import { initAppShell, updateShellHeader, renderRouteView } from "./platform/appShell.js";
 import { initLearnerView, renderLearnerSelectView, renderLearnerHomeView, renderSubjectHomeView } from "./learners/learnerView.js";
 import { initWorkbookView, renderWorkbookRoute, consumeActiveWorkbookContext, getActiveWorkbookContext } from "./workbookView.js";
@@ -66,6 +66,9 @@ import {
   renderTextActivityStage,
   renderTypedActivityStage
 } from "./typedInteractionSurface.js";
+import { getGuardianFeedbackPresets } from "./guardianFeedbackPresets.js";
+import { getNavigationHierarchy, updateGlobalLearningNav } from "./navigationHierarchy.js";
+
 import {
   canMutatePractice,
   applyStudentStrokeChange,
@@ -369,7 +372,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260917T112006610Z-276bdf5",
+    appBuildId: "20260918T002258483Z-db8dd1b",
     sessionId: currentSession.id,
     learnerId: getActiveLearnerId(),
     subjectId: currentSession.subjectId || lastSessionConfig?.subjectId || "math",
@@ -1724,6 +1727,10 @@ function startSessionWithQuestions(questions, config) {
   switchView(practiceView);
   renderCurrentWorksheetPage();
   triggerDraftSave();
+  updateGlobalLearningNav(getCurrentRoute(), {
+    workbookTitle: getActiveWorkbookContext()?.title,
+    subjectId: currentSession?.config?.subjectId
+  });
 }
 
 function renderCurrentWorksheetPage() {
@@ -2277,6 +2284,8 @@ function renderGradingView() {
     const commentValue = currentGrade?.comment || "";
     const cardLevel = escapeHtml(getActivityDisplayLabel(q, currentSession?.config));
     const isCanvasResponse = usesDrawingCanvas(q);
+    const questionSubject = q.subjectId || currentSession?.config?.subjectId || currentSubmission?.subjectId || "math";
+    const feedbackPresets = getGuardianFeedbackPresets(questionSubject);
     card.innerHTML = `
       <div class="card-header">
         <span class="card-order">${idx + 1}번 문제</span>
@@ -2293,7 +2302,7 @@ function renderGradingView() {
             <div class="problem-canvas-stage">
               <span class="red-pen-guide-tag">✏️ 빨간펜 첨삭 영역</span>
               ${renderProblemStageContent(q, { showGuides: false, readOnly: true, responseSnapshots: currentSubmission?.responseSnapshots })}
-              ${isCanvasResponse ? `<canvas class="drawing-canvas grading-red-pen-canvas" id="gradingCanvas_${q.id}" data-question-id="${q.id}" title="빨간 펜으로 직접 첨삭을 작성하세요"></canvas>` : ""}
+              <canvas class="drawing-canvas grading-red-pen-canvas" id="gradingCanvas_${q.id}" data-question-id="${q.id}" title="빨간 펜으로 직접 첨삭을 작성하세요"></canvas>
             </div>
           </div>
         </div>
@@ -2333,11 +2342,9 @@ function renderGradingView() {
           <span>💬 빠른 코멘트 칩 & 피드백 메모</span>
         </div>
         <div class="red-pen-chips">
-          <button type="button" class="red-chip-btn" data-id="${q.id}" data-text="⭕ 완벽해요!">⭕ 완벽해요!</button>
-          <button type="button" class="red-chip-btn" data-id="${q.id}" data-text="⚠️ 받아올림 실수">⚠️ 받아올림 실수</button>
-          <button type="button" class="red-chip-btn" data-id="${q.id}" data-text="📐 자리맞춤 확인">📐 자리맞춤 확인</button>
-          <button type="button" class="red-chip-btn" data-id="${q.id}" data-text="✖ 구구단 오류">✖ 구구단 오류</button>
-          <button type="button" class="red-chip-btn" data-id="${q.id}" data-text="✏️ 다시 풀어보기">✏️ 다시 풀어보기</button>
+          ${feedbackPresets.map((preset) => `
+            <button type="button" class="red-chip-btn" data-id="${q.id}" data-text="${escapeHtml(preset.text)}">${escapeHtml(preset.label)}</button>
+          `).join("")}
         </div>
         <input type="text" class="red-pen-input" id="redPenInput_${q.id}" data-id="${q.id}" placeholder="추가 피드백을 적어주세요 (아이패드는 왼쪽 풀이 위에 직접 펜으로 써도 됩니다)" value="${escapeHtml(commentValue)}">
       </div>
@@ -2354,7 +2361,7 @@ function renderGradingView() {
     // 1. 먼저 autoFitProblemStages를 실행하여 수식 그리드의 transform scale을 확정
     autoFitProblemStages();
 
-    const canvasQuestions = questions.filter((question) => usesDrawingCanvas(question));
+    const canvasQuestions = questions.filter(Boolean);
     const questionById = new Map(canvasQuestions.map((question) => [String(question.id), question]));
     const createVisibleCanvas = (q) => {
       if (!q || gradingCanvasInstances.has(q.id) || renderRevision !== gradingRenderRevision) return;
@@ -2413,6 +2420,10 @@ function renderGradingView() {
   });
 
   updateGradingStatusUI();
+  updateGlobalLearningNav(ROUTES.MATH_GRADING, {
+    subjectId: currentSession?.config?.subjectId || currentSubmission?.subjectId
+  });
+
 }
 
 function renderGradingQuestionNavigator() {
@@ -2662,6 +2673,7 @@ async function handleFinishGrading() {
 // ----------------------------------------------------
 function showSessionResult(summary) {
   switchView(resultView);
+  updateGlobalLearningNav(ROUTES.MATH_RESULT);
 
   // 세션 완료 축하 팡파르 사운드 및 컨페티 파티클 발사
   playFanfareSound();
@@ -3581,6 +3593,61 @@ updateNetworkState();
 updateSoundUI();
 updateToolDockUI();
 
+//+_+// Phase F15B Cross-Phase SSOT: Global Learning Navigation (Requirement C)
+export { updateGlobalLearningNav };
+
+export async function handleSafeLearningNavigation(targetRoute) {
+  if (!targetRoute) return;
+  const currentRoute = getCurrentRoute();
+  if (targetRoute === currentRoute) return;
+
+  // 1. 보호자 채점 중인 경우 채점 진행상황 및 빨간펜 첨삭 완벽 영구 저장 후 안전 복귀
+  if (currentSession?.state === SessionState.GRADING_ACTIVE || currentRoute === ROUTES.MATH_GRADING) {
+    try {
+      await persistCurrentGradingProgress();
+      await flushDraftSave();
+    } catch (e) {
+      console.error("채점 진행상황 저장 실패:", e);
+    }
+    gradingCanvasInstances.forEach((instance) => instance.destroy());
+    gradingCanvasInstances.clear();
+    gradingCanvasObserver?.disconnect();
+    gradingCanvasObserver = null;
+    gradingRenderRevision += 1;
+    currentSession = null;
+    currentSubmission = null;
+    questionStrokesMap.clear();
+    questionResponseRecordsMap.clear();
+    gradingStrokesMap.clear();
+    gradingResultsMap.clear();
+    navigate(targetRoute);
+    return;
+  }
+
+  // 2. 학생 풀이 중인 경우 Draft 완벽 플러시 후 안전 복귀
+  if (currentSession?.state === SessionState.PRACTICE_ACTIVE) {
+    try {
+      await flushDraftSave();
+    } catch (e) {
+      console.error("풀이 드래프트 저장 실패:", e);
+    }
+    questionTimer.stop();
+    activeCanvasInstances.forEach((inst) => inst.destroy());
+    activeCanvasInstances.clear();
+    currentSession = null;
+    questionStrokesMap.clear();
+    questionResponseRecordsMap.clear();
+    gradingStrokesMap.clear();
+    gradingResultsMap.clear();
+    updateDraftSaveStatus(DraftSaveStatus.IDLE);
+    navigate(targetRoute);
+    return;
+  }
+
+  // 3. 일반 화면에서는 직접 라우트 이동
+  navigate(targetRoute);
+}
+
 if (typeof document !== "undefined") {
   const isCurrentSessionActive = () => Boolean(
     currentSession && (
@@ -3621,6 +3688,25 @@ if (typeof document !== "undefined") {
     beforePageChange: () => draftSaveCoordinator?.flush?.()
   });
 
+  // Global Learning Navigation 바인딩
+  const globalNavEl = document.getElementById("globalLearningNav");
+  if (globalNavEl) {
+    document.getElementById("globalNavHomeBtn")?.addEventListener("click", () => {
+      handleSafeLearningNavigation(ROUTES.HOME);
+    });
+    document.getElementById("globalNavUpBtn")?.addEventListener("click", (e) => {
+      const btn = e.currentTarget;
+      const target = btn.dataset.targetRoute || ROUTES.HOME;
+      handleSafeLearningNavigation(target);
+    });
+    document.getElementById("globalNavBreadcrumbs")?.addEventListener("click", (e) => {
+      const link = e.target.closest("a[data-route]");
+      if (!link) return;
+      e.preventDefault();
+      handleSafeLearningNavigation(link.dataset.route);
+    });
+  }
+
   addRouteListener(async ({ path }) => {
     if (path === ROUTES.LEARNERS) {
       await renderLearnerSelectView();
@@ -3647,6 +3733,10 @@ if (typeof document !== "undefined") {
     }
     renderRouteView(path);
     await updateShellHeader();
+    updateGlobalLearningNav(path, {
+      workbookTitle: getActiveWorkbookContext()?.title,
+      subjectId: currentSession?.config?.subjectId
+    });
   });
 
   bootstrapApp({
@@ -3692,6 +3782,10 @@ if (typeof document !== "undefined") {
       } else if (route === ROUTES.BOOKSHELF || route === ROUTES.WORKBOOK_DETAIL || route === ROUTES.WORKBOOK_READER) {
         await renderWorkbookRoute(route);
       }
+      updateGlobalLearningNav(route, {
+        workbookTitle: getActiveWorkbookContext()?.title,
+        subjectId: currentSession?.config?.subjectId
+      });
     }
   });
 

@@ -18,7 +18,7 @@
     <link rel="icon" href="./icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./icon-180.png">
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
-    <link rel="stylesheet" href="./css/app.css?v=20260917T112006610Z-276bdf5">
+    <link rel="stylesheet" href="./css/app.css?v=20260918T002258483Z-db8dd1b">
   </head>
   <body>
     <div class="app-shell">
@@ -47,6 +47,23 @@
           <button class="icon-button" id="abortSessionBtn" type="button" aria-label="세션 중단" title="세션 중단" hidden>나가기</button>
         </div>
       </header>
+
+      <!-- 🌟 Global Learning Navigation (Cross-Phase SSOT) -->
+      <nav id="globalLearningNav" class="global-learning-nav" aria-label="학습 네비게이션" hidden>
+        <div class="global-nav-container">
+          <div class="global-nav-actions">
+            <button type="button" id="globalNavHomeBtn" class="global-nav-btn global-nav-home-btn" aria-label="홈으로 이동">
+              <span class="global-nav-icon">🏠</span>
+              <span class="global-nav-label">홈</span>
+            </button>
+            <button type="button" id="globalNavUpBtn" class="global-nav-btn global-nav-up-btn" aria-label="상위 단계로 이동">
+              <span class="global-nav-icon">⬆️</span>
+              <span class="global-nav-label">위로</span>
+            </button>
+          </div>
+          <ol id="globalNavBreadcrumbs" class="global-nav-breadcrumbs" aria-label="현재 위치"></ol>
+        </div>
+      </nav>
 
       <!-- 🌟 PWA 새 버전 업데이트 안내 배너 -->
       <aside class="update-banner" id="updateBanner" hidden aria-live="polite">
@@ -1020,6 +1037,6 @@
         }).catch(() => {});
       })();
     </script>
-    <script type="module" src="./js/app.js?v=20260917T112006610Z-276bdf5"></script>
+    <script type="module" src="./js/app.js?v=20260918T002258483Z-db8dd1b"></script>
   </body>
 </html>

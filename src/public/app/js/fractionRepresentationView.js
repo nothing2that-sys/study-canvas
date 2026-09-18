@@ -485,12 +485,13 @@ export function renderSymbolicFraction(spec) {
  * @returns {string} SVG HTML 문자열
  */
 export function renderFractionOperationSVG(spec) {
-  const patternId = `hatch_op_${Math.random().toString(36).substring(2, 9)}`;
-  const defs = createHatchPatternDef(patternId);
-
   const f1 = spec.f1 || { numerator: 1, denominator: 2, wholeNumber: 0 };
   const f2 = spec.f2 || { numerator: 1, denominator: 2, wholeNumber: 0 };
   const res = spec.result || { numerator: 1, denominator: 1, wholeNumber: 0 };
+
+  const opKey = String(spec.type || "op").toLowerCase();
+  const patternId = `${opKey}_hatch_${f1.numerator}_${f1.denominator}_${f2.numerator}_${f2.denominator}`;
+  const defs = createHatchPatternDef(patternId);
 
   const s1 = `${f1.wholeNumber ? f1.wholeNumber + ' ' : ''}${f1.numerator}/${f1.denominator}`;
   const s2 = `${f2.wholeNumber ? f2.wholeNumber + ' ' : ''}${f2.numerator}/${f2.denominator}`;

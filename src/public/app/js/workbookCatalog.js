@@ -213,7 +213,7 @@ const rawCatalog = [
       difficulty: "STANDARD",
       status: "ACTIVE",
       curriculumVersion: "2022-revised",
-      achievementStandardIds: ["6수01-07"],
+      achievementStandardIds: ["6수01-04", "6수01-05"],
       reviewStatus: "APPROVED"
     },
     edition: {

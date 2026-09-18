@@ -12,7 +12,8 @@ import {
   findCommonDenominator,
   reduceFraction,
   formatFractionText,
-  generateStepByStepExplanation
+  generateStepByStepExplanation,
+  compareFractions
 } from "./fractionOperations.js";
 
 export const FractionOperationLevel = Object.freeze({
@@ -298,12 +299,10 @@ export function generateFractionOperationProblems(options = {}) {
             explanation: generateStepByStepExplanation("ADD", f1, f2)
           };
         } else {
-          let bigger = f1;
-          let smaller = f2;
-          if (w1 * d1 + n1 < w2 * d2 + n2) {
-            bigger = f2;
-            smaller = f1;
-          }
+          const cmp = compareFractions(f1, f2);
+          if (cmp === 0) continue;
+          const bigger = cmp > 0 ? f1 : f2;
+          const smaller = cmp > 0 ? f2 : f1;
           const res = subtractFractions(bigger, smaller);
           prob = {
             op: "SUB",

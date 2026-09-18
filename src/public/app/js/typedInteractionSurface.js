@@ -117,7 +117,7 @@ export function renderTextActivityStage(q, options = {}) {
   const inputModeAttr = isTextSubject ? 'inputmode="text"' : 'inputmode="numeric"';
 
   return `
-    <div class="typed-activity-stage" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
+    <div class="typed-activity-stage ${isLocked ? "is-read-only" : ""}" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6; ${isLocked ? "pointer-events: none; user-select: none;" : ""}">
       ${visualHtml}
       <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
       <div class="typed-input-area" style="margin-top: 0.5rem;">
@@ -149,25 +149,41 @@ export function renderChoiceActivityStage(q, options = {}) {
   const session = options.session;
   const isLocked = Boolean(options.isLocked || options.readOnly || (session && session.state !== SessionState.PRACTICE_ACTIVE && session.state !== SessionState.SUBMITTING));
 
+  const isReadOnly = Boolean(options.readOnly || isLocked);
+
   return `
-    <div class="typed-activity-stage" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6;">
+    <div class="typed-activity-stage ${isReadOnly ? "grading-choice-read-only is-read-only" : ""}" style="padding: 1rem; font-size: 1.1rem; line-height: 1.6; ${isReadOnly ? "pointer-events: none; user-select: none;" : ""}">
       ${visualHtml}
       <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
-      <div class="typed-choices-list" role="radiogroup" aria-label="선택지" style="display: flex; flex-direction: column; gap: 0.5rem;">
+      <div class="typed-choices-list" role="radiogroup" aria-label="선택지" style="display: flex; flex-direction: column; gap: 0.5rem; ${isReadOnly ? "pointer-events: none;" : ""}">
         ${choices.map((c) => {
           const cId = escapeHtml(String(c.id));
           const cLabel = escapeHtml(String(c.label || c.text || c.id));
           const isExpected = isShowGuides && (String(c.id) === expectedChoiceId);
           const isStudentSelected = !isShowGuides && (String(c.id) === studentChoiceId);
+          let itemStyle = "";
+          if (isExpected) {
+            itemStyle = "background: #e6f4ea; border: 2px solid #34a853;";
+          } else if (isStudentSelected) {
+            itemStyle = "background: #e8f0fe; border: 2px solid #1a73e8; font-weight: bold;";
+          } else if (isReadOnly) {
+            itemStyle = "opacity: 0.65; border: 1px solid #dadce0;";
+          }
+          if (isReadOnly) {
+            itemStyle += " cursor: default; pointer-events: none;";
+          }
+
           return `
-            <label class="typed-choice-item choice-label ${isExpected ? "expected-choice" : ""} ${isStudentSelected ? "selected-choice" : ""}"
-                   style="${isExpected ? "background: #e6f4ea; border-color: #34a853;" : (isStudentSelected ? "background: #e8f0fe; border-color: #1a73e8;" : "")}">
+            <label class="typed-choice-item choice-label ${isReadOnly ? "is-read-only" : ""} ${isExpected ? "expected-choice is-expected-choice" : ""} ${isStudentSelected ? "selected-choice is-student-selected" : ""}"
+                   style="${itemStyle}">
               <input type="radio"
                      name="choice_${escapeHtml(q.id)}"
                      value="${cId}"
                      data-question-id="${escapeHtml(q.id)}"
                      ${String(c.id) === (isShowGuides ? expectedChoiceId : studentChoiceId) ? "checked" : ""}
-                     ${isLocked || isShowGuides ? "disabled" : ""} />
+                     ${isLocked || isShowGuides ? "disabled" : ""}
+                     style="${isReadOnly ? "pointer-events: none;" : ""}" />
+              ${isStudentSelected && isReadOnly ? `<span class="student-selection-tag" style="display: inline-block; background: #1a73e8; color: #fff; font-size: 0.75rem; font-weight: bold; padding: 2px 6px; border-radius: 4px; margin-right: 6px; vertical-align: middle;">학생 선택</span>` : ""}
               <span>${cLabel}</span>
             </label>
           `;

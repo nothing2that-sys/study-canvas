@@ -5370,3 +5370,128 @@ body.theme-midnight .active-learner-pill {
   }
 }
 
+/* ==========================================================================
+   Cross-Phase Grading UX & Global Learning Navigation Contract
+   ========================================================================== */
+
+/* 1. Guardian Grading: Choice & Text Read-Only Lock */
+.grading-card .problem-canvas-stage .typed-activity-stage {
+  pointer-events: none !important;
+  user-select: none;
+}
+
+.grading-card .typed-choice-item {
+  cursor: default !important;
+  pointer-events: none !important;
+  transition: none !important;
+}
+
+.grading-card .typed-choice-item input[type="radio"] {
+  pointer-events: none !important;
+  cursor: default !important;
+}
+
+.grading-card .typed-choice-item:hover {
+  background: inherit !important;
+  border-color: inherit !important;
+}
+
+/* 2. Global Learning Navigation Bar */
+.global-learning-nav {
+  position: sticky;
+  top: 56px;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--surface-header, rgba(255, 255, 255, 0.95));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  box-sizing: border-box;
+  min-height: 52px;
+}
+
+.global-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.global-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #dadce0);
+  background: var(--card-bg, #ffffff);
+  color: var(--text-color, #202124);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.global-nav-btn:hover {
+  background: var(--bg-hover, #f1f3f4);
+  border-color: #bdc1c6;
+}
+
+.global-nav-btn:active {
+  background: var(--bg-active, #e8eaed);
+}
+
+.global-nav-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: #5f6368;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+}
+
+.breadcrumb-link {
+  color: #1a73e8;
+  text-decoration: none;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.breadcrumb-link:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb-sep {
+  color: #9aa0a6;
+  font-size: 0.8rem;
+  margin: 0 4px;
+}
+
+.breadcrumb-current {
+  font-weight: 600;
+  color: #202124;
+}
+
+@media (max-width: 600px) {
+  .global-nav-breadcrumbs {
+    display: none;
+  }
+}
+
+
