@@ -4,6 +4,7 @@
 작성일: 2026-09-11  
 상위 정본: `Docs/UNIFIED_CURRICULUM_ACTIVITY_PLATFORM_v2.3.md`  
 구현 정본: `Docs/Implementation_Phases/26_PHASE_F13_R2_GRADE_LEVEL_FOUNDATION.md`  
+수학·국어 고시 근거 및 현재 매핑 점검: `Docs/Architecture/OFFICIAL_CURRICULUM_EVIDENCE_MATH_KOREAN_2026-09-29.md`
 
 ---
 
