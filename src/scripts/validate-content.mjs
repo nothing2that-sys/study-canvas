@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { validateVocabularyCatalog } from "../public/app/js/englishVocabularyStudy.js";
 import { normalizeLearningActivity } from "../public/app/js/learningActivity.js";
 import { verifyCatalogIntegrity } from "../content-factory/shard/catalogCompiler.js";
+import { validateEnglishReleasePublicPackage } from "../content-factory/review/englishReleasePublicValidation.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -427,6 +428,7 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
         const shardContents = new Map();
         const seenShardIds = new Set();
         const seenActivityIds = new Set();
+        const shardActivities = [];
         let totalActivities = 0;
         for (const shard of Array.isArray(catalogData.shards) ? catalogData.shards : []) {
           if (!/^shard-[a-z0-9-]+$/.test(shard?.shardId || "")
@@ -446,6 +448,7 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
               continue;
             }
             for (const item of data.items) {
+              shardActivities.push(item);
               totalActivities++;
               if (!item?.id || seenActivityIds.has(item.id) || item.activityId !== item.id
                 || item.contentRef?.packageId !== manifestPkgId
@@ -471,9 +474,10 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
         if (manifest.shardCount !== seenShardIds.size || manifest.activityCount !== totalActivities) {
           recordError(`manifest.json: shard/activity count mismatch (${manifestPkgId})`);
         }
-        if (manifestPkgId === "english-core-v2" && pkgEntry.enabled
-          && manifest.releaseApproved !== true) {
-          recordError("english-core-v2: private staging package cannot be enabled in public registry");
+        if (manifestPkgId === "english-core-v2") {
+          for (const error of validateEnglishReleasePublicPackage(pkgEntry, manifest, shardActivities)) {
+            recordError(error);
+          }
         }
       }
     } else {
