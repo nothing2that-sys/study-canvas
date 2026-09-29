@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBuildId, resolveGitSha } from "./build-id.mjs";
+import { verifyCatalogIntegrity } from "../content-factory/shard/catalogCompiler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultAppDir = path.join(__dirname, "..", "public", "app");
@@ -50,6 +51,24 @@ export function collectContentPrecacheAssets({ contentDir = path.join(defaultApp
           assetSet.add(assetPath);
         }
       }
+    }
+    if (manifest.isSharded) {
+      const catalogPath = path.join(manifestDir, "catalog.json");
+      const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
+      if (!Array.isArray(catalog.shards) || !catalog.shards.length) {
+        throw new Error(`[build] Sharded catalog is empty: ${catalogPath}`);
+      }
+      const shardContents = new Map();
+      for (const shard of catalog.shards) {
+        if (!/^shard-[a-z0-9-]+$/.test(shard.shardId)) {
+          throw new Error(`[build] Invalid shard ID: ${shard.shardId}`);
+        }
+        const shardFile = path.join(manifestDir, "shards", `${shard.shardId}.json`);
+        shardContents.set(shard.shardId, fs.readFileSync(shardFile, "utf8"));
+        assetSet.add(`./content/${path.relative(contentDir, shardFile).replace(/\\/g, "/")}`);
+      }
+      const integrity = verifyCatalogIntegrity(catalog, shardContents);
+      if (!integrity.valid) throw new Error(`[build] Sharded catalog integrity failed: ${integrity.errors.join("; ")}`);
     }
   }
 

@@ -12,7 +12,14 @@ async function sha256(content) {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
   }
-  return "";
+  throw new Error("[englishCoreV2Loader] SHA-256 is unavailable");
+}
+
+function canonicalJson(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  return `{${Object.keys(value).filter(key => value[key] !== undefined).sort()
+    .map(key => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
 }
 
 const DEFAULT_PACKAGE_BASE = "./content/packages/english-core-v2";
@@ -20,7 +27,7 @@ const DEFAULT_PACKAGE_BASE = "./content/packages/english-core-v2";
 /**
  * Platform agnostic JSON loader helper (fetch in browser, fs in Node.js)
  */
-async function fetchJsonResource(pathOrUrl) {
+async function fetchTextResource(pathOrUrl) {
   const isBrowser = typeof window !== "undefined" && typeof window.document !== "undefined";
   if (isBrowser || pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
     let targetUrl = pathOrUrl;
@@ -31,7 +38,7 @@ async function fetchJsonResource(pathOrUrl) {
     if (!res.ok) {
       throw new Error(`[englishCoreV2Loader] Failed to fetch resource (HTTP ${res.status}): ${targetUrl}`);
     }
-    return await res.json();
+    return await res.text();
   }
 
   // Node.js environment
@@ -41,8 +48,7 @@ async function fetchJsonResource(pathOrUrl) {
     const resolved = pathOrUrl.startsWith("file://")
       ? new URL(pathOrUrl)
       : path.resolve(pathOrUrl);
-    const content = await fs.readFile(resolved, "utf8");
-    return JSON.parse(content);
+    return await fs.readFile(resolved, "utf8");
   } catch (err) {
     throw new Error(`[englishCoreV2Loader] Failed to read resource (${pathOrUrl}): ${err.message}`);
   }
@@ -51,16 +57,26 @@ async function fetchJsonResource(pathOrUrl) {
 /**
  * Loads and caches english-core-v2 catalog.json
  */
-let cachedCatalog = null;
+const cachedCatalogs = new Map();
 export async function loadEnglishCoreV2Catalog(baseDir = DEFAULT_PACKAGE_BASE) {
-  if (cachedCatalog) return cachedCatalog;
-  const catalogUrl = `${baseDir.replace(/\/$/, "")}/catalog.json`;
-  const catalog = await fetchJsonResource(catalogUrl);
+  const base = baseDir.replace(/\/$/, "");
+  if (cachedCatalogs.has(base)) return cachedCatalogs.get(base);
+  const catalogUrl = `${base}/catalog.json`;
+  const catalog = JSON.parse(await fetchTextResource(catalogUrl));
   if (!catalog || !Array.isArray(catalog.shards) || !catalog.catalogHash) {
     throw new Error("[englishCoreV2Loader] Invalid catalog.json format");
   }
-  cachedCatalog = Object.freeze(catalog);
-  return cachedCatalog;
+  const { catalogHash, generatedAt, ...core } = catalog;
+  if (await sha256(canonicalJson(core)) !== catalogHash) {
+    throw new Error("[englishCoreV2Loader] Catalog SHA-256 mismatch");
+  }
+  if (new Set(catalog.shards.map(shard => shard.shardId)).size !== catalog.shards.length
+    || catalog.shards.some(shard => !/^shard-[a-z0-9-]+$/.test(shard.shardId))) {
+    throw new Error("[englishCoreV2Loader] Invalid or duplicate shard ID");
+  }
+  const frozen = Object.freeze(catalog);
+  cachedCatalogs.set(base, frozen);
+  return frozen;
 }
 
 /**
@@ -77,24 +93,20 @@ export async function loadEnglishCoreV2Shard(shardId, baseDir = DEFAULT_PACKAGE_
   }
 
   const shardUrl = `${baseDir.replace(/\/$/, "")}/shards/${shardId}.json`;
-  const fs = typeof window === "undefined" ? await import("node:fs") : null;
-  const path = typeof window === "undefined" ? await import("node:path") : null;
-  let rawContent = null;
-  if (fs && path && !shardUrl.startsWith("http://") && !shardUrl.startsWith("https://")) {
-    const resolvedPath = path.resolve(shardUrl);
-    rawContent = fs.readFileSync(resolvedPath, "utf8");
-    const actualHash = await sha256(rawContent);
-    if (actualHash !== shardMeta.sha256) {
-      throw new Error(
-        `[englishCoreV2Loader] Cryptographic SHA-256 mismatch for shard "${shardId}": expected ${shardMeta.sha256}, got ${actualHash}`
-      );
-    }
+  const rawContent = await fetchTextResource(shardUrl);
+  const actualHash = await sha256(rawContent);
+  if (actualHash !== shardMeta.sha256) {
+    throw new Error(
+      `[englishCoreV2Loader] Cryptographic SHA-256 mismatch for shard "${shardId}": expected ${shardMeta.sha256}, got ${actualHash}`
+    );
   }
-
-  const shardData = rawContent ? JSON.parse(rawContent) : await fetchJsonResource(shardUrl);
+  if (new TextEncoder().encode(rawContent).length !== shardMeta.byteSize) {
+    throw new Error(`[englishCoreV2Loader] Shard byte size mismatch: ${shardId}`);
+  }
+  const shardData = JSON.parse(rawContent);
 
   // Verify item count
-  if (!Array.isArray(shardData.items)) {
+  if (shardData.shardId !== shardId || !Array.isArray(shardData.items)) {
     throw new Error(`[englishCoreV2Loader] Shard "${shardId}" missing items array`);
   }
   if (shardData.items.length !== shardMeta.itemCount) {

@@ -6,6 +6,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateVocabularyCatalog } from "../public/app/js/englishVocabularyStudy.js";
+import { normalizeLearningActivity } from "../public/app/js/learningActivity.js";
+import { verifyCatalogIntegrity } from "../content-factory/shard/catalogCompiler.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -421,6 +423,57 @@ export function validateAllContent(contentRoot = CONTENT_ROOT) {
         }
         if (!catalogData.catalogHash) {
           recordError(`catalog.json: 패키지 ${manifestPkgId}의 catalogHash가 누락되었습니다.`);
+        }
+        const shardContents = new Map();
+        const seenShardIds = new Set();
+        const seenActivityIds = new Set();
+        let totalActivities = 0;
+        for (const shard of Array.isArray(catalogData.shards) ? catalogData.shards : []) {
+          if (!/^shard-[a-z0-9-]+$/.test(shard?.shardId || "")
+            || seenShardIds.has(shard.shardId)) {
+            recordError(`catalog.json: 유효하지 않거나 중복된 shardId (${manifestPkgId}): ${shard?.shardId}`);
+            continue;
+          }
+          seenShardIds.add(shard.shardId);
+          const shardPath = path.join(packageDir, "shards", `${shard.shardId}.json`);
+          try {
+            const raw = fs.readFileSync(shardPath, "utf8");
+            shardContents.set(shard.shardId, raw);
+            const data = JSON.parse(raw);
+            if (data.shardId !== shard.shardId || !Array.isArray(data.items)
+              || data.items.length !== shard.itemCount) {
+              recordError(`shard.json: shard ID 또는 itemCount 불일치 (${shard.shardId})`);
+              continue;
+            }
+            for (const item of data.items) {
+              totalActivities++;
+              if (!item?.id || seenActivityIds.has(item.id) || item.activityId !== item.id
+                || item.contentRef?.packageId !== manifestPkgId
+                || item.contentRef?.packageVersion !== manifestPkgVer
+                || item.contentRef?.contentId !== item.id
+                || !registeredSkillIds.has(item.skillId)
+                || item.sourceMetadata?.reviewStatus !== "APPROVED") {
+                recordError(`shard.json: Activity identity, skill, or review mismatch (${shard.shardId}:${item?.id})`);
+                continue;
+              }
+              seenActivityIds.add(item.id);
+              try { normalizeLearningActivity(item); }
+              catch (error) { recordError(`shard.json: LearningActivity invalid (${item.id}): ${error.message}`); }
+            }
+          } catch (error) {
+            recordError(`shard.json: cannot read or parse ${shard.shardId}: ${error.message}`);
+          }
+        }
+        if (Array.isArray(catalogData.shards) && shardContents.size === seenShardIds.size) {
+          const integrity = verifyCatalogIntegrity(catalogData, shardContents);
+          for (const error of integrity.errors) recordError(`catalog.json: ${error}`);
+        }
+        if (manifest.shardCount !== seenShardIds.size || manifest.activityCount !== totalActivities) {
+          recordError(`manifest.json: shard/activity count mismatch (${manifestPkgId})`);
+        }
+        if (manifestPkgId === "english-core-v2" && pkgEntry.enabled
+          && manifest.releaseApproved !== true) {
+          recordError("english-core-v2: private staging package cannot be enabled in public registry");
         }
       }
     } else {
