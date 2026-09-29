@@ -374,7 +374,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260920T044919769Z-4fe1212",
+    appBuildId: "20260929T001446698Z-d393794",
     sessionId: currentSession.id,
     learnerId: getActiveLearnerId(),
     subjectId: currentSession.subjectId || lastSessionConfig?.subjectId || "math",
@@ -3836,7 +3836,7 @@ export async function renderMeasurementLandingView() {
 
   function renderSkillsForDimension() {
     container.innerHTML = "";
-    const skills = (pkgData.curriculum?.skills || []).filter((s) => s.unitId === currentMeasurementDimension);
+    const skills = (pkgData.curriculum?.skills || []).filter((s) => s.unitId === currentMeasurementDimension && s.status === "ACTIVE");
 
     if (skills.length === 0) {
       container.innerHTML = '<p class="empty-msg">해당 영역의 학습 스킬이 없습니다.</p>';

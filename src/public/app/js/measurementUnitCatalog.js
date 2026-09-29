@@ -89,13 +89,26 @@ export function validateUnitCatalog(catalog, options = {}) {
   if (Array.isArray(catalog.generatorProfiles)) {
     const curriculumSkills = options.curriculum?.skills;
     const validSkillIds = Array.isArray(curriculumSkills) ? new Set(curriculumSkills.map((s) => s.skillId)) : null;
+    const skillById = Array.isArray(curriculumSkills) ? new Map(curriculumSkills.map((s) => [s.skillId, s])) : null;
+    const seenProfileSkills = new Set();
 
     for (const profile of catalog.generatorProfiles) {
       if (!profile.skillId || typeof profile.skillId !== "string") {
         throw new Error("generatorProfile에 유효한 skillId가 필요합니다.");
       }
+      if (seenProfileSkills.has(profile.skillId)) {
+        throw new Error(`중복된 generatorProfile skillId입니다: ${profile.skillId}`);
+      }
+      seenProfileSkills.add(profile.skillId);
       if (validSkillIds && !validSkillIds.has(profile.skillId)) {
         throw new Error(`generatorProfile의 skillId(${profile.skillId})가 curriculum에 존재하지 않습니다.`);
+      }
+      if (!Array.isArray(profile.achievementStandardIds) || profile.achievementStandardIds.length === 0 ||
+          profile.achievementStandardIds.some((id) => typeof id !== "string" || !id.trim())) {
+        throw new Error(`generatorProfile(${profile.skillId})의 성취기준 ID가 필요합니다.`);
+      }
+      if (skillById && JSON.stringify(profile.achievementStandardIds) !== JSON.stringify(skillById.get(profile.skillId)?.achievementStandardIds)) {
+        throw new Error(`generatorProfile(${profile.skillId})의 성취기준 ID가 Skill과 불일치합니다.`);
       }
       if (!profile.dimensionId || !dimensionMap.has(profile.dimensionId)) {
         throw new Error(`generatorProfile의 dimensionId(${profile.dimensionId})가 catalog에 존재하지 않습니다.`);

@@ -150,7 +150,8 @@ export function generateUnitConversionActivities({
     seenQuestionKeys.add(questionKey);
 
     const index = activities.length;
-    const activityId = `act_meas_${skillId.toLowerCase()}_${seedInt}_${index + 1}`;
+    const catVer = catalog.catalogVersion || 1;
+    const activityId = `act_meas_${skillId.toLowerCase()}_v${catVer}_${seedInt}_${index + 1}`;
     const prompt = `${sourceValue} ${sourceUnit.symbol} = ___ ${targetUnit.symbol}`;
 
     let explanation = "";
@@ -164,7 +165,6 @@ export function generateUnitConversionActivities({
 
     const pkgId = packageMetadata?.packageId || catalog.packageId || "math-measurement-v1";
     const pkgVer = packageMetadata?.packageVersion || catalog.packageVersion || "1.0.0";
-    const catVer = catalog.catalogVersion || 1;
 
     const rawActivity = {
       id: activityId,
@@ -179,6 +179,7 @@ export function generateUnitConversionActivities({
       gradingMode: GradingMode.GUARDIAN_MANUAL,
       prompt,
       expectedAnswer: String(expectedAnswer),
+      achievementStandardIds: profile.achievementStandardIds,
       explanation,
       orderNumber: index + 1,
       level: skillId,
@@ -200,7 +201,7 @@ export function generateUnitConversionActivities({
         targetUnitId: pair.targetUnitId,
         sourceValue,
         seed: seedInt,
-        generationKey: `${skillId}:${seedInt}:${index + 1}`
+        generationKey: `${skillId}:v${catVer}:${seedInt}:${index + 1}`
       }
     };
 

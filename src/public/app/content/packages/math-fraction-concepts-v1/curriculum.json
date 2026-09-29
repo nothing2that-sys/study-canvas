@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "packageId": "math-fraction-concepts-v1",
+  "curriculumVersion": "2022-revised",
+  "subjectId": "math",
+  "courseId": "fraction",
+  "skills": [
+    {
+      "skillId": "MATH_FRACTION_PART_WHOLE",
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "concepts",
+      "name": "부분과 전체: 분수의 의미",
+      "description": "양의 등분할을 통하여 전체와 부분의 관계를 분수로 나타냅니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": 1,
+      "status": "ACTIVE",
+      "prerequisites": [],
+      "achievementStandardIds": [
+        "4수01-09"
+      ]
+    },
+    {
+      "skillId": "MATH_FRACTION_SYMBOLIC_NOTATION",
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "concepts",
+      "name": "분수의 기호 표현과 읽기",
+      "description": "분모와 분자의 의미를 알고 분수를 바르게 읽고 씁니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": 1,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_FRACTION_PART_WHOLE"
+      ],
+      "achievementStandardIds": [
+        "4수01-09"
+      ]
+    },
+    {
+      "skillId": "MATH_FRACTION_NUMBER_LINE_COMPARE",
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "number_line",
+      "name": "수직선 표현과 분수의 크기 비교",
+      "description": "수직선에 분수를 나타내고 단위분수 및 동분모 분수의 크기를 비교합니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": 1,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_FRACTION_SYMBOLIC_NOTATION"
+      ],
+      "achievementStandardIds": [
+        "4수01-09",
+        "4수01-11"
+      ]
+    },
+    {
+      "skillId": "MATH_FRACTION_PROPER_IMPROPER_MIXED",
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "fraction_types",
+      "name": "진분수, 가분수, 대분수",
+      "description": "진분수, 가분수, 대분수를 알고 그 관계를 이해합니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": 2,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_FRACTION_NUMBER_LINE_COMPARE"
+      ],
+      "achievementStandardIds": [
+        "4수01-10"
+      ]
+    },
+    {
+      "skillId": "MATH_FRACTION_EQUIVALENT_VISUAL",
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "equivalent",
+      "name": "크기가 같은 분수 (동치 표현)",
+      "description": "시각적 모델과 수직선을 통해 크기가 같은 분수를 직관적으로 이해합니다.",
+      "gradeLevel": 5,
+      "semester": "ALL",
+      "difficulty": 2,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_FRACTION_PROPER_IMPROPER_MIXED"
+      ],
+      "achievementStandardIds": [
+        "6수01-06"
+      ]
+    }
+  ]
+}

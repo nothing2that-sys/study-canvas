@@ -93,6 +93,10 @@ export function renderTextActivityStage(q, options = {}) {
   const isShowGuides = Boolean(options.showGuides);
   const promptText = escapeHtml(q.prompt || q.question || "");
   const expectedAns = escapeHtml(String(q.expectedAnswer !== undefined ? q.expectedAnswer : (q.answer !== undefined ? q.answer : "")));
+  const acceptableAnswers = q.gradingReference?.acceptableAnswers;
+  const alternativeAnswers = Array.isArray(acceptableAnswers)
+    ? acceptableAnswers.filter((answer) => String(answer) !== String(q.expectedAnswer))
+    : [];
   //+_+// Phase F15A / F15C: 분수 및 소수 시각 표현 (SVG/DOM)
   const visualHtml = renderFractionRepresentation(q) || renderDecimalRepresentation(q);
 
@@ -102,8 +106,9 @@ export function renderTextActivityStage(q, options = {}) {
         ${visualHtml}
         <div class="typed-activity-prompt" style="font-weight: 600; margin-bottom: 0.75rem;">${promptText}</div>
         <div class="typed-expected-badge" style="background: #e6f4ea; color: #137333; padding: 0.5rem 0.75rem; border-radius: 6px; display: inline-block;">
-          🎯 기준 정답: <strong>${expectedAns}</strong>
+          🎯 ${q.subjectId === "korean" && q.gradingMode === "GUARDIAN_MANUAL" ? "모범 답안 예시" : "기준 정답"}: <strong>${expectedAns}</strong>
         </div>
+        ${alternativeAnswers.length ? `<div class="typed-acceptable-answers">허용 답안: ${alternativeAnswers.map((answer) => escapeHtml(String(answer))).join(" / ")}</div>` : ""}
       </div>
     `;
   }

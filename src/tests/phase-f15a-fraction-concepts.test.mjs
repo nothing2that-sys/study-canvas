@@ -108,7 +108,7 @@ const activities = activitiesDoc.activities;
 //+_+// Group 1: Package Manifest & Curriculum Specification (2022 개정 교육과정 정합성)
 test("F15A-PKG-01: 패키지 매니페스트 필수 속성 및 승인 상태", () => {
   assert.equal(manifest.packageId, "math-fraction-concepts-v1");
-  assert.equal(manifest.packageVersion, "1.0.0");
+  assert.equal(manifest.packageVersion, "1.0.1");
   assert.equal(manifest.curriculumVersion, "2022-revised");
   assert.ok(manifest.subjects.includes("math"));
   assert.equal(manifest.status, "APPROVED");
@@ -128,6 +128,10 @@ test("F15A-PKG-02: 2022 개정 교육과정 성취기준 매핑 검증", () => {
   assert.ok(standards.has("4수01-11"), "4수01-11 분모가 같은 분수 크기 비교 포함");
   assert.ok(standards.has("6수01-06"), "6수01-06 크기가 같은 분수 포함");
   assert.equal(curriculum.skills.length, 5);
+  const numberLineSkill = curriculum.skills.find(skill => skill.skillId === "MATH_FRACTION_NUMBER_LINE_COMPARE");
+  assert.deepEqual(numberLineSkill.achievementStandardIds, ["4수01-09", "4수01-11"]);
+  assert.deepEqual(activities.find(activity => activity.id === "frac_number_line_pos_001").achievementStandardIds, ["4수01-09"]);
+  assert.deepEqual(activities.find(activity => activity.id === "frac_number_line_compare_002").achievementStandardIds, ["4수01-11"]);
 });
 
 test("F15A-PKG-03: 액티비티 무결성 및 응답 표면 검증 (Canvas 인스턴스 0개 원칙)", () => {
@@ -1529,5 +1533,4 @@ test("F15A-R4-TEXT-03: Production app.js와 shared binder 연결 구조 및 동�
   assert.equal(draftSavedCount, 2, "드래프트 저장 트리거 총 2회");
   assert.equal(outerFrameCount, 2, "compositionend 포함 refresh scheduling은 정확히 2회 (각 이벤트당 1회)");
 });
-
 

@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "packageId": "math-measurement-v1",
+  "activities": [
+    {
+      "id": "meas_length_smaller_001",
+      "version": 2,
+      "contentRef": {
+        "packageId": "math-measurement-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "meas_length_smaller_001",
+        "contentVersion": 2
+      },
+      "subjectId": "math",
+      "courseId": "measurement",
+      "unitId": "length",
+      "skillId": "MATH_UNIT_M_CM_TO_SMALLER",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "3 m = ___ cm",
+      "expectedAnswer": "300",
+      "explanation": "1 m는 100 cm이므로 3 m는 300 cm입니다.",
+      "achievementStandardIds": ["2수03-11"],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "meas_length_smaller_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "reviewStatus": "VERIFIED"
+      }
+    },
+    {
+      "id": "meas_length_larger_001",
+      "version": 2,
+      "contentRef": {
+        "packageId": "math-measurement-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "meas_length_larger_001",
+        "contentVersion": 2
+      },
+      "subjectId": "math",
+      "courseId": "measurement",
+      "unitId": "length",
+      "skillId": "MATH_UNIT_M_CM_TO_LARGER",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "400 cm = ___ m",
+      "expectedAnswer": "4",
+      "explanation": "100 cm는 1 m이므로 400 cm는 4 m입니다.",
+      "achievementStandardIds": ["2수03-11"],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "meas_length_larger_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "reviewStatus": "VERIFIED"
+      }
+    },
+    {
+      "id": "meas_mass_smaller_001",
+      "version": 2,
+      "contentRef": {
+        "packageId": "math-measurement-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "meas_mass_smaller_001",
+        "contentVersion": 2
+      },
+      "subjectId": "math",
+      "courseId": "measurement",
+      "unitId": "mass",
+      "skillId": "MATH_UNIT_MASS_TO_SMALLER",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "2 kg = ___ g",
+      "expectedAnswer": "2000",
+      "explanation": "1 kg은 1000 g이므로 2 kg은 2000 g입니다.",
+      "achievementStandardIds": ["4수03-21"],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "meas_mass_smaller_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "reviewStatus": "VERIFIED"
+      }
+    },
+    {
+      "id": "meas_mass_larger_001",
+      "version": 2,
+      "contentRef": {
+        "packageId": "math-measurement-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "meas_mass_larger_001",
+        "contentVersion": 2
+      },
+      "subjectId": "math",
+      "courseId": "measurement",
+      "unitId": "mass",
+      "skillId": "MATH_UNIT_MASS_TO_LARGER",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "5000 g = ___ kg",
+      "expectedAnswer": "5",
+      "explanation": "1000 g은 1 kg이므로 5000 g은 5 kg입니다.",
+      "achievementStandardIds": ["4수03-21"],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "meas_mass_larger_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "reviewStatus": "VERIFIED"
+      }
+    },
+    {
+      "id": "meas_capacity_smaller_001",
+      "version": 2,
+      "contentRef": {
+        "packageId": "math-measurement-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "meas_capacity_smaller_001",
+        "contentVersion": 2
+      },
+      "subjectId": "math",
+      "courseId": "measurement",
+      "unitId": "capacity",
+      "skillId": "MATH_UNIT_CAPACITY_TO_SMALLER",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "4 L = ___ mL",
+      "expectedAnswer": "4000",
+      "explanation": "1 L는 1000 mL이므로 4 L는 4000 mL입니다.",
+      "achievementStandardIds": ["4수03-18"],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "meas_capacity_smaller_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "reviewStatus": "VERIFIED"
+      }
+    },
+    {
+      "id": "meas_capacity_larger_001",
+      "version": 2,
+      "contentRef": {
+        "packageId": "math-measurement-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "meas_capacity_larger_001",
+        "contentVersion": 2
+      },
+      "subjectId": "math",
+      "courseId": "measurement",
+      "unitId": "capacity",
+      "skillId": "MATH_UNIT_CAPACITY_TO_LARGER",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "3000 mL = ___ L",
+      "expectedAnswer": "3",
+      "explanation": "1000 mL는 1 L이므로 3000 mL는 3 L입니다.",
+      "achievementStandardIds": ["4수03-18"],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "meas_capacity_larger_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "reviewStatus": "VERIFIED"
+      }
+    }
+  ]
+}

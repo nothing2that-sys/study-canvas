@@ -109,8 +109,8 @@ const rawCatalog = [
     },
     edition: {
       workbookId: "math-fraction-g3",
-      editionVersion: 1,
-      contentPackageRefs: [{ packageId: "math-fraction-concepts-v1", packageVersion: "1.0.0" }],
+      editionVersion: 2,
+      contentPackageRefs: [{ packageId: "math-fraction-concepts-v1", packageVersion: "1.0.1" }],
       reviewStatus: "APPROVED",
       pages: [
         { pageId: "math-fraction-g3-p1", pageNumber: 1, unitId: "concepts", title: "부분과 전체", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_part_whole_bar_001" }, { activityId: "frac_part_whole_grid_002" }] },
@@ -137,8 +137,8 @@ const rawCatalog = [
     },
     edition: {
       workbookId: "math-fraction-g4",
-      editionVersion: 1,
-      contentPackageRefs: [{ packageId: "math-fraction-concepts-v1", packageVersion: "1.0.0" }],
+      editionVersion: 2,
+      contentPackageRefs: [{ packageId: "math-fraction-concepts-v1", packageVersion: "1.0.1" }],
       reviewStatus: "APPROVED",
       pages: [
         { pageId: "math-fraction-g4-p1", pageNumber: 1, unitId: "fraction_types", title: "진분수와 가분수", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_types_identify_001" }] },
@@ -164,8 +164,8 @@ const rawCatalog = [
     },
     edition: {
       workbookId: "math-fraction-g5",
-      editionVersion: 1,
-      contentPackageRefs: [{ packageId: "math-fraction-concepts-v1", packageVersion: "1.0.0" }],
+      editionVersion: 2,
+      contentPackageRefs: [{ packageId: "math-fraction-concepts-v1", packageVersion: "1.0.1" }],
       reviewStatus: "APPROVED",
       pages: [
         { pageId: "math-fraction-g5-p1", pageNumber: 1, unitId: "equivalent", title: "막대로 크기가 같은 분수 찾기", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_equiv_pair_choice_001" }] },
@@ -191,8 +191,8 @@ const rawCatalog = [
     },
     edition: {
       workbookId: "math-fractionops-g4",
-      editionVersion: 1,
-      contentPackageRefs: [{ packageId: "math-fraction-operations-v1", packageVersion: "1.0.0" }],
+      editionVersion: 2,
+      contentPackageRefs: [{ packageId: "math-fraction-operations-v1", packageVersion: "1.0.1" }],
       reviewStatus: "APPROVED",
       pages: [
         { pageId: "math-fractionops-g4-p1", pageNumber: 1, unitId: "same_denominator", title: "동분모 분수의 덧셈", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_op_same_add_001" }, { activityId: "frac_op_same_add_text_002" }] },
@@ -218,8 +218,8 @@ const rawCatalog = [
     },
     edition: {
       workbookId: "math-fractionops-g5",
-      editionVersion: 1,
-      contentPackageRefs: [{ packageId: "math-fraction-operations-v1", packageVersion: "1.0.0" }],
+      editionVersion: 2,
+      contentPackageRefs: [{ packageId: "math-fraction-operations-v1", packageVersion: "1.0.1" }],
       reviewStatus: "APPROVED",
       pages: [
         { pageId: "math-fraction-ops-g5-p1", pageNumber: 1, unitId: "unlike_denominator", title: "이분모 분수의 통분", launchTarget: "/math/fraction", activityRefs: [{ activityId: "frac_op_common_denom_001" }] },
@@ -245,8 +245,8 @@ const rawCatalog = [
     },
     edition: {
       workbookId: "math-decimal-g3",
-      editionVersion: 1,
-      contentPackageRefs: [{ packageId: "math-decimal-v1", packageVersion: "1.0.0" }],
+      editionVersion: 2,
+      contentPackageRefs: [{ packageId: "math-decimal-v1", packageVersion: "1.0.1" }],
       reviewStatus: "APPROVED",
       pages: [
         { pageId: "math-decimal-g3-p1", pageNumber: 1, unitId: "concepts", title: "0.1 단위의 소수", launchTarget: "/math/decimal", activityRefs: [{ activityId: "dec_tenths_bar_001" }, { activityId: "dec_tenths_text_002" }] },
@@ -272,8 +272,8 @@ const rawCatalog = [
     },
     edition: {
       workbookId: "math-decimal-g4",
-      editionVersion: 1,
-      contentPackageRefs: [{ packageId: "math-decimal-v1", packageVersion: "1.0.0" }],
+      editionVersion: 2,
+      contentPackageRefs: [{ packageId: "math-decimal-v1", packageVersion: "1.0.1" }],
       reviewStatus: "APPROVED",
       pages: [
         { pageId: "math-decimal-g4-p1", pageNumber: 1, unitId: "compare", title: "소수의 크기 비교", launchTarget: "/math/decimal", activityRefs: [{ activityId: "dec_compare_choice_001" }] },
@@ -294,13 +294,13 @@ const rawCatalog = [
       difficulty: "STANDARD",
       status: "ACTIVE",
       curriculumVersion: "2022-revised",
-      achievementStandardIds: ["6수01-13", "6수01-14", "6수01-15"],
+      achievementStandardIds: ["6수01-13", "6수01-15"],
       reviewStatus: "APPROVED"
     },
     edition: {
       workbookId: "math-decimal-g5",
-      editionVersion: 1,
-      contentPackageRefs: [{ packageId: "math-decimal-v1", packageVersion: "1.0.0" }],
+      editionVersion: 2,
+      contentPackageRefs: [{ packageId: "math-decimal-v1", packageVersion: "1.0.1" }],
       reviewStatus: "APPROVED",
       pages: [
         { pageId: "math-decimal-g5-p1", pageNumber: 1, unitId: "operations", title: "소수의 곱셈", launchTarget: "/math/decimal", activityRefs: [{ activityId: "dec_mul_text_001" }] },

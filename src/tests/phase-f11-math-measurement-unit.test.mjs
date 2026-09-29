@@ -208,6 +208,45 @@ test("Group B-1: Production unit-catalog.json은 정상적으로 로드 및 정�
   assert.equal(km.symbol, "km");
 });
 
+test("Group B-1a: 공개 측정 문항 ID와 생성 가능한 단위쌍의 교육과정 범위", () => {
+  const catalog = loadMeasurementCatalogFixture();
+  const curriculum = loadMeasurementCurriculumFixture();
+  const activities = JSON.parse(fs.readFileSync(path.join(CONTENT_DIR, "packages/math-measurement-v1/activities.json"), "utf8")).activities;
+  const expected = new Map([
+    ["length", "2수03-11"],
+    ["mass", "4수03-21"],
+    ["capacity", "4수03-18"]
+  ]);
+  const legacy = curriculum.skills.filter(skill => skill.status === "INACTIVE");
+  assert.deepEqual(legacy.map(skill => skill.skillId), ["MATH_UNIT_LENGTH_TO_SMALLER", "MATH_UNIT_LENGTH_TO_LARGER"]);
+  assert.ok(legacy.every(skill => !catalog.generatorProfiles.some(profile => profile.skillId === skill.skillId)));
+  for (const skill of curriculum.skills.filter(skill => skill.status === "ACTIVE")) {
+    const standardId = skill.skillId.startsWith("MATH_UNIT_M_CM_") ? "2수03-11" :
+      skill.unitId === "length" ? "4수03-16" : expected.get(skill.unitId);
+    assert.deepEqual(skill.achievementStandardIds, [standardId]);
+    assert.equal(skill.gradeBand, standardId === "2수03-11" ? "1_2" : "3_4");
+  }
+  for (const activity of activities) {
+    assert.deepEqual(activity.achievementStandardIds, [expected.get(activity.unitId)]);
+  }
+  const lengthPairs = new Map([
+    ["MATH_UNIT_M_CM_TO_SMALLER", "m->cm"],
+    ["MATH_UNIT_M_CM_TO_LARGER", "cm->m"],
+    ["MATH_UNIT_CM_MM_TO_SMALLER", "cm->mm"],
+    ["MATH_UNIT_CM_MM_TO_LARGER", "mm->cm"],
+    ["MATH_UNIT_KM_M_TO_SMALLER", "km->m"],
+    ["MATH_UNIT_KM_M_TO_LARGER", "m->km"]
+  ]);
+  for (const profile of catalog.generatorProfiles) {
+    const skill = curriculum.skills.find(skill => skill.skillId === profile.skillId);
+    assert.deepEqual(profile.achievementStandardIds, skill.achievementStandardIds);
+    if (profile.dimensionId === "length") {
+      assert.deepEqual(profile.allowedPairs.map(pair => `${pair.sourceUnitId}->${pair.targetUnitId}`), [lengthPairs.get(profile.skillId)]);
+    }
+  }
+  assert.equal(lengthPairs.size, 6);
+});
+
 test("Group B-2: 잘못된 schemaVersion 및 packageId 불일치는 reject되어야 한다", () => {
   const catalog = loadMeasurementCatalogFixture();
   const manifest = loadMeasurementManifestFixture();
@@ -288,8 +327,12 @@ test("Group B-5: cross-dimension pair, 동일 단위 pair, 중복 pair, 소수 �
 
   // duplicate pair
   const dupPair = JSON.parse(JSON.stringify(catalog));
-  dupPair.generatorProfiles[0].allowedPairs.push({ sourceUnitId: "km", targetUnitId: "m" });
+  dupPair.generatorProfiles[0].allowedPairs.push({ ...dupPair.generatorProfiles[0].allowedPairs[0] });
   assert.throws(() => validateUnitCatalog(dupPair, { curriculum }), /중복된 conversion pair/);
+
+  const wrongStandard = JSON.parse(JSON.stringify(catalog));
+  wrongStandard.generatorProfiles[0].achievementStandardIds = ["4수03-16"];
+  assert.throws(() => validateUnitCatalog(wrongStandard, { curriculum }), /성취기준 ID가 Skill과 불일치/);
 
   // decimal policy
   const decPolicy = JSON.parse(JSON.stringify(catalog));
@@ -302,7 +345,7 @@ test("Group B-5: cross-dimension pair, 동일 단위 pair, 중복 pair, 소수 �
 // ---------------------------------------------------------------------------
 test("Group C-1: 동일한 seed + skillId + count는 항상 100% 동일한 문제 배열을 생성해야 한다 (Determinism)", () => {
   const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
-  const skillId = "MATH_UNIT_LENGTH_TO_SMALLER";
+  const skillId = "MATH_UNIT_M_CM_TO_SMALLER";
 
   const run1 = generateUnitConversionActivities({ skillId, count: 20, seed: 12345, unitCatalog: catalog });
   const run2 = generateUnitConversionActivities({ skillId, count: 20, seed: 12345, unitCatalog: catalog });
@@ -316,11 +359,15 @@ test("Group C-1: 동일한 seed + skillId + count는 항상 100% 동일한 문�
   assert.notDeepEqual(run1, run3, "서로 다른 seed는 다른 결과를 생성해야 합니다.");
 });
 
-test("Group C-2: 6개 Production Skill 전수 대량 생성 수학적 정확성 검증 (2,000+ 문제 전수 assertion)", () => {
+test("Group C-2: 10개 Production Skill 전수 대량 생성 수학적 정확성 검증 (4,000+ 문제 전수 assertion)", () => {
   const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
   const skills = [
-    "MATH_UNIT_LENGTH_TO_SMALLER",
-    "MATH_UNIT_LENGTH_TO_LARGER",
+    "MATH_UNIT_M_CM_TO_SMALLER",
+    "MATH_UNIT_M_CM_TO_LARGER",
+    "MATH_UNIT_CM_MM_TO_SMALLER",
+    "MATH_UNIT_CM_MM_TO_LARGER",
+    "MATH_UNIT_KM_M_TO_SMALLER",
+    "MATH_UNIT_KM_M_TO_LARGER",
     "MATH_UNIT_MASS_TO_SMALLER",
     "MATH_UNIT_MASS_TO_LARGER",
     "MATH_UNIT_CAPACITY_TO_SMALLER",
@@ -359,10 +406,14 @@ test("Group C-2: 6개 Production Skill 전수 대량 생성 수학적 정확성 
         assert.ok(meta, "metadata가 존재해야 합니다.");
         assert.equal(meta.generatorId, "measurement-unit-generator-v1");
         assert.equal(meta.packageId, "math-measurement-v1");
-        assert.equal(meta.unitCatalogVersion, 1);
+        assert.equal(meta.unitCatalogVersion, 2);
+        assert.ok(act.id.includes("_v2_"), "catalogVersion 변경은 생성 문항 ID를 분리해야 함");
+        assert.deepEqual(act.achievementStandardIds, catalog.profilesMap.get(skillId).achievementStandardIds);
         assert.ok(meta.dimensionId);
         assert.ok(meta.sourceUnitId);
         assert.ok(meta.targetUnitId);
+        assert.ok(catalog.profilesMap.get(skillId).allowedPairs.some(pair =>
+          pair.sourceUnitId === meta.sourceUnitId && pair.targetUnitId === meta.targetUnitId));
         assert.ok(meta.sourceValue > 0);
         assert.ok(Number.isInteger(meta.sourceValue));
 
@@ -384,7 +435,7 @@ test("Group C-2: 6개 Production Skill 전수 대량 생성 수학적 정확성 
     }
   }
 
-  assert.ok(totalQuestionsVerified >= 2400, `최소 2400문제 이상 검증 완료 (실제: ${totalQuestionsVerified})`);
+  assert.ok(totalQuestionsVerified >= 4000, `최소 4000문제 이상 검증 완료 (실제: ${totalQuestionsVerified})`);
 });
 
 // ---------------------------------------------------------------------------
@@ -395,12 +446,12 @@ test("Group D-1: Production Package 로더를 통해 패키지 및 unitCatalog �
   const pkg = await loadPackage("math-measurement-v1", CONTENT_DIR);
 
   assert.equal(pkg.manifest.packageId, "math-measurement-v1");
-  assert.equal(pkg.curriculum.skills.length, 6);
+  assert.equal(pkg.curriculum.skills.length, 12);
   assert.equal(pkg.activities.length, 6);
 
   // Curriculum 스킬이 글로벌 레지스트리에 등록되었는지 확인
-  const skill = getSkill("MATH_UNIT_LENGTH_TO_SMALLER");
-  assert.ok(skill, "MATH_UNIT_LENGTH_TO_SMALLER 스킬이 등록되어야 합니다.");
+  const skill = getSkill("MATH_UNIT_M_CM_TO_SMALLER");
+  assert.ok(skill, "MATH_UNIT_M_CM_TO_SMALLER 스킬이 등록되어야 합니다.");
   assert.equal(skill.courseId, "measurement");
 
   // generic loadPackageResource 확인
@@ -489,7 +540,7 @@ test("Group E-4 [R2-MEASUREMENT-START]: Measurement 세션 시작 시 /math/meas
 
   const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
   const activities = generateUnitConversionActivities({
-    skillId: "MATH_UNIT_LENGTH_TO_SMALLER",
+    skillId: "MATH_UNIT_M_CM_TO_SMALLER",
     count: 2,
     seed: 111,
     unitCatalog: catalog
@@ -499,7 +550,7 @@ test("Group E-4 [R2-MEASUREMENT-START]: Measurement 세션 시작 시 /math/meas
     subjectId: "math",
     courseId: "measurement",
     moduleId: "measurement",
-    skillId: "MATH_UNIT_LENGTH_TO_SMALLER"
+    skillId: "MATH_UNIT_M_CM_TO_SMALLER"
   }, activities);
 
   const targetRoute = resolvePracticeRouteForSession(session);
@@ -573,7 +624,7 @@ test("Group E-7 [R2-MEASUREMENT-RECOMMENDATION-RESUME]: Measurement 미완료 �
     courseId: "measurement",
     moduleId: "measurement",
     sessionState: "PRACTICE_ACTIVE",
-    config: { courseId: "measurement", skillId: "MATH_UNIT_LENGTH_TO_LARGER" },
+    config: { courseId: "measurement", skillId: "MATH_UNIT_M_CM_TO_LARGER" },
     questions: [{ id: "q1", prompt: "10 mm = ___ cm" }]
   };
 
@@ -794,7 +845,7 @@ test("Group E-10 [R2-ACTUAL-APP-RESTORE-HANDLER]: Production app.js handleRestor
       config: {
         courseId: "measurement",
         moduleId: "measurement",
-        skillId: "MATH_UNIT_LENGTH_TO_SMALLER"
+        skillId: "MATH_UNIT_M_CM_TO_SMALLER"
       },
       questions: [
         {
@@ -802,7 +853,7 @@ test("Group E-10 [R2-ACTUAL-APP-RESTORE-HANDLER]: Production app.js handleRestor
           type: "TEXT",
           prompt: "5 m = ___ cm",
           expectedAnswer: "500",
-          skillId: "MATH_UNIT_LENGTH_TO_SMALLER"
+          skillId: "MATH_UNIT_M_CM_TO_SMALLER"
         }
       ],
       currentPageIndex: 0,
@@ -887,7 +938,7 @@ test("Group F-1: TEXT input mutation guard 및 Draft v4 round-trip 검증", asyn
   await clearAllData();
   const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
   const activities = generateUnitConversionActivities({
-    skillId: "MATH_UNIT_LENGTH_TO_SMALLER",
+    skillId: "MATH_UNIT_M_CM_TO_SMALLER",
     count: 5,
     seed: 555,
     unitCatalog: catalog
@@ -897,7 +948,7 @@ test("Group F-1: TEXT input mutation guard 및 Draft v4 round-trip 검증", asyn
     subjectId: "math",
     courseId: "measurement",
     moduleId: "measurement",
-    skillId: "MATH_UNIT_LENGTH_TO_SMALLER",
+    skillId: "MATH_UNIT_M_CM_TO_SMALLER",
     problemCount: 5
   }, activities);
   session.start();
@@ -918,7 +969,7 @@ test("Group F-1: TEXT input mutation guard 및 Draft v4 round-trip 검증", asyn
     subjectId: "math",
     courseId: "measurement",
     sessionState: "PRACTICE_ACTIVE",
-    config: { courseId: "measurement", skillId: "MATH_UNIT_LENGTH_TO_SMALLER" },
+    config: { courseId: "measurement", skillId: "MATH_UNIT_M_CM_TO_SMALLER" },
     questions: activities,
     responseRecords: Array.from(responseMap.values())
   };
@@ -1192,7 +1243,7 @@ test("Group I-1: Measurement Skill Progress 집계 및 연산 Progress와의 엄
   await clearAllData();
   const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
   const activities = generateUnitConversionActivities({
-    skillId: "MATH_UNIT_LENGTH_TO_LARGER",
+    skillId: "MATH_UNIT_M_CM_TO_LARGER",
     count: 2,
     seed: 999,
     unitCatalog: catalog
@@ -1201,7 +1252,7 @@ test("Group I-1: Measurement Skill Progress 집계 및 연산 Progress와의 엄
   const session = createSession({
     subjectId: "math",
     courseId: "measurement",
-    skillId: "MATH_UNIT_LENGTH_TO_LARGER",
+    skillId: "MATH_UNIT_M_CM_TO_LARGER",
     learnerId: "learner_i1"
   }, activities);
   session.start();
@@ -1234,14 +1285,14 @@ test("Group I-1: Measurement Skill Progress 집계 및 연산 Progress와의 엄
   assert.equal(aggs.length, 1);
   const measAgg = aggs[0];
   assert.equal(measAgg.courseId, "measurement");
-  assert.equal(measAgg.levelId, "MATH_UNIT_LENGTH_TO_LARGER");
+  assert.equal(measAgg.levelId, "MATH_UNIT_M_CM_TO_LARGER");
   assert.equal(measAgg.unitId, "length");
   assert.equal(measAgg.correctCount, 2);
   assert.equal(measAgg.accuracy, 100);
 
   // 3. 판정 수정(Revision): 1문제를 WRONG으로 번복 시 재계산 검증
   await reviseFinalizedGradeDecision(subRes.id, activities[1].id, "WRONG", "오판 정정", { learnerId: "learner_i1" });
-  const revisedAgg = await getProgressAggregateByLevel("learner_i1", "MATH_UNIT_LENGTH_TO_LARGER");
+  const revisedAgg = await getProgressAggregateByLevel("learner_i1", "MATH_UNIT_M_CM_TO_LARGER");
   assert.equal(revisedAgg.correctCount, 1);
   assert.equal(revisedAgg.incorrectCount, 1);
   assert.equal(revisedAgg.accuracy, 50);
@@ -1327,8 +1378,8 @@ test("Group L-3 [R3-OFFLINE-PACKAGE-LOAD]: 오프라인 환경에서 로컬 콘�
   const pkg = await loadPackage("math-measurement-v1", CONTENT_DIR);
   assert.ok(pkg);
   assert.equal(pkg.manifest.packageId, "math-measurement-v1");
-  assert.equal(pkg.manifest.packageVersion, "1.0.0");
-  assert.equal(pkg.curriculum.skills.length, 6);
+  assert.equal(pkg.manifest.packageVersion, "1.0.1");
+  assert.equal(pkg.curriculum.skills.length, 12);
   assert.ok(pkg.activities.length > 0);
 
   const catalogRes = await loadPackageResource("math-measurement-v1", "unitCatalog", CONTENT_DIR);
@@ -1340,7 +1391,7 @@ test("Group L-3 [R3-OFFLINE-PACKAGE-LOAD]: 오프라인 환경에서 로컬 콘�
 test("Group L-4 [R3-OFFLINE-SESSION-START]: 네트워크가 차단된 상태에서 Generator 및 Session 생성이 성공해야 한다", () => {
   const catalog = normalizeUnitCatalog(loadMeasurementCatalogFixture());
   const activities = generateUnitConversionActivities({
-    skillId: "MATH_UNIT_LENGTH_TO_SMALLER",
+    skillId: "MATH_UNIT_M_CM_TO_SMALLER",
     count: 5,
     seed: 444,
     unitCatalog: catalog
@@ -1352,7 +1403,7 @@ test("Group L-4 [R3-OFFLINE-SESSION-START]: 네트워크가 차단된 상태에�
     subjectId: "math",
     courseId: "measurement",
     moduleId: "measurement",
-    skillId: "MATH_UNIT_LENGTH_TO_SMALLER",
+    skillId: "MATH_UNIT_M_CM_TO_SMALLER",
     problemCount: 5
   }, activities);
 
