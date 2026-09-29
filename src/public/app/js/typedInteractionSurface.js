@@ -5,6 +5,7 @@ import { escapeHtml, SessionState } from "./sessionEngine.js";
 import { renderFractionRepresentation } from "./fractionRepresentationView.js";
 import { renderDecimalRepresentation } from "./decimalRepresentationView.js";
 import { ResponseType, resolveActivityResponseType } from "./learningActivity.js";
+import { getGradingReferenceForDisplay } from "./historicalGradingReference.js";
 
 export function syncChoiceSurfaceSelection(radios, selectedRadio) {
   radios.forEach((candidate) => {
@@ -93,7 +94,7 @@ export function renderTextActivityStage(q, options = {}) {
   const isShowGuides = Boolean(options.showGuides);
   const promptText = escapeHtml(q.prompt || q.question || "");
   const expectedAns = escapeHtml(String(q.expectedAnswer !== undefined ? q.expectedAnswer : (q.answer !== undefined ? q.answer : "")));
-  const acceptableAnswers = q.gradingReference?.acceptableAnswers;
+  const acceptableAnswers = getGradingReferenceForDisplay(q).acceptableAnswers;
   const alternativeAnswers = Array.isArray(acceptableAnswers)
     ? acceptableAnswers.filter((answer) => String(answer) !== String(q.expectedAnswer))
     : [];

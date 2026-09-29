@@ -69,6 +69,7 @@ import {
   renderTypedActivityStage
 } from "./typedInteractionSurface.js";
 import { getGuardianFeedbackPresets } from "./guardianFeedbackPresets.js";
+import { getGradingReferenceForDisplay } from "./historicalGradingReference.js";
 import { getNavigationHierarchy, updateGlobalLearningNav } from "./navigationHierarchy.js";
 
 import {
@@ -374,7 +375,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260929T001446698Z-d393794",
+    appBuildId: "20260929T005726441Z-a3e7227",
     sessionId: currentSession.id,
     learnerId: getActiveLearnerId(),
     subjectId: currentSession.subjectId || lastSessionConfig?.subjectId || "math",
@@ -2289,6 +2290,7 @@ function renderGradingView() {
     const questionSubject = q.subjectId || currentSession?.config?.subjectId || currentSubmission?.subjectId || "math";
     const questionCourse = q.courseId || currentSession?.config?.courseId || currentSubmission?.courseId || "";
     const feedbackPresets = getGuardianFeedbackPresets({ subjectId: questionSubject, courseId: questionCourse });
+    const gradingExplanation = getGradingReferenceForDisplay(q).explanation || q.explanation;
     card.innerHTML = `
       <div class="card-header">
         <span class="card-order">${idx + 1}번 문제</span>
@@ -2336,7 +2338,7 @@ function renderGradingView() {
 
       <details class="grading-explanation">
         <summary>오답 풀이 단계를 확인하기</summary>
-        <p>${(q.gradingReference?.explanation || q.explanation) ? escapeHtml(q.gradingReference?.explanation || q.explanation) : (q.operandA !== undefined ? `${Number(q.operandA).toLocaleString()} ${symbol} ${Number(q.operandB).toLocaleString()}의 정답은 <strong>${answerFormatted}</strong>입니다. 위 모범 풀이에서 자리 맞춤과 중간 계산을 순서대로 비교해 보세요.` : `정답: <strong>${answerFormatted}</strong>`)}</p>
+        <p>${gradingExplanation ? escapeHtml(gradingExplanation) : (q.operandA !== undefined ? `${Number(q.operandA).toLocaleString()} ${symbol} ${Number(q.operandB).toLocaleString()}의 정답은 <strong>${answerFormatted}</strong>입니다. 위 모범 풀이에서 자리 맞춤과 중간 계산을 순서대로 비교해 보세요.` : `정답: <strong>${answerFormatted}</strong>`)}</p>
       </details>
 
       <!-- 채점자 퀵 코멘트 칩 및 메모 입력 -->
