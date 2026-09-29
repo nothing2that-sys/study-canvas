@@ -32,7 +32,7 @@ async function fetchTextResource(pathOrUrl) {
   if (isBrowser || pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
     let targetUrl = pathOrUrl;
     if (isBrowser && !pathOrUrl.startsWith("http://") && !pathOrUrl.startsWith("https://") && !pathOrUrl.startsWith("/")) {
-      targetUrl = `/${pathOrUrl.replace(/^\.\//, "")}`;
+      targetUrl = new URL(pathOrUrl, window.document.baseURI).href;
     }
     const res = await fetch(targetUrl);
     if (!res.ok) {

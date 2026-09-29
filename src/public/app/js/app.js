@@ -29,6 +29,7 @@ import {
   getRecentAttempts,
   getSubmissionBySessionId,
   getSubmission,
+  getAllSubmissions,
   getReviewItem,
   getAllReviewItems,
   getActiveReviewItems,
@@ -87,10 +88,13 @@ import {
   evaluateStartupDraftResumePolicy
 } from "./submissionLifecycle.js";
 import { resolvePracticeRoute, resolveLandingRoute, resolvePracticeRouteForSession } from "./learningRouteResolver.js";
-import { loadPackage, loadPackageResource } from "./contentPackageLoader.js";
+import { loadPackage, loadPackageResource, loadContentRegistry } from "./contentPackageLoader.js";
 import { generateUnitConversionActivities } from "./measurementUnitGenerator.js";
 import { selectKoreanActivities } from "./koreanActivitySelector.js";
 import { selectEnglishActivities } from "./englishActivitySelector.js";
+import { loadEnglishCoreV2ActivitiesByGrade } from "./englishCoreV2Loader.js";
+import { selectEnglishCoreV2PathSession } from "./englishCoreV2Session.js";
+import { getReleasedEnglishCoreV2Paths, getPreviousEnglishCoreV2CandidateIds } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
 if (typeof window !== "undefined") {
@@ -4114,6 +4118,67 @@ export async function renderKoreanLandingView() {
   renderSkillsForDomain();
 }
 
+async function renderEnglishCoreV2Paths() {
+  const container = document.querySelector("#englishF16BPathsContainer");
+  if (!container) return;
+  container.replaceChildren();
+  let registryEntry;
+  try {
+    const registry = await loadContentRegistry();
+    registryEntry = registry.packages.find(entry => entry.packageId === "english-core-v2");
+    if (!registryEntry || registryEntry.enabled !== true || registryEntry.status !== "APPROVED") return;
+    const pkg = await loadPackage("english-core-v2");
+    const paths = getReleasedEnglishCoreV2Paths(registryEntry, pkg.manifest);
+    if (!paths.length) return;
+    const heading = document.createElement("h2");
+    heading.textContent = "영어 학습 경로";
+    container.appendChild(heading);
+    for (const path of paths) {
+      const card = document.createElement("div");
+      card.className = "english-skill-card";
+      card.innerHTML = `<div class="english-skill-header"><div>
+        <h3 class="english-skill-title">${escapeHtml(path.learningObjective || path.pathId)}</h3>
+        <p class="english-skill-desc">${escapeHtml(path.gradeBand === "3_4" ? "3~4학년군" : "5~6학년군")}</p>
+        </div></div><div class="english-skill-meta"><span>📝 ${escapeHtml(String(path.sessionSize))}문제</span></div>`;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "english-start-btn";
+      button.textContent = "학습 시작하기 →";
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        try {
+          const grades = path.gradeBand === "3_4" ? [3, 4] : [5, 6];
+          const loaded = await Promise.all(grades.map(grade => loadEnglishCoreV2ActivitiesByGrade(grade)));
+          const activities = [...new Map(loaded.flat().map(item => [item.id, item])).values()];
+          const submissions = await getAllSubmissions({ learnerId: getActiveLearnerId(), subjectId: "english" });
+          const cohortManifestHash = pkg.manifest.reviewTrace.cohortManifestHash;
+          const previousCandidateIds = getPreviousEnglishCoreV2CandidateIds(submissions, path, cohortManifestHash);
+          const selected = selectEnglishCoreV2PathSession({ path, activities, previousCandidateIds,
+            cohortManifestHash, seed: Date.now() });
+          startSessionWithQuestions(selected.activities, {
+            subjectId: "english", courseId: "english-core", moduleId: "english-core",
+            unitId: selected.activities[0].unitId, skillId: selected.activities[0].skillId,
+            stageId: path.pathId, macroLevelId: path.pathId,
+            skillTitle: path.learningObjective, problemCount: selected.activities.length,
+            pageSize: 4, mathFormat: "horizontal",
+            f16b: { pathId: path.pathId, cohortManifestHash, candidateIds: selected.candidateIds }
+          });
+        } catch (error) {
+          console.error("[app] F16B 학습 경로 시작 실패:", error);
+          button.insertAdjacentText("afterend", ` 학습 경로를 열 수 없습니다: ${error.message}`);
+        } finally {
+          button.disabled = false;
+        }
+      });
+      card.appendChild(button);
+      container.appendChild(card);
+    }
+  } catch (error) {
+    console.error("[app] F16B 학습 경로 로드 실패:", error);
+    container.textContent = `영어 학습 경로를 불러올 수 없습니다: ${error.message}`;
+  }
+}
+
 //+_+// Phase F12: Korean 세션 시작
 export function startKoreanPracticeSession(skill, allActivities, manifest) {
   const seed = Date.now();
@@ -4246,6 +4311,7 @@ export async function renderEnglishLandingView() {
   }
 
   renderSkillsForDomain();
+  await renderEnglishCoreV2Paths();
 }
 
 //+_+// Phase F13: English 세션 시작

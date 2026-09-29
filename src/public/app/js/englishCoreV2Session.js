@@ -4,12 +4,14 @@ import { normalizeLearningActivity } from "./learningActivity.js";
 import { createMulberry32, hashSeed } from "./englishActivitySelector.js";
 
 /** Select a session without repeating any item from the immediately prior one. */
-export function selectEnglishCoreV2PathSession({ path, activities, previousCandidateIds = [], seed = 42 }) {
+export function selectEnglishCoreV2PathSession({ path, activities, previousCandidateIds = [], seed = 42,
+  cohortManifestHash }) {
   if (!path?.pathId || !Array.isArray(path.candidateIds)
     || !Number.isInteger(path.sessionSize) || path.sessionSize < 1
     || new Set(path.candidateIds).size !== path.candidateIds.length
     || path.candidateIds.length < path.sessionSize
-    || !Array.isArray(activities) || !Array.isArray(previousCandidateIds)) {
+    || !Array.isArray(activities) || !Array.isArray(previousCandidateIds)
+    || (cohortManifestHash !== undefined && !/^[a-f0-9]{64}$/.test(cohortManifestHash))) {
     throw new Error("[F16B Session] Exact learning path, size, and activities are required");
   }
   const declared = new Set(path.candidateIds);
@@ -24,7 +26,10 @@ export function selectEnglishCoreV2PathSession({ path, activities, previousCandi
     if (!declared.has(candidateId)) continue;
     if (byId.has(candidateId) || item?.sourceMetadata?.reviewStatus !== "APPROVED"
       || item?.contentRef?.packageId !== "english-core-v2"
-      || item?.metadata?.reviewCandidateId !== candidateId) {
+      || item?.metadata?.reviewCandidateId !== candidateId
+      || (path.gradeBand === "3_4" && ![3, 4].includes(item.gradeLevel))
+      || (path.gradeBand === "5_6" && ![5, 6].includes(item.gradeLevel))
+      || (cohortManifestHash && item?.metadata?.cohortManifestHash !== cohortManifestHash)) {
       throw new Error(`[F16B Session] Duplicate or unapproved path item: ${candidateId}`);
     }
     byId.set(candidateId, item);
