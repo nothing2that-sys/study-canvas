@@ -53,11 +53,11 @@ Math Canvas Pro의 콘텐츠 구조를 다음과 같이 전환한다.
 
 # 3. 콘텐츠 규모 목표
 
-아래 수량은 최소 설계 목표다. 품질 검증을 통과하지 못한 항목을 숫자를 맞추기 위해 승인하지 않는다.
+아래 수량은 F16B의 장기 확장 목표다. 2026-09-29 설계 재검토에서 교육적 최소 출시 조건과 분리했다. 품질 검증을 통과하지 못한 항목을 숫자를 맞추기 위해 승인하지 않는다. 국어·수학의 수량 Gate는 이 변경의 범위 밖이다.
 
 ## 3.1 English
 
-| Bank | Release Gate | Stretch Goal | 비고 |
+| Bank | 확장 목표 | 추가 확장 | 비고 |
 |---|---:|---:|---|
 | Base Word Family | 800 | 1,200 | 초등 기본 어휘를 우선하며 굴절형은 별도 count 금지 |
 | Morphology Variant | 4,000 | 8,000 | 복수, 3인칭 단수, 과거, 진행, 비교 등 파생형 |
@@ -67,6 +67,8 @@ Math Canvas Pro의 콘텐츠 구조를 다음과 같이 전환한다.
 | Materialized Activity | 80,000 | 150,000+ | Core + Vocabulary + Check/Workbook용 |
 
 English의 `Base Word Family`는 headword 중심 SSOT다. 불규칙 활용은 Morphology Rule 또는 Lexeme metadata에 명시한다.
+
+F16B 최소 출시는 위 수량과 별도 판정한다. 출시 cohort의 범위(학년군·학습목표·활성 Activity family·선택한 source/candidate ID)를 exact hash로 고정하고, 포함된 source와 모든 문항의 교육적 적합성 및 HUMAN 결정을 확인한다. 원천·정답·모든 오답·허용 형태·파생 관계를 함께 검수하며, 보류/반려 항목은 제외 이유를 남긴다. 선택한 학습 경로의 누적 학습 어휘는 초등 3~6학년 600개 이내로 관리하고 기본 어휘 비율 및 학년군 적합성을 검증한다. Bank의 800개 headword는 선택 가능한 풀이지 한 학습 경로의 학습량이 아니다. 각 출시 학습 경로는 실제 세션 길이·재노출 KPI를 감당하는지 검증하고, 무효/중복/복수 정답/출처 누락 0건, package 무결성·역사적 호환성 PASS를 요구한다. 정량 cohort 범위는 실제 학습 경로와 검수 가능량을 근거로 별도 확정하며 임의의 70% 환산이나 새 고정 수량으로 대체하지 않는다. 현재 cohort manifest와 교육적/HUMAN evidence가 없으므로 F16B 최소 출시 판정은 `REJECTED / REWORK_REQUIRED`다.
 
 예:
 
