@@ -124,7 +124,9 @@ export function buildSync({
   // 3. app.js 내부 BUILD_ID 갱신
   const appJsPath = path.join(appDir, "js", "app.js");
   let appJsContent = fs.readFileSync(appJsPath, "utf8");
-  appJsContent = appJsContent.replace(/appBuildId: "[^"]+"/g, `appBuildId: "${buildId}"`);
+  const appBuildMarker = /const APP_BUILD_ID = "[^"]+";/;
+  if (!appBuildMarker.test(appJsContent)) throw new Error("app.js APP_BUILD_ID marker missing");
+  appJsContent = appJsContent.replace(appBuildMarker, `const APP_BUILD_ID = "${buildId}";`);
   fs.writeFileSync(appJsPath, appJsContent, "utf8");
 
   //+_+// 원본 덮어쓰기는 BUILD_ID가 표시된 세 파일로 제한하고 manifest에 정책을 기록한다.

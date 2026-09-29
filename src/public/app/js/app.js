@@ -94,8 +94,11 @@ import { selectKoreanActivities } from "./koreanActivitySelector.js";
 import { selectEnglishActivities } from "./englishActivitySelector.js";
 import { loadEnglishCoreV2ActivitiesByGrade } from "./englishCoreV2Loader.js";
 import { selectEnglishCoreV2PathSession } from "./englishCoreV2Session.js";
-import { getReleasedEnglishCoreV2Paths, getPreviousEnglishCoreV2CandidateIds } from "./englishCoreV2Runtime.js";
+import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
+  getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
+
+const APP_BUILD_ID = "20260929T041832207Z-c7e3b40";
 
 if (typeof window !== "undefined") {
   window.__mathCanvasModuleStarted = true;
@@ -379,7 +382,7 @@ function captureDraftSnapshot() {
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
-    appBuildId: "20260929T041832207Z-c7e3b40",
+    appBuildId: APP_BUILD_ID,
     sessionId: currentSession.id,
     learnerId: getActiveLearnerId(),
     subjectId: currentSession.subjectId || lastSessionConfig?.subjectId || "math",
@@ -2162,7 +2165,7 @@ async function handleSubmitPractice() {
       perQuestionElapsedMs: currentSession.getQuestionSolveTimes?.() || {},
       studentStrokesMap: questionStrokesMap,
       responseSnapshots: mapToObject(questionResponseRecordsMap),
-      appBuildId: typeof BUILD_ID !== "undefined" ? BUILD_ID : "unknown"
+      appBuildId: APP_BUILD_ID
     });
   } catch (err) {
     await rollbackSubmissionToPractice(err, elapsedMs || elapsedBeforeSubmitMs);
@@ -4126,13 +4129,53 @@ async function renderEnglishCoreV2Paths() {
   try {
     const registry = await loadContentRegistry();
     registryEntry = registry.packages.find(entry => entry.packageId === "english-core-v2");
-    if (!registryEntry || registryEntry.enabled !== true || registryEntry.status !== "APPROVED") return;
+    const localPreview = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname)
+      && new URLSearchParams(window.location.search).get("f16bPreview") === "1";
+    if (!registryEntry || registryEntry.enabled !== true
+      || (registryEntry.status !== "APPROVED" && !(localPreview && registryEntry.status === "STAGING"))) return;
     const pkg = await loadPackage("english-core-v2");
-    const paths = getReleasedEnglishCoreV2Paths(registryEntry, pkg.manifest);
+    const paths = getReleasedEnglishCoreV2Paths(registryEntry, pkg.manifest).concat(
+      getPreviewEnglishCoreV2Paths(registryEntry, pkg.manifest, localPreview));
     if (!paths.length) return;
     const heading = document.createElement("h2");
     heading.textContent = "영어 학습 경로";
     container.appendChild(heading);
+    const exportButton = document.createElement("button");
+    exportButton.type = "button";
+    exportButton.className = "english-start-btn";
+    exportButton.textContent = "세션 검증 기록 내보내기";
+    exportButton.addEventListener("click", async () => {
+      exportButton.disabled = true;
+      try {
+        const [buildResponse, appResponse] = await Promise.all([
+          fetch(new URL("./build-manifest.json", document.baseURI), { cache: "no-store" }),
+          fetch(new URL("./js/app.js", document.baseURI), { cache: "no-store" })
+        ]);
+        if (!buildResponse.ok || !appResponse.ok || !window.crypto?.subtle) {
+          throw new Error("앱 빌드 파일을 검증할 수 없습니다.");
+        }
+        const build = await buildResponse.json();
+        const appBytes = await appResponse.arrayBuffer();
+        const digest = await window.crypto.subtle.digest("SHA-256", appBytes);
+        const appBuildHash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+        const submissions = await getAllSubmissions({ learnerId: getActiveLearnerId(), subjectId: "english" });
+        const draft = createEnglishCoreV2SessionTraceDraft(pkg.manifest, submissions,
+          build.buildId, appBuildHash);
+        const url = URL.createObjectURL(new Blob([`${JSON.stringify(draft, null, 2)}\n`],
+          { type: "application/json" }));
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "f16b-runtime-trace-draft.json";
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      } catch (error) {
+        console.error("[app] F16B 세션 기록 내보내기 실패:", error);
+        exportButton.insertAdjacentText("afterend", ` 세션 기록을 내보낼 수 없습니다: ${error.message}`);
+      } finally {
+        exportButton.disabled = false;
+      }
+    });
+    container.appendChild(exportButton);
     for (const path of paths) {
       const card = document.createElement("div");
       card.className = "english-skill-card";
