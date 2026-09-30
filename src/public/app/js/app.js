@@ -98,7 +98,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20260930T020011863Z-5e2457f";
+const APP_BUILD_ID = "20260930T043923457Z-d9a4ae7";
 
 if (typeof window !== "undefined") {
   window.__mathCanvasModuleStarted = true;

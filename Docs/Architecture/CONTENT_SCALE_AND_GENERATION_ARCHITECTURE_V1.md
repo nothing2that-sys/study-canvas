@@ -697,3 +697,9 @@ Shard 크기와 캐시 정책은 F16A 성능 테스트로 확정한다.
 - CI artifact 및 Production package integrity
 
 세부 실행 순서는 `31_PHASE_F16_CONTENT_FACTORY_AND_SCALE_PROGRAM.md`를 따른다.
+
+## F16C 문서 기반 1차 구현 계약 (2026-09-30)
+
+[완료 정본](../Implementation_Phases/F16C_DOCUMENT_BASED_FIRST_APPROVAL_2026-09-30.md): A의 7계열 bank→결정적 recipe→candidate→검증→개별 AI 검토→private staging→매 읽기 hash 검증→공용 CHOICE/TEXT preview를 완료했다. private curriculum15 Skill, 68원천/105문항이며 기존 공개160문항과 공용 runtime 계약을 보존한다. B의 후보Lexeme20,000/승인Lexeme8,000/Activity150,000 등 장기 공급 게이트는 미달·보존한다. C의 전문가 배치·자연스러움·교육적 적합성 확정은 DEFERRED_BY_USER다. FIRST_STAGE_APPROVED / AI_DOCUMENT_REVIEW는 HUMAN/공개 production APPROVED가 아니다.
+
+구현은 src/content-factory/banks/korean/{koreanBank,koreanPipeline}.js, review/koreanFirstStage.js 및 scripts/f16c-content.mjs. 국어 정규화는 단어 사이 공백을 보존하고 source/recipe/구현/sense/문항/approval/curriculum/package hash를 연결한다. production materializer 승인 게이트를 우회하지 않는다. 외부 텍스트 입력의 permission·license·attribution은 오답 의존 원천까지 전파한다. F16D 착수 가능이나 구현 미착수.
