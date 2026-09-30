@@ -59,15 +59,18 @@ import { ResponseType, ActivityType, DEFAULT_PROBLEM_COUNT, resolveActivityRespo
 import { renderFractionRepresentation } from "./fractionRepresentationView.js";
 import { renderDecimalRepresentation } from "./decimalRepresentationView.js";
 import { generateDecimalProblemSet } from "./decimalGenerator.js";
+import { MATH_SPECS, getMathSpec } from "./mathF16dSpec.js";
+import { startMathGeneratedSession } from "./mathF16dRuntime.js";
+import { renderMathF16dRepresentation } from "./mathF16dRepresentation.js";
 import { getWorkbookCatalogItem } from "./workbookCatalog.js";
 import { createResponseRecord, applyStudentResponseChange } from "./responseEngine.js";
 import { getActivityDisplayLabel, isInternalIdentifier } from "./displayLabels.js";
 import {
   bindChoiceResponseSurface,
   bindTextResponseSurface,
-  renderChoiceActivityStage,
-  renderTextActivityStage,
-  renderTypedActivityStage
+  renderChoiceActivityStage as renderBaseChoiceActivityStage,
+  renderTextActivityStage as renderBaseTextActivityStage,
+  renderTypedActivityStage as renderBaseTypedActivityStage
 } from "./typedInteractionSurface.js";
 import { getGuardianFeedbackPresets } from "./guardianFeedbackPresets.js";
 import { getGradingReferenceForDisplay } from "./historicalGradingReference.js";
@@ -98,7 +101,12 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20260930T043923457Z-d9a4ae7";
+const APP_BUILD_ID = "20260930T091001160Z-bebb5fd";
+const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
+//+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
+const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
+const renderTextActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseTextActivityStage(q, options);
+const renderTypedActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseTypedActivityStage(q, options);
 
 if (typeof window !== "undefined") {
   window.__mathCanvasModuleStarted = true;
@@ -1740,6 +1748,42 @@ function startSessionWithQuestions(questions, config) {
   updateGlobalLearningNav(getCurrentRoute(), {
     workbookTitle: getActiveWorkbookContext()?.title,
     subjectId: currentSession?.config?.subjectId
+  });
+}
+
+//+_+// F16D review preview enters the existing typed input, draft, submission and Guardian lifecycle.
+export async function startF16dMathPractice(generatorId, { count = DEFAULT_PROBLEM_COUNT, seed = Date.now() } = {}) {
+  if (!MATH_F16D_PREVIEW) throw new Error("수학 확장 연습은 검토 화면에서 시작하세요.");
+  const learnerId = getActiveLearnerId();
+  if (!learnerId) throw new Error("학습자를 먼저 선택하세요.");
+  const spec = getMathSpec(generatorId);
+  const sessionId = `math_${globalThis.crypto.randomUUID()}`;
+  const submissions = await getAllSubmissions({ learnerId });
+  const weakFeatures = [...new Set(submissions.flatMap(sub => (sub.questions || []).filter(q =>
+    q.metadata?.math && [GradeDecision.WRONG, GradeDecision.RETRY].includes(normalizeGradeDecision(sub.gradingResults?.[q.id]?.decision)))
+    .map(q => q.metadata.math.featureVector.family)))];
+  const result = await startMathGeneratedSession({ generatorId, learnerId, sessionId, seed, count, weakFeatures });
+  //+_+// Learner switching during async DB/query work must not materialize a session for another learner.
+  if (getActiveLearnerId() !== learnerId) throw new Error("학습자가 변경되었습니다. 다시 시작하세요.");
+  const config = { sessionId, learnerId, subjectId: "math", courseId: spec.courseId, moduleId: spec.domain,
+    unitId: spec.unitId, skillId: spec.skillId, stageId: spec.skillId, macroLevelId: spec.skillId,
+    skillTitle: spec.title, problemCount: result.activities.length, pageSize: 4, mathFormat: "horizontal",
+    mathGeneration: { generatorId, seed, version: spec.version, selection: result.selection, timings: result.timings, reviewStatus: "REVIEW_REQUIRED" } };
+  startSessionWithQuestions(result.activities, config);
+  return result;
+}
+function renderF16dPreviewPanel() {
+  if (!setupView || document.querySelector("#mathF16dPreviewPanel") || !MATH_F16D_PREVIEW) return;
+  const panel = document.createElement("section"); panel.id = "mathF16dPreviewPanel";
+  panel.innerHTML = `<h2>수학 확장 연습</h2><p>검수 전 연습입니다. 학년·학기 배치와 교육 적합성은 검토 중입니다.</p>
+    <label for="mathF16dFamily">연습 주제</label><select id="mathF16dFamily">${MATH_SPECS.map(s => `<option value="${escapeHtml(s.generatorId)}">${escapeHtml(s.title)}</option>`).join("")}</select>
+    <button type="button" id="mathF16dStart">연습 시작</button><p id="mathF16dMessage" role="status"></p>`;
+  setupView.appendChild(panel);
+  panel.querySelector("#mathF16dStart").addEventListener("click", async event => {
+    const button = event.currentTarget; button.disabled = true;
+    try { await startF16dMathPractice(panel.querySelector("select").value); }
+    catch (error) { panel.querySelector("#mathF16dMessage").textContent = error.message; }
+    finally { button.disabled = false; }
   });
 }
 
@@ -3734,6 +3778,7 @@ if (typeof document !== "undefined") {
       await renderEnglishLandingView();
     } else if (path === ROUTES.MATH_ARITHMETIC) {
       switchView(setupView, false);
+      renderF16dPreviewPanel();
       loadDashboardStats();
       renderAdaptiveRecommendCard();
       renderCurriculumRoadmap();

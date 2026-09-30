@@ -703,3 +703,8 @@ Shard 크기와 캐시 정책은 F16A 성능 테스트로 확정한다.
 [완료 정본](../Implementation_Phases/F16C_DOCUMENT_BASED_FIRST_APPROVAL_2026-09-30.md): A의 7계열 bank→결정적 recipe→candidate→검증→개별 AI 검토→private staging→매 읽기 hash 검증→공용 CHOICE/TEXT preview를 완료했다. private curriculum15 Skill, 68원천/105문항이며 기존 공개160문항과 공용 runtime 계약을 보존한다. B의 후보Lexeme20,000/승인Lexeme8,000/Activity150,000 등 장기 공급 게이트는 미달·보존한다. C의 전문가 배치·자연스러움·교육적 적합성 확정은 DEFERRED_BY_USER다. FIRST_STAGE_APPROVED / AI_DOCUMENT_REVIEW는 HUMAN/공개 production APPROVED가 아니다.
 
 구현은 src/content-factory/banks/korean/{koreanBank,koreanPipeline}.js, review/koreanFirstStage.js 및 scripts/f16c-content.mjs. 국어 정규화는 단어 사이 공백을 보존하고 source/recipe/구현/sense/문항/approval/curriculum/package hash를 연결한다. production materializer 승인 게이트를 우회하지 않는다. 외부 텍스트 입력의 permission·license·attribution은 오답 의존 원천까지 전파한다. F16D 착수 가능이나 구현 미착수.
+
+
+## 2026-09-30 F16D 실행 상태
+
+F16D Implementer IN_PROGRESS / Reviewer PENDING. 48계열 생성·노출 선택·검토용 학습 연결 구현, 전체 unit 1,131 PASS. Minimum 6영역 중5 PASS, 곱셈577,318/1,000,000 NG이므로 READY_FOR_REVIEW 불가. 학년/학기/난이도와 교육 적합성은 미승인, 48계열 Coverage PARTIAL, 공개 승인 공급0. F16B/F16C FIRST_STAGE_APPROVED / AI_DOCUMENT_REVIEW 유지. F16E/F19 구현 미착수. [실행 계획](../Implementation_Phases/F16D_EXECUTION_PLAN_2026-09-30.md), [구현·검증 근거](../Implementation_Phases/F16D_IMPLEMENTATION_REPORT_2026-09-30.md), [F19 Minimum/Stretch 이관](../Implementation_Phases/F19_TRANSFER_GATES_FROM_F16D_2026-09-30.md). 기존 Release Gate는 축소하지 않는다.

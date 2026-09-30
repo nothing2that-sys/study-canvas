@@ -240,6 +240,7 @@ export function renderRouteView(routePath) {
     case ROUTES.MATH_PRACTICE:
     case ROUTES.MATH_MEASUREMENT_PRACTICE:
     case ROUTES.MATH_FRACTION_PRACTICE:
+    case ROUTES.MATH_DECIMAL_PRACTICE:
     case ROUTES.KOREAN_CORE_PRACTICE:
     case ROUTES.ENGLISH_CORE_PRACTICE:
       if (domElements.mathAppRoot) domElements.mathAppRoot.hidden = false;

@@ -505,3 +505,8 @@ Count/space 계산기는 deterministic해야 하며 test fixture, invalid candid
 - [ ] CI success
 
 Release Gate 수량을 구현자가 임의 축소할 수 없다. 변경하려면 본 Architecture SSOT와 F16 실행 정본을 함께 갱신하고 설계 검토 승인을 받아야 한다.
+
+
+## 2026-09-30 F16D 실행 상태
+
+F16D Implementer IN_PROGRESS / Reviewer PENDING. 48계열 생성·노출 선택·검토용 학습 연결 구현, 전체 unit 1,131 PASS. Minimum 6영역 중5 PASS, 곱셈577,318/1,000,000 NG이므로 READY_FOR_REVIEW 불가. 학년/학기/난이도와 교육 적합성은 미승인, 48계열 Coverage PARTIAL, 공개 승인 공급0. F16B/F16C FIRST_STAGE_APPROVED / AI_DOCUMENT_REVIEW 유지. F16E/F19 구현 미착수. [실행 계획](../Implementation_Phases/F16D_EXECUTION_PLAN_2026-09-30.md), [구현·검증 근거](../Implementation_Phases/F16D_IMPLEMENTATION_REPORT_2026-09-30.md), [F19 Minimum/Stretch 이관](../Implementation_Phases/F19_TRANSFER_GATES_FROM_F16D_2026-09-30.md). 기존 Release Gate는 축소하지 않는다.

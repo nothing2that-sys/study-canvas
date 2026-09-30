@@ -1,11 +1,11 @@
-const CACHE_NAME = "math-canvas-pro-v20260930T043923457Z-d9a4ae7";
+const CACHE_NAME = "math-canvas-pro-v20260930T091001160Z-bebb5fd";
 
 //+_+// PWA 오프라인 구동을 위한 필수 App Shell 자산 목록
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./css/app.css?v=20260930T043923457Z-d9a4ae7",
-  "./js/app.js?v=20260930T043923457Z-d9a4ae7",
+  "./css/app.css?v=20260930T091001160Z-bebb5fd",
+  "./js/app.js?v=20260930T091001160Z-bebb5fd",
   "./js/canvasEngine.js",
   "./js/sessionEngine.js",
   "./js/parentGrading.js",
@@ -62,6 +62,11 @@ const APP_SHELL = [
   "./js/decimalDomain.js",
   "./js/decimalRepresentationView.js",
   "./js/decimalGenerator.js",
+  "./js/mathF16dSpec.js",
+  "./js/mathF16dGenerator.js",
+  "./js/mathF16dSelection.js",
+  "./js/mathF16dRuntime.js",
+  "./js/mathF16dRepresentation.js",
   "./js/guardianFeedbackPresets.js",
   "./js/navigationHierarchy.js",
   /* CONTENT_PACKAGES_PRECACHE_START */
