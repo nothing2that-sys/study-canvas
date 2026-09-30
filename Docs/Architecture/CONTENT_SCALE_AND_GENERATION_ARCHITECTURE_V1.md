@@ -6,6 +6,8 @@
 상위 정본: `Docs/UNIFIED_CURRICULUM_ACTIVITY_PLATFORM_v2.3.md`  
 F16 통합 실행 정본: `Docs/Implementation_Phases/34_PHASE_F16_CONTENT_FACTORY_AND_SCALE_PROGRAM_V2.md`
 
+현재 Phase 진행 규칙 (2026-09-30 사용자 지시): F16B는 구현·기술 검증과 교육부 원문 기반 AI 1차 검토로 `FIRST_STAGE_APPROVED / AI_DOCUMENT_REVIEW` 종료한다. [승인 근거와 항목별 범위](../Implementation_Phases/F16B_DOCUMENT_BASED_FIRST_APPROVAL_2026-09-30.md)를 따른다. 교육 전문가 최종 검수는 미실시·추후 과제이며 F16C 개발 착수를 막지 않는다. 아래 공개 콘텐츠 Release의 HUMAN·실제 runtime·최종 설계·무결성 Gate는 별도로 유지한다. 1차 승인으로 source/candidate의 생산용 APPROVED 상태를 만들지 않는다.
+
 ---
 
 # 1. 목적
@@ -68,7 +70,7 @@ Math Canvas Pro의 콘텐츠 구조를 다음과 같이 전환한다.
 
 English의 `Base Word Family`는 headword 중심 SSOT다. 불규칙 활용은 Morphology Rule 또는 Lexeme metadata에 명시한다.
 
-F16B 최소 출시는 위 수량과 별도 판정한다. 출시 cohort의 범위(학년군·학습목표·활성 Activity family·선택한 source/candidate ID)를 exact hash로 고정하고, 포함된 source와 모든 문항의 교육적 적합성 및 HUMAN 결정을 확인한다. 원천·정답·모든 오답·허용 형태·파생 관계를 함께 검수하며, 보류/반려 항목은 제외 이유를 남긴다. 선택한 학습 경로의 누적 학습 어휘는 초등 3~6학년 600개 이내로 관리하고 기본 어휘 비율 및 학년군 적합성을 검증한다. Bank의 800개 headword는 선택 가능한 풀이지 한 학습 경로의 학습량이 아니다. 각 출시 학습 경로는 실제 세션 길이·재노출 KPI를 감당하는지 검증하고, 무효/중복/복수 정답/출처 누락 0건, package 무결성·역사적 호환성 PASS를 요구한다. 정량 cohort 범위는 실제 학습 경로와 검수 가능량을 근거로 별도 확정하며 임의의 70% 환산이나 새 고정 수량으로 대체하지 않는다. 현재 cohort manifest와 교육적/HUMAN evidence가 없으므로 F16B 최소 출시 판정은 `REJECTED / REWORK_REQUIRED`다.
+F16B 최소 출시는 위 수량과 별도 판정한다. 출시 cohort의 범위(학년군·학습목표·활성 Activity family·선택한 source/candidate ID)를 exact hash로 고정하고, 포함된 source와 모든 문항의 교육적 적합성 및 HUMAN 결정을 확인한다. 원천·정답·모든 오답·허용 형태·파생 관계를 함께 검수하며, 보류/반려 항목은 제외 이유를 남긴다. 선택한 학습 경로의 누적 학습 어휘는 초등 3~6학년 600개 이내로 관리하고 기본 어휘 비율 및 학년군 적합성을 검증한다. Bank의 800개 headword는 선택 가능한 풀이지 한 학습 경로의 학습량이 아니다. 각 출시 학습 경로는 실제 세션 길이·재노출 KPI를 감당하는지 검증하고, 무효/중복/복수 정답/출처 누락 0건, package 무결성·역사적 호환성 PASS를 요구한다. 정량 cohort 범위는 실제 학습 경로와 검수 가능량을 근거로 별도 확정하며 임의의 70% 환산이나 새 고정 수량으로 대체하지 않는다. 현재 exact cohort는 준비됐으나 HUMAN 및 실제 runtime·최종 설계 evidence가 없으므로 공개 최소 출시는 `PUBLIC_RELEASE_PENDING_FINAL_REVIEW`다. F16B Phase 자체는 2026-09-30 문서 기반 AI 1차 승인으로 종료했다.
 
 예:
 
