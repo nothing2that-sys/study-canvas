@@ -1,5 +1,6 @@
 import { openReviewRetryResult } from "./reviewRetryPresentation.js";
 import { getSessionHistoryLabel } from "./sessionHistoryLabel.js";
+import { getQuestionAnswerDisplay } from "./questionAnswerDisplay.js";
 import { generateQuestionSet, REFERENCE_CURRICULUM, mapToRefLevel, calculateCandidateCapacity } from "./mathGen.js";
 import { createSession, SessionState, mistakeToQuestion, escapeHtml } from "./sessionEngine.js";
 import { createQuestionTimer, formatTime, startSessionTimer } from "./timer.js";
@@ -104,7 +105,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261001T010910058Z-e8b701a";
+const APP_BUILD_ID = "20261001T064736466Z-88ec3a3";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -1042,7 +1043,7 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
         <!-- 학생 필기 및 빨간 펜 첨삭 복원 영역 -->
         <div class="detail-review-stage">
           <div class="problem-canvas-stage">
-            ${renderProblemStageContent(r, { showGuides: false, readOnly: true, responseSnapshots: session.responseSnapshots })}
+            ${renderProblemStageContent(r, { showGuides: false, readOnly: true, responseSnapshots: session.responseSnapshots || {}, session: null, currentSubmission: null, questionResponseRecordsMap: null })}
             ${isTyped ? "" : `<canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>`}
           </div>
         </div>
@@ -1071,14 +1072,24 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
   }
 }
 
-function showSessionDetail(session) {
+async function showSessionDetail(session) {
   if (!sessionDetailModal) return;
+  currentModalSession = session;
+  let submission = null;
+  try {
+    submission = await getSubmissionBySessionId(session.sessionId || session.id, { learnerId: session.learnerId || getActiveLearnerId() });
+  } catch (error) {
+    console.warn("과거 제출 응답 조회 실패:", error);
+  }
+  // A later click or learner change must not display an earlier asynchronous result.
+  if (currentModalSession !== session || (session.learnerId && session.learnerId !== getActiveLearnerId())) return;
+  session = { ...session, responseSnapshots: submission?.responseSnapshots || session.responseSnapshots || {} };
   currentModalSession = session;
 
   const dateStr = new Date(session.completedAt).toLocaleString("ko-KR", {
     year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit"
   });
-  const op = session.operation === "div" ? "나눗셈" : "곱셈";
+  const op = getSessionHistoryLabel(session);
 
   if (detailModalTag) detailModalTag.textContent = `${dateStr} 기록`;
   if (detailModalTitle) detailModalTitle.textContent = `${op} ${session.totalQuestions}문제 풀이 및 첨삭 기록`;
@@ -1192,7 +1203,10 @@ async function renderReviewModalItem(reviewItem) {
   // 3. 단계별 풀이 해설 생성
   let explanationHtml = "";
   try {
-    if (question.operation === "div") {
+    if (isTypedActivity) {
+      const reference = getGradingReferenceForDisplay(question);
+      explanationHtml = `정답: <strong>${escapeHtml(getQuestionAnswerDisplay(question))}</strong>${reference.explanation || question.explanation ? `<div>${escapeHtml(reference.explanation || question.explanation)}</div>` : ""}`;
+    } else if (question.operation === "div") {
       const steps = getDivisionSteps(question.operandA, question.operandB);
       explanationHtml = `
         <div><strong>몫:</strong> ${steps.quotient}, <strong>나머지:</strong> ${steps.remainder}</div>
@@ -1209,16 +1223,16 @@ async function renderReviewModalItem(reviewItem) {
         </div>
       `;
     } else {
-      const ansDisplay = question.answer !== undefined ? (question.answer?.toLocaleString?.() ?? question.answer) : (question.expectedAnswer ?? "");
+      const ansDisplay = getQuestionAnswerDisplay(question);
       explanationHtml = `정답: <strong>${escapeHtml(String(ansDisplay))}</strong>`;
     }
   } catch (_) {
-    const ansDisplay = question.answer !== undefined ? (question.answer?.toLocaleString?.() ?? question.answer) : (question.expectedAnswer ?? "");
+    const ansDisplay = getQuestionAnswerDisplay(question);
     explanationHtml = `정답: ${escapeHtml(String(ansDisplay))}`;
   }
 
   const feedbackComment = gradeInfo.comment ? escapeHtml(gradeInfo.comment) : "";
-  const correctAnsDisplay = question.answer !== undefined ? (question.answer?.toLocaleString?.() ?? question.answer) : (question.expectedAnswer ?? "");
+  const correctAnsDisplay = escapeHtml(getQuestionAnswerDisplay(question));
 
   // 4. 모달 본문 렌더링
   const canvasId = `reviewModalCanvas_${reviewItem.id}`;
@@ -2320,9 +2334,7 @@ function renderGradingView() {
     if (currentGradingQuestionId === q.id) card.setAttribute("aria-current", "step");
 
     const symbol = q.operation === "div" ? "÷" : "×";
-    const answerFormatted = q.answer !== undefined && q.answer !== null
-      ? (typeof q.answer === "number" ? q.answer.toLocaleString() : String(q.answer))
-      : String(q.expectedAnswer || "");
+    const answerFormatted = escapeHtml(getQuestionAnswerDisplay(q));
     const commentValue = currentGrade?.comment || "";
     const cardLevel = escapeHtml(getActivityDisplayLabel(q, currentSession?.config));
     const isCanvasResponse = usesDrawingCanvas(q);
@@ -2881,8 +2893,10 @@ async function terminateSession() {
   gradingStrokesMap.clear();
   gradingResultsMap.clear();
   updateDraftSaveStatus(DraftSaveStatus.IDLE);
-  switchView(setupView);
-  loadDashboardStats();
+  questionResponseRecordsMap.clear();
+  currentSubmission = null;
+  currentResultSummary = null;
+  navigate(ROUTES.HOME);
   if (confirmModal?.open) confirmModal.close();
 }
 
@@ -3402,6 +3416,7 @@ function restoreSessionFromDraft(draft) {
   currentDraftCreatedAt = draft.createdAt || Date.now();
   currentQuestions = draft.questions;
   currentSession = createSession({ ...draft.config, sessionId: draft.sessionId }, draft.questions);
+  currentSession.reviewItemId = draft.config?.reviewItemId || null;
   currentSubmission = { id: draft.submissionId || `sub_${draft.sessionId}`, learnerId: getActiveLearnerId() };
   questionStrokesMap.clear();
   questionResponseRecordsMap.clear();
@@ -3773,6 +3788,9 @@ if (typeof document !== "undefined") {
       renderCurriculumRoadmap();
       renderStudyCalendar(currentCalYear, currentCalMonth);
     }
+    // Landing handlers may navigate after asynchronous package loading. Do not hide
+    // the newly opened worksheet by rendering the stale landing route afterwards.
+    if (path !== getCurrentRoute()) return;
     renderRouteView(path);
     await updateShellHeader();
     updateGlobalLearningNav(path, {

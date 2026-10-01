@@ -115,7 +115,7 @@ export async function submitLearningSession(options = {}) {
   }
 
   //+_+// Phase F7: 재풀이 세션인 경우 ReviewItem을 review_pending 상태로 전이
-  const targetReviewItemId = options.reviewItemId || session?.reviewItemId;
+  const targetReviewItemId = options.reviewItemId || session?.reviewItemId || session?.config?.reviewItemId;
   if (targetReviewItemId && savedSubmission) {
     try {
       await storageMarkReviewItemReviewPending(targetReviewItemId, savedSubmission.id, options);

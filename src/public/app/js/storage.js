@@ -2543,6 +2543,8 @@ export async function finalizeSubmissionGrading(id, options = {}) {
     accuracyRate,
     totalSolveTimeMs: rawExisting.totalSolveTimeMs || 0,
     averageSolveTimeMs: avgSolveTimeMs,
+    submissionId: rawExisting.id,
+    responseSnapshots: deepClone(rawExisting.responseSnapshots || {}),
     results: sessionResults
   };
 
