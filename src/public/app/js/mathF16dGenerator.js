@@ -1,5 +1,5 @@
 //+_+// F16D bounded, replayable mathematical generator; all arithmetic answers use integers/rationals.
-import { MATH_GENERATOR_VERSION, getMathSpec, UNIT_PAIRS } from "./mathF16dSpec.js";
+import { MATH_GENERATOR_VERSION, MIXED_OPERATION_WHOLE_MAX, getMathSpec, UNIT_PAIRS } from "./mathF16dSpec.js";
 import { normalizeLearningActivity } from "./learningActivity.js";
 import { gcd, addFractions, subtractFractions, compareFractions, formatFractionText } from "./fractionOperations.js";
 import { parseDecimal, formatDecimal, addDecimals, subtractDecimals, multiplyDecimals, divideDecimals } from "./decimalDomain.js";
@@ -26,6 +26,14 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // Unordered two-digit factor pairs. No product-value or display permutations enter the count.
 export const PRODUCT_COMPARISON_PAIRS = Object.freeze(Array.from({ length: 90 }, (_, i) => i + 10)
   .flatMap(a => Array.from({ length: 100 - a }, (_, i) => Object.freeze([a, a + i]))));
+// a<c<=d<=99<b<=999: one two-digit × three-digit product, one two-digit product.
+// Disjoint from the original Cartesian segment. Precompute only 89 rank blocks.
+export const THREE_DIGIT_COMPARISON_BLOCKS = Object.freeze(Array.from({length:89},(_,i)=> {
+  const a=10+i, width=99-a;
+  const preceding = Array.from({length:i},(_,j)=>90-j).reduce((sum,w)=>sum+w*(w-1)/2,0);
+  return Object.freeze({a,width,start:preceding,count:width*(width+1)/2});
+}));
+export const THREE_DIGIT_COMPARISON_PER_FACTOR = THREE_DIGIT_COMPARISON_BLOCKS.reduce((sum,b)=>sum+b.count,0);
 export function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   if (value && typeof value === "object") return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${stableJson(value[k])}`).join(",")}}`;
@@ -33,7 +41,7 @@ export function stableJson(value) {
 }
 export function rawSpace(specOrId) {
   const s = typeof specOrId === "string" ? getMathSpec(specOrId) : specOrId;
-  if (s.domain === "multiplication") return s.task === "compare_products" ? PRODUCT_COMPARISON_PAIRS.length ** 2 : 998 * 98;
+  if (s.domain === "multiplication") return s.task === "compare_products" ? PRODUCT_COMPARISON_PAIRS.length ** 2 + 900 * THREE_DIGIT_COMPARISON_PER_FACTOR : 998 * 98;
   if (s.domain === "division") return 998 * 98;
   if (s.domain === "measurement") {
     if (["unit_choice", "unit_error"].includes(s.task)) return 5;
@@ -47,7 +55,7 @@ export function rawSpace(specOrId) {
     return size ** (s.task === "order" ? 3 : 2);
   }
   if (s.domain === "fraction_operation") {
-    const n = size * (s.task.startsWith("mixed") ? 10 : 1);
+    const n = size * (s.task.startsWith("mixed") ? MIXED_OPERATION_WHOLE_MAX + 1 : 1);
     return n * n;
   }
   if (["add", "sub", "mul", "div", "compare"].includes(s.task)) return 999 * 999;
@@ -61,6 +69,15 @@ export function parametersAt(specOrId, index) {
   const size = FRACTION_POOL.length;
   if (s.domain === "multiplication" && s.task === "compare_products") {
     const n = PRODUCT_COMPARISON_PAIRS.length;
+    if (index >= n*n) {
+      const extended=index-n*n, b=100+Math.floor(extended/THREE_DIGIT_COMPARISON_PER_FACTOR);
+      let rank=extended%THREE_DIGIT_COMPARISON_PER_FACTOR;
+      const block=THREE_DIGIT_COMPARISON_BLOCKS.find(x=>rank>=x.start && rank<x.start+x.count);
+      rank-=block.start;
+      let c=block.a+1;
+      while (rank>=100-c) { rank-=100-c; c++; }
+      return {a:block.a,b,c,d:c+rank};
+    }
     const [a, b] = PRODUCT_COMPARISON_PAIRS[Math.floor(index / n)];
     const [c, d] = PRODUCT_COMPARISON_PAIRS[index % n];
     return { a, b, c, d };
@@ -73,7 +90,7 @@ export function parametersAt(specOrId, index) {
   }
   if (s.domain.startsWith("fraction")) {
     const mixed = s.domain === "fraction_operation" && s.task.startsWith("mixed");
-    const n = size * (mixed ? 10 : 1);
+    const n = size * (mixed ? MIXED_OPERATION_WHOLE_MAX + 1 : 1);
     const at = i => ({ ...FRACTION_POOL[i % size], wholeNumber: Math.floor(i / size) });
     if (s.domain === "fraction_operation") return { f1: at(Math.floor(index / n)), f2: at(index % n) };
     if (s.task === "identify") return { f1: at(Math.floor(index / 5)), representation: REPRESENTATIONS[index % 5], scale: 2 };
@@ -88,10 +105,10 @@ export function parametersAt(specOrId, index) {
   if (s.task === "measurement") return { a: 1 + Math.floor(index / 3), pair: [0, 3, 4][index % 3] };
   return { a: index + 1 };
 }
-function allowedFraction(f, mixed = false) {
+function allowedFraction(f, mixed = false, maxWhole = 9) {
   return f && [f.numerator, f.denominator, f.wholeNumber].every(Number.isSafeInteger)
     && f.denominator >= 2 && f.denominator <= 20 && f.numerator >= 1 && f.numerator < f.denominator
-    && gcd(f.numerator, f.denominator) === 1 && f.wholeNumber >= 0 && f.wholeNumber <= (mixed ? 9 : 0);
+    && gcd(f.numerator, f.denominator) === 1 && f.wholeNumber >= 0 && f.wholeNumber <= (mixed ? maxWhole : 0);
 }
 export function validateParameters(specOrId, p) {
   const s = typeof specOrId === "string" ? getMathSpec(specOrId) : specOrId;
@@ -100,7 +117,7 @@ export function validateParameters(specOrId, p) {
   if (s.domain === "multiplication" && s.task === "compare_products") {
     // a<c<=d<b removes factor swaps, left/right reversal, identical/shared factors,
     // and componentwise domination that could be answered without calculating either product.
-    return [p.a, p.b, p.c, p.d].every(x => between(x, 10, 99))
+    return [p.a, p.c, p.d].every(x => between(x, 10, 99)) && between(p.b,10,999)
       && p.a < p.c && p.c <= p.d && p.d < p.b;
   }
   if (["multiplication", "division"].includes(s.domain)) {
@@ -124,7 +141,7 @@ export function validateParameters(specOrId, p) {
   }
   if (s.domain === "fraction_operation") {
     const mixed = s.task.startsWith("mixed");
-    if (!allowedFraction(p.f1, mixed) || !allowedFraction(p.f2, mixed)) return false;
+    if (!allowedFraction(p.f1, mixed, MIXED_OPERATION_WHOLE_MAX) || !allowedFraction(p.f2, mixed, MIXED_OPERATION_WHOLE_MAX)) return false;
     if (s.task.startsWith("same") && p.f1.denominator !== p.f2.denominator) return false;
     if (s.task.startsWith("unlike") && p.f1.denominator === p.f2.denominator) return false;
     if (mixed && p.f1.wholeNumber === 0 && p.f2.wholeNumber === 0) return false;
@@ -176,7 +193,7 @@ function derive(s, p) {
     operands = [[a, b], [c, d]];
     prompt = `${a} × ${b} □ ${c} × ${d}. 두 곱을 계산하여 알맞은 부호를 고르세요.`;
     answer = relation(a * b - c * d); choices = symChoices();
-    Object.assign(feature, { digits: [2, 2, 2, 2], comparison: answer, independentlyCalculatedProducts: 2 });
+    Object.assign(feature, { digits: [2, String(b).length, 2, 2], comparison: answer, independentlyCalculatedProducts: 2 });
   } else if (s.domain === "multiplication") {
     const { a, b } = p; const product = a * b;
     operands = [a, b]; feature.digits = [String(a).length, String(b).length].sort(); feature.zero = `${a}${b}`.includes("0");

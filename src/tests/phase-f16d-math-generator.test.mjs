@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import "fake-indexeddb/auto";
 import { MATH_SPECS, UNIT_PAIRS } from "../public/app/js/mathF16dSpec.js";
-import { generateMathCandidate, validateMathCandidate, parametersAt, rawSpace, FRACTION_POOL, resolveMathGeneratedActivity } from "../public/app/js/mathF16dGenerator.js";
+import { generateMathCandidate, validateMathCandidate, parametersAt, rawSpace, FRACTION_POOL, resolveMathGeneratedActivity, THREE_DIGIT_COMPARISON_PER_FACTOR } from "../public/app/js/mathF16dGenerator.js";
 import { generateMathCandidates, selectMathCandidates, exposureOf } from "../public/app/js/mathF16dSelection.js";
 import { startMathGeneratedSession, getMathExposureHistory } from "../public/app/js/mathF16dRuntime.js";
 import { renderFractionRepresentation } from "../public/app/js/fractionRepresentationView.js";
@@ -19,10 +19,20 @@ import { initAppShell, renderRouteView } from "../public/app/js/platform/appShel
 import { ROUTES } from "../public/app/js/platform/appRouter.js";
 import fs from "node:fs";
 const id = (domain, task) => `f16d_${domain}_${task}`;
+test("three-digit product comparison and two-digit mixed wholes meet all unchanged Stretch gates", () => {
+  const spec = MATH_SPECS.find(s => s.task === 'compare_products');
+  assert.equal(validateParameters(spec,{a:10,b:999,c:98,d:99}),true);
+  assert.equal(validateParameters(spec,{a:10,b:1000,c:98,d:99}),false);
+  const mixed = MATH_SPECS.find(s => s.task === 'mixed_add');
+  assert.equal(validateParameters(mixed,{f1:{wholeNumber:19,numerator:1,denominator:2},f2:{wholeNumber:19,numerator:2,denominator:3}}),true);
+  const report = createMathCoverageReports();
+  assert.equal(report.arithmeticStretch.gate,'PASS');
+  for (const domain of report.domains.filter(d=>d.stretch)) assert.equal(domain.stretchGate,'PASS',domain.domain);
+});
 test("two independently calculated products add a genuine nontrivial comparison response task", () => {
   const spec = MATH_SPECS.find(s => s.task === "compare_products");
   assert.ok(spec, "Missing multiplication comparison task");
-  assert.equal(rawSpace(spec), 4095 ** 2);
+  assert.equal(rawSpace(spec), 4095 ** 2 + 900*121485);
   const pairIndex = (a, b) => Array.from({length: a - 10}, (_, i) => 90 - i).reduce((s, n) => s + n, 0) + b - a;
   const at = (a, b, c, d) => pairIndex(a, b) * 4095 + pairIndex(c, d);
   for (const [a,b,c,d,answer] of [[10,36,18,20,"="],[10,35,18,20,"<"],[10,37,18,20,">"]]) {
@@ -32,9 +42,32 @@ test("two independently calculated products add a genuine nontrivial comparison 
     assert.equal(validateMathCandidate(item).valid, true);
     assert.ok(item.explanation.includes(String(a*b)));
   }
-  for (const p of [{a:10,b:20,c:30,d:40},{a:10,b:40,c:10,d:20},{a:9,b:40,c:18,d:20},{a:10,b:100,c:18,d:20}])
+  for (const p of [{a:10,b:20,c:30,d:40},{a:10,b:40,c:10,d:20},{a:9,b:40,c:18,d:20},{a:10,b:1000,c:18,d:20}])
     assert.equal(validateParameters(spec,p), false);
-  assert.equal(countMathSpec(spec).effectiveMathematicalContribution, 2672670);
+  assert.equal(countMathSpec(spec).effectiveMathematicalContribution, 112009170);
+});
+test("extended comparison rank enumerates each triple once and covers all 900 factor blocks", () => {
+  const spec=MATH_SPECS.find(s=>s.task==='compare_products'), start=4095**2;
+  let rank=0;
+  for(let a=10;a<=98;a++) for(let c=a+1;c<=99;c++) for(let d=c;d<=99;d++) {
+    assert.deepEqual(parametersAt(spec,start+rank),{a,b:100,c,d}); rank++;
+  }
+  assert.equal(rank,121485); assert.equal(THREE_DIGIT_COMPARISON_PER_FACTOR,rank);
+  for(let b=100;b<=999;b++) {
+    const offset=start+(b-100)*rank;
+    assert.deepEqual(parametersAt(spec,offset),{a:10,b,c:11,d:11});
+    assert.deepEqual(parametersAt(spec,offset+rank-1),{a:98,b,c:99,d:99});
+    const item=generateMathCandidate(spec.generatorId,offset+Math.floor(rank/2));
+    assert.equal(validateMathCandidate(item).valid,true);
+  }
+});
+test("all 49 archived v1.1 snapshots replay exactly after range extension", () => {
+  const snapshots=JSON.parse(fs.readFileSync(new URL('../../Docs/Implementation_Phases/Evidence/F16D_FINISH_2026-10-01/legacy-v1.1-snapshots.json',import.meta.url)));
+  assert.equal(snapshots.length,49);
+  for(const snapshot of snapshots) {
+    assert.ok(snapshot); assert.equal(validateMathCandidate(snapshot).valid,false);
+    assert.deepEqual(resolveMathGeneratedActivity(snapshot.contentRef,snapshot),snapshot);
+  }
 });
 test("all 48 archived v1 snapshots resolve without changing original content or responses", () => {
   const snapshots = JSON.parse(fs.readFileSync(new URL('../../Docs/Implementation_Phases/Evidence/F16D_COMPLETION_2026-10-01/legacy-v1-snapshots.json', import.meta.url)));
@@ -164,10 +197,12 @@ test("stale version fails new validation while immutable historical snapshot res
   const resolved = resolveMathGeneratedActivity(a.contentRef, a); assert.deepEqual(resolved, a); resolved.prompt = "changed"; assert.notEqual(resolved.prompt, a.prompt);
   assert.throws(() => resolveMathGeneratedActivity(a.contentRef, null));
 });
-test("all count formulas match full bounded parameter enumeration (no materialized fixtures counted)", () => {
+test("count formulas match full original enumeration plus independently enumerated extension blocks", () => {
   for (const spec of MATH_SPECS) {
     let valid = 0;
-    for (let i = 0; i < rawSpace(spec); i++) if (validateParameters(spec, parametersAt(spec, i))) valid++;
+    const limit=spec.task==='compare_products' ? 4095**2 : rawSpace(spec);
+    for (let i = 0; i < limit; i++) if (validateParameters(spec, parametersAt(spec, i))) valid++;
+    if(spec.task==='compare_products') valid+=900*121485;
     assert.equal(countMathSpec(spec).validatedParameterSpace, valid, spec.generatorId);
   }
   const report = createMathCoverageReports();

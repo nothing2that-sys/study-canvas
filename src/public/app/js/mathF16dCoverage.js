@@ -1,5 +1,5 @@
 //+_+// Exact count proofs match parametersAt/validateParameters. No random samples enter supply counts.
-import { MATH_SPECS, MATH_SOURCE, UNIT_PAIRS, F19_GATES } from "./mathF16dSpec.js";
+import { MATH_SPECS, MATH_SOURCE, UNIT_PAIRS, F19_GATES, MIXED_OPERATION_WHOLE_MAX } from "./mathF16dSpec.js";
 import { FRACTION_POOL, rawSpace, parametersAt, validateParameters } from "./mathF16dGenerator.js";
 const choose2 = n => n * (n - 1) / 2;
 const choose3 = n => n * (n - 1) * (n - 2) / 6;
@@ -7,8 +7,8 @@ const choose4 = n => n * (n - 1) * (n - 2) * (n - 3) / 24;
 export function countMathSpec(spec) {
   const raw = rawSpace(spec); let valid = raw, canonical = raw, effective = raw, proof;
   if (spec.domain === "multiplication" && spec.task === "compare_products") {
-    valid = canonical = effective = choose4(90) + choose3(90);
-    proof = "two canonical factor pairs from 10..99: raw C(91,2)^2; a<c<=d<b; four distinct factors C(90,4), repeated middle factor C(90,3). Each item calculates two products then answers <,=,>; factor swaps and side reversal excluded; no shared factor or componentwise domination";
+    valid = canonical = effective = choose4(90) + choose3(90) + 900*choose3(91);
+    proof = "original 10..99: C(90,4)+C(90,3); disjoint b=100..999 extension with 10<=a<c<=d<=99 adds 900*C(91,3). Only b may have three digits, thus every multiplication remains at most three digits × two digits; rank segment has no Cartesian rejections";
   } else if (spec.domain === "multiplication") {
     canonical = ["multiply", "equation", "estimate"].includes(spec.task) ? raw - choose2(98) : raw;
     effective = spec.task === "equation" ? 0 : canonical;
@@ -32,9 +32,10 @@ export function countMathSpec(spec) {
     const groups = new Map(); for (const f of FRACTION_POOL) groups.set(f.denominator, (groups.get(f.denominator) || 0) + 1);
     const same = [...groups.values()].reduce((sum, k) => sum + k * (k + 1) / 2, 0);
     const proper = n * (n + 1) / 2;
-    valid = spec.task.startsWith("same") ? same : spec.task.startsWith("unlike") ? proper - same : (n * 10) * (n * 10 + 1) / 2 - proper;
+    const mixedSize = n * (MIXED_OPERATION_WHOLE_MAX+1);
+    valid = spec.task.startsWith("same") ? same : spec.task.startsWith("unlike") ? proper - same : mixedSize * (mixedSize + 1) / 2 - proper;
     canonical = effective = valid;
-    proof = "reduced proper pool127; same denominator Σ k_d(k_d+1)/2; unlike C(128,2)-same; mixed (whole0..9) C(1271,2)-C(128,2), excluding both proper; ADD keeps f1≤f2, SUB f1≥f2. Addition/subtraction are distinct response tasks";
+    proof = `reduced proper pool127; same denominator Σ k_d(k_d+1)/2; unlike C(128,2)-same; mixed whole0..${MIXED_OPERATION_WHOLE_MAX}: C(${mixedSize+1},2)-C(128,2), excluding both proper; ADD keeps f1≤f2, SUB f1≥f2. Actual numeric operands differ; addition/subtraction are distinct response tasks`;
   } else {
     if (["add", "sub", "mul", "compare"].includes(spec.task)) valid = 999 * 1000 / 2;
     if (spec.task === "order") valid = choose3(99);

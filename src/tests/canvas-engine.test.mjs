@@ -2,6 +2,24 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 // Canvas 모의 객체
+test("read-only red pen outside formula survives compact review layout and resize", async () => {
+  globalThis.window = { devicePixelRatio: 1 };
+  let resizeCallback;
+  globalThis.ResizeObserver = class { constructor(fn) { resizeCallback = fn; } observe() {} disconnect() {} };
+  const { createDrawingCanvas } = await import("../public/app/js/canvasEngine.js");
+  const canvas = createMockCanvas(); let width = 300; let height = 200; const drawn = [];
+  canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width, height });
+  canvas.parentElement = { querySelector: () => ({ getBoundingClientRect: () => ({left: 60, top: 10, width: 180, height: 160}) }) };
+  const ctx = canvas.getContext(); ctx.moveTo = (x,y) => drawn.push([x,y]); canvas.getContext = () => ctx;
+  const engine = createDrawingCanvas(canvas, {readOnly:true});
+  engine.setStrokes([{color:'#c62828',width:3,baseWidth:600,baseHeight:400,gridWidth:300,gridHeight:200,
+    points:[{x:40,y:40,relX:-0.2,relY:-0.3},{x:80,y:80,relX:-0.1,relY:-0.1}]}]);
+  assert.deepEqual(drawn.at(-1),[20,20], "outside formula must remain inside review canvas");
+  width = 600; height = 400; resizeCallback();
+  assert.deepEqual(drawn.at(-1),[40,40], "resize must invalidate cached layout");
+  engine.destroy();
+});
+
 function createMockCanvas() {
   const listeners = {};
   return {

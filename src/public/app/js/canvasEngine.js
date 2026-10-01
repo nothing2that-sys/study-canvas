@@ -198,6 +198,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     if (destroyed) return;
     const rect = canvasElement.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
+    // Layout and formula transforms can change between grading and compact review.
+    cachedCanvasRect = rect;
+    cachedGridInfo = getGridBoundingInfo();
 
     if (typeof ctx.setTransform === "function") {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -249,7 +252,11 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     const currentGrid = cachedGridInfo;
     const currentCanvas = cachedCanvasRect;
 
-    if (pt.relX !== undefined && pt.relY !== undefined && currentGrid.gridWidth > 0) {
+    const first = stroke.points?.[0];
+    const outsideFormula = first && (first.relX < 0 || first.relX > 1 || first.relY < 0 || first.relY > 1);
+    // An annotation begun outside the formula belongs to the canvas margin.
+    // Keep one coordinate frame for the whole stroke, including archived strokes.
+    if (!outsideFormula && pt.relX !== undefined && pt.relY !== undefined && currentGrid.gridWidth > 0) {
       const x = currentGrid.gridLeft + (pt.relX * currentGrid.gridWidth);
       const y = currentGrid.gridTop + (pt.relY * currentGrid.gridHeight);
       const scale = stroke.gridWidth > 0 ? (currentGrid.gridWidth / stroke.gridWidth) : 1;
