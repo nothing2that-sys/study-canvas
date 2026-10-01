@@ -1,3 +1,5 @@
+import { openReviewRetryResult } from "./reviewRetryPresentation.js";
+import { getSessionHistoryLabel } from "./sessionHistoryLabel.js";
 import { generateQuestionSet, REFERENCE_CURRICULUM, mapToRefLevel, calculateCandidateCapacity } from "./mathGen.js";
 import { createSession, SessionState, mistakeToQuestion, escapeHtml } from "./sessionEngine.js";
 import { createQuestionTimer, formatTime, startSessionTimer } from "./timer.js";
@@ -13,6 +15,7 @@ import {
   saveSubmissionGradingProgress,
   finalizeSubmissionGrading,
   startReviewRetry,
+  resumeReviewRetry,
   deferReviewItem,
   resolveReviewItem,
   retryReviewItemAgain
@@ -101,7 +104,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20260930T091001160Z-bebb5fd";
+const APP_BUILD_ID = "20261001T010910058Z-e8b701a";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -846,7 +849,7 @@ async function loadDashboardStats() {
       } else {
         recentSessionsList.innerHTML = sessions.map((s, idx) => {
           const dateStr = new Date(s.completedAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-          const op = s.operation === "div" ? "나눗셈" : "곱셈";
+          const op = escapeHtml(getSessionHistoryLabel(s));
           return `
             <div class="session-history-item" data-session-idx="${idx}" title="클릭하여 문제별 상세 결과 다시보기">
               <div class="session-history-main">
@@ -963,7 +966,7 @@ function showCalendarDayDetails(dateKey, entry) {
 
   selectedDaySessionsList.innerHTML = entry.sessions.map((s, idx) => {
     const timeStr = new Date(s.completedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-    const op = s.operation === "div" ? "나눗셈" : "곱셈";
+    const op = escapeHtml(getSessionHistoryLabel(s));
     return `
       <div class="day-session-card">
         <div class="day-session-info">
@@ -1335,33 +1338,25 @@ async function renderReviewModalItem(reviewItem) {
     }
   });
 
-  reviewModalActions.querySelector("#reviewRetryNowBtn")?.addEventListener("click", async () => {
-    try {
-      const retryResult = await startReviewRetry(reviewItem.id, { learnerId });
-      reviewDetailModal.close();
-      startSessionWithQuestions(retryResult.session.questions, retryResult.session.config);
-      if (currentSession) {
-        currentSession.reviewItemId = reviewItem.id;
+  function bindReviewRetryAction(selector, command, failureMessage) {
+    reviewModalActions.querySelector(selector)?.addEventListener("click", async event => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      try {
+        const retryResult = await command(reviewItem.id, { learnerId });
+        openReviewRetryResult(retryResult, { startSession: startSessionWithQuestions, restoreDraft: handleRestoreDraftSession });
+        if (currentSession) currentSession.reviewItemId = reviewItem.id;
+        reviewDetailModal.close();
+      } catch (error) {
+        console.error(error);
+        alert(error.message || failureMessage);
+      } finally {
+        button.disabled = false;
       }
-    } catch (e) {
-      console.error(e);
-      alert(e.message || "재풀이 시작에 실패했습니다.");
-    }
-  });
-
-  reviewModalActions.querySelector("#reviewResumeBtn")?.addEventListener("click", async () => {
-    try {
-      const retryResult = await startReviewRetry(reviewItem.id, { learnerId });
-      reviewDetailModal.close();
-      startSessionWithQuestions(retryResult.session.questions, retryResult.session.config);
-      if (currentSession) {
-        currentSession.reviewItemId = reviewItem.id;
-      }
-    } catch (e) {
-      console.error(e);
-      alert(e.message || "재풀이 이어하기에 실패했습니다.");
-    }
-  });
+    });
+  }
+  bindReviewRetryAction("#reviewRetryNowBtn", startReviewRetry, "재풀이 시작에 실패했습니다.");
+  bindReviewRetryAction("#reviewResumeBtn", resumeReviewRetry, "재풀이 이어하기에 실패했습니다.");
 
   reviewModalActions.querySelector("#reviewResolveBtn")?.addEventListener("click", async () => {
     try {
@@ -1374,19 +1369,7 @@ async function renderReviewModalItem(reviewItem) {
     }
   });
 
-  reviewModalActions.querySelector("#reviewRetryAgainBtn")?.addEventListener("click", async () => {
-    try {
-      const retryResult = await retryReviewItemAgain(reviewItem.id, { learnerId });
-      reviewDetailModal.close();
-      startSessionWithQuestions(retryResult.session.questions, retryResult.session.config);
-      if (currentSession) {
-        currentSession.reviewItemId = reviewItem.id;
-      }
-    } catch (e) {
-      console.error(e);
-      alert(e.message || "다시 풀기 시작에 실패했습니다.");
-    }
-  });
+  bindReviewRetryAction("#reviewRetryAgainBtn", retryReviewItemAgain, "다시 풀기 시작에 실패했습니다.");
 
   reviewModalActions.querySelector("#reviewCloseBtn")?.addEventListener("click", () => {
     reviewDetailModal.close();
@@ -1730,6 +1713,9 @@ function startSessionWithQuestions(questions, config) {
   lastSessionConfig = effectiveConfig;
   currentDraftCreatedAt = Date.now();
   currentQuestions = questions;
+  // A new worksheet must not inherit the previous submitted answer or disabled tools.
+  currentSubmission = null;
+  currentResultSummary = null;
   questionStrokesMap.clear();
   questionResponseRecordsMap.clear();
   gradingStrokesMap.clear();
@@ -1744,6 +1730,8 @@ function startSessionWithQuestions(questions, config) {
 
   switchView(practiceView);
   renderCurrentWorksheetPage();
+  setPracticeInteractionLocked(false);
+  updateToolDockUI();
   triggerDraftSave();
   updateGlobalLearningNav(getCurrentRoute(), {
     workbookTitle: getActiveWorkbookContext()?.title,
@@ -3473,6 +3461,7 @@ function restoreSessionFromDraft(draft) {
     onPracticeActive: () => {
       switchView(practiceView, false);
       renderCurrentWorksheetPage();
+      setPracticeInteractionLocked(false);
     }
   });
 

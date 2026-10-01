@@ -3436,7 +3436,64 @@ export async function getReviewItemBySourceAttemptId(sourceAttemptId, options = 
   return found;
 }
 
+function createReviewRetrySession(item, rawSub, origQuestion, retrySessionId) {
+  const retryQuestion = {
+    ...structuredClone(origQuestion),
+    answer: undefined,
+    strokes: [],
+    studentStrokes: [],
+    gradingStrokes: [],
+    sourceAttemptId: item.sourceAttemptId,
+    reviewItemId: item.id
+  };
+
+  return createSession({
+    ...rawSub?.config,
+    id: retrySessionId,
+    sessionId: retrySessionId,
+    learnerId: item.learnerId,
+    subjectId: origQuestion.subjectId || item.subjectId || rawSub?.subjectId || "math",
+    courseId: origQuestion.courseId || rawSub?.courseId || rawSub?.config?.courseId || (origQuestion.subjectId === "korean" ? "korean-core" : (origQuestion.subjectId === "english" ? "english-core" : (origQuestion.unitId ? "measurement" : "arithmetic"))),
+    moduleId: origQuestion.moduleId || rawSub?.config?.moduleId || (origQuestion.subjectId === "korean" ? "korean-core" : (origQuestion.subjectId === "english" ? "english-core" : item.unitId || "arithmetic")),
+    unitId: origQuestion.unitId || item.unitId || null,
+    skillId: origQuestion.skillId || item.skillId || null,
+    operation: origQuestion.operation || (origQuestion.subjectId === "math" ? "mul" : "general"),
+    macroLevelId: origQuestion.macroLevelId || origQuestion.level || origQuestion.skillId || "general",
+    pageSize: 1,
+    sessionKind: "REVIEW_RETRY",
+    reviewItemId: item.id,
+    sourceAttemptId: item.sourceAttemptId
+  }, [retryQuestion]);
+
+}
+
 //+_+// Phase F7: 바로 다시 풀기 (신규 Retry Attempt 및 1문제 단독 세션 생성, ReviewItem retrying 전이 원자적 수행)
+export async function resumeReviewRetry(reviewItemId, options = {}) {
+  const item = await getReviewItem(reviewItemId, options);
+  if (!item || item.state !== "retrying") throw new Error("이어할 재풀이 항목을 찾을 수 없습니다.");
+  const attemptId = item.retryAttemptIds?.at(-1);
+  if (!attemptId) throw new Error("재풀이 attempt를 찾을 수 없습니다.");
+  const db = await getDB();
+  const retryAttempt = db.isMemory ? db.attempts.get(attemptId) : await new Promise((resolve, reject) => {
+    const request = db.transaction("attempts", "readonly").objectStore("attempts").get(attemptId);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  if (!retryAttempt || retryAttempt.reviewItemId !== item.id || retryAttempt.learnerId !== item.learnerId || retryAttempt.responseState !== "active") {
+    throw new Error("활성 재풀이 attempt가 일치하지 않습니다.");
+  }
+  const rawSub = await getSubmission(item.sourceSubmissionId, { learnerId: item.learnerId });
+  const question = rawSub?.questions?.find(q => q.id === item.questionId);
+  if (!question) throw new Error("재풀이할 원본 문제를 찾을 수 없습니다.");
+  const retrySession = createReviewRetrySession(item, rawSub, question, retryAttempt.sessionId);
+  const saved = await getDraftSession({ learnerId: item.learnerId });
+  const draft = saved?.sessionId === retryAttempt.sessionId ? saved : null;
+  if (draft && (draft.config?.reviewItemId !== item.id || draft.sessionState !== "PRACTICE_ACTIVE")) {
+    throw new Error("저장된 재풀이 상태가 일치하지 않습니다.");
+  }
+  return { reviewItem: item, retryAttempt, retrySession, draft };
+}
+
 export async function startReviewRetry(reviewItemId, options = {}) {
   if (!reviewItemId) throw new Error("재풀이를 시작할 reviewItem ID가 필요합니다.");
   const item = await getReviewItem(reviewItemId, { allLearners: true });
@@ -3467,36 +3524,9 @@ export async function startReviewRetry(reviewItemId, options = {}) {
   const retryAttemptId = `att_retry_${item.id}_${retryOrdinal}_${now}`;
   const retrySessionId = `sess_retry_${item.id}_${retryOrdinal}_${now}`;
 
-  const retryQuestion = {
-    ...origQuestion,
-    answer: undefined,
-    strokes: [],
-    studentStrokes: [],
-    gradingStrokes: [],
-    sourceAttemptId: item.sourceAttemptId,
-    reviewItemId: item.id
-  };
-
-  const retryQuestionKey = origQuestion.questionKey ||
-    origQuestion.key ||
+  const retrySession = createReviewRetrySession(item, rawSub, origQuestion, retrySessionId);
+  const retryQuestionKey = retrySession.questions[0].questionKey || retrySession.questions[0].key ||
     (origQuestion.skillId ? `${origQuestion.subjectId || item.subjectId || "math"}:${origQuestion.skillId}:${origQuestion.id}` : `${origQuestion.operation}:${origQuestion.operandA}:${origQuestion.operandB}`);
-
-  const retrySession = createSession({
-    id: retrySessionId,
-    sessionId: retrySessionId,
-    learnerId: item.learnerId,
-    subjectId: origQuestion.subjectId || item.subjectId || rawSub?.subjectId || "math",
-    courseId: origQuestion.courseId || rawSub?.courseId || rawSub?.config?.courseId || (origQuestion.subjectId === "korean" ? "korean-core" : (origQuestion.subjectId === "english" ? "english-core" : (origQuestion.unitId ? "measurement" : "arithmetic"))),
-    moduleId: origQuestion.moduleId || rawSub?.config?.moduleId || (origQuestion.subjectId === "korean" ? "korean-core" : (origQuestion.subjectId === "english" ? "english-core" : item.unitId || "arithmetic")),
-    unitId: origQuestion.unitId || item.unitId || null,
-    skillId: origQuestion.skillId || item.skillId || null,
-    operation: origQuestion.operation || (origQuestion.subjectId === "math" ? "mul" : "general"),
-    macroLevelId: origQuestion.macroLevelId || origQuestion.level || origQuestion.skillId || "general",
-    pageSize: 1,
-    sessionKind: "REVIEW_RETRY",
-    reviewItemId: item.id,
-    sourceAttemptId: item.sourceAttemptId
-  }, [retryQuestion]);
 
   const retryAttempt = {
     id: retryAttemptId,

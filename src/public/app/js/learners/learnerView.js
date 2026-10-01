@@ -1,3 +1,4 @@
+import { getSessionHistoryLabel } from "../sessionHistoryLabel.js";
 //+_+// Math Canvas Pro - 학습자 UI 뷰 렌더러 (Learner View)
 //+_+// SSOT Section 6 & 8 및 Phase F3 재검토 명세 준수
 //+_+// - 학습자 선택 화면 (#learnerSelectView)
@@ -666,7 +667,7 @@ export async function renderLearnerHomeView() {
         const dateStr = s.completedAt
           ? new Date(s.completedAt).toLocaleDateString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
           : "-";
-        const op = s.operation === "div" ? "나눗셈" : "곱셈";
+        const op = escapeHtml(getSessionHistoryLabel(s));
         const accClass = s.accuracyRate >= 80 ? "high" : "low";
 
         let reviewBadgeHtml = "";

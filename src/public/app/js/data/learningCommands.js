@@ -17,6 +17,7 @@ import {
   reviseFinalizedGradeDecision as storageReviseFinalizedGradeDecision,
   rebuildProgressAggregatesForLearner as storageRebuildProgressAggregatesForLearner,
   startReviewRetry as storageStartReviewRetry,
+  resumeReviewRetry as storageResumeReviewRetry,
   deferReviewItem as storageDeferReviewItem,
   markReviewItemReviewPending as storageMarkReviewItemReviewPending,
   resolveReviewItem as storageResolveReviewItem,
@@ -188,6 +189,10 @@ export async function rebuildProgressAggregates(learnerId, options = {}) {
 //+_+// Phase F7: 바로 다시 풀기 (신규 Retry Attempt 및 단독 세션 생성, ReviewItem retrying 전이)
 export async function startReviewRetry(reviewItemId, options = {}) {
   return await storageStartReviewRetry(reviewItemId, options);
+}
+
+export async function resumeReviewRetry(reviewItemId, options = {}) {
+  return await storageResumeReviewRetry(reviewItemId, options);
 }
 
 //+_+// Phase F7: 나중에 복습 (Attempt 미생성, ReviewItem unresolved 유지)
