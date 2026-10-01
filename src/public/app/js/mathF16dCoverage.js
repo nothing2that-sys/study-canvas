@@ -3,9 +3,13 @@ import { MATH_SPECS, MATH_SOURCE, UNIT_PAIRS, F19_GATES } from "./mathF16dSpec.j
 import { FRACTION_POOL, rawSpace, parametersAt, validateParameters } from "./mathF16dGenerator.js";
 const choose2 = n => n * (n - 1) / 2;
 const choose3 = n => n * (n - 1) * (n - 2) / 6;
+const choose4 = n => n * (n - 1) * (n - 2) * (n - 3) / 24;
 export function countMathSpec(spec) {
   const raw = rawSpace(spec); let valid = raw, canonical = raw, effective = raw, proof;
-  if (spec.domain === "multiplication") {
+  if (spec.domain === "multiplication" && spec.task === "compare_products") {
+    valid = canonical = effective = choose4(90) + choose3(90);
+    proof = "two canonical factor pairs from 10..99: raw C(91,2)^2; a<c<=d<b; four distinct factors C(90,4), repeated middle factor C(90,3). Each item calculates two products then answers <,=,>; factor swaps and side reversal excluded; no shared factor or componentwise domination";
+  } else if (spec.domain === "multiplication") {
     canonical = ["multiply", "equation", "estimate"].includes(spec.task) ? raw - choose2(98) : raw;
     effective = spec.task === "equation" ? 0 : canonical;
     proof = "998×98; symmetric multiply/equation/estimate subtract C(98,2); equation contributes 0 because it repeats multiply response task";

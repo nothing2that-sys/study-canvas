@@ -1,5 +1,5 @@
 //+_+// F16D spec is project-owned; grade-band evidence is not placement or publication approval.
-export const MATH_GENERATOR_VERSION = "1.0.0";
+export const MATH_GENERATOR_VERSION = "1.1.0";
 export const MATH_SOURCE = Object.freeze({ notice: "2022-33", annex: 8,
   url: "https://www.moe.go.kr/boardCnts/viewRenew.do?boardID=141&boardSeq=93458&lev=0",
   sha256: "aab8eed59ecf244223d04afad75f4cf5ac5085fadcfc3cf52c2f6d54ddfc7856" });
@@ -18,6 +18,7 @@ const rows = [
   ["multiplication", "equation", "곱셈식 완성", ["4수01-04"]],
   ["multiplication", "verify", "곱셈 검산 선택", ["4수01-04", "4수01-05"]],
   ["multiplication", "estimate", "곱셈 어림", ["4수01-08"]],
+  ["multiplication", "compare_products", "두 곱의 크기 비교", ["4수01-04"]],
   ["division", "exact", "나누어떨어지는 나눗셈", ["4수01-06", "4수01-07"]],
   ["division", "remainder", "몫과 나머지", ["4수01-06", "4수01-07"]],
   ["division", "missing_dividend", "빈 나누어지는 수", ["4수01-05", "4수01-06"]],

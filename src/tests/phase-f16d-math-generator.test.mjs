@@ -17,7 +17,51 @@ import { createResponseRecord } from "../public/app/js/responseEngine.js";
 import { JSDOM } from "jsdom";
 import { initAppShell, renderRouteView } from "../public/app/js/platform/appShell.js";
 import { ROUTES } from "../public/app/js/platform/appRouter.js";
+import fs from "node:fs";
 const id = (domain, task) => `f16d_${domain}_${task}`;
+test("two independently calculated products add a genuine nontrivial comparison response task", () => {
+  const spec = MATH_SPECS.find(s => s.task === "compare_products");
+  assert.ok(spec, "Missing multiplication comparison task");
+  assert.equal(rawSpace(spec), 4095 ** 2);
+  const pairIndex = (a, b) => Array.from({length: a - 10}, (_, i) => 90 - i).reduce((s, n) => s + n, 0) + b - a;
+  const at = (a, b, c, d) => pairIndex(a, b) * 4095 + pairIndex(c, d);
+  for (const [a,b,c,d,answer] of [[10,36,18,20,"="],[10,35,18,20,"<"],[10,37,18,20,">"]]) {
+    const item = generateMathCandidate(spec.generatorId, at(a,b,c,d));
+    assert.equal(item.expectedAnswer, answer);
+    assert.equal(item.choices.filter(x => x.id === answer).length, 1);
+    assert.equal(validateMathCandidate(item).valid, true);
+    assert.ok(item.explanation.includes(String(a*b)));
+  }
+  for (const p of [{a:10,b:20,c:30,d:40},{a:10,b:40,c:10,d:20},{a:9,b:40,c:18,d:20},{a:10,b:100,c:18,d:20}])
+    assert.equal(validateParameters(spec,p), false);
+  assert.equal(countMathSpec(spec).effectiveMathematicalContribution, 2672670);
+});
+test("all 48 archived v1 snapshots resolve without changing original content or responses", () => {
+  const snapshots = JSON.parse(fs.readFileSync(new URL('../../Docs/Implementation_Phases/Evidence/F16D_COMPLETION_2026-10-01/legacy-v1-snapshots.json', import.meta.url)));
+  assert.equal(snapshots.length, 48);
+  for (const snapshot of snapshots) {
+    const before = JSON.stringify(snapshot);
+    assert.equal(validateMathCandidate(snapshot).valid, false);
+    assert.deepEqual(resolveMathGeneratedActivity(snapshot.contentRef,snapshot), snapshot);
+    assert.equal(JSON.stringify(snapshot), before);
+  }
+});
+test("small comparison space exhaustively has unique canonical identities and exact sign answers", () => {
+  const spec = MATH_SPECS.find(s => s.task === "compare_products");
+  const seen = new Set(); let count = 0;
+  for (let a = 10; a <= 15; a++) for (let b = a; b <= 15; b++)
+    for (let c = 10; c <= 15; c++) for (let d = c; d <= 15; d++) {
+      const p = {a,b,c,d}; if (!validateParameters(spec,p)) continue;
+      const rank = (x,y) => (x-10)*90-(x-10)*(x-11)/2+y-x;
+      const item = generateMathCandidate(spec.generatorId,rank(a,b)*4095+rank(c,d));
+      assert.equal(item.expectedAnswer, a*b<c*d ? "<" : a*b>c*d ? ">" : "=");
+      assert.equal(seen.has(item.metadata.math.fingerprint), false);
+      seen.add(item.metadata.math.fingerprint); count++;
+      assert.equal(validateParameters(spec,{a:b,b:a,c,d}),false);
+      assert.equal(validateParameters(spec,{a:c,b:d,c:a,d:b}),false);
+    }
+  assert.equal(count,35, "C(6,4)+C(6,3)");
+});
 test("decimal practice route makes its root and worksheet visible", () => {
   const dom = new JSDOM('<main id="mathAppRoot"><section id="practiceView"></section></main>');
   initAppShell({ documentRef: dom.window.document, windowRef: dom.window }); renderRouteView(ROUTES.MATH_DECIMAL_PRACTICE);
@@ -127,9 +171,9 @@ test("all count formulas match full bounded parameter enumeration (no materializ
     assert.equal(countMathSpec(spec).validatedParameterSpace, valid, spec.generatorId);
   }
   const report = createMathCoverageReports();
-  assert.equal(report.domains.find(x => x.domain === "multiplication").minimumGate, "NG");
+  assert.equal(report.domains.find(x => x.domain === "multiplication").minimumGate, "PASS");
   assert.equal(report.domains.find(x => x.domain === "multiplication").minimum, 1000000);
-  assert.equal(report.implementerStatus, "IN_PROGRESS");
+  assert.equal(report.implementerStatus, "TECHNICAL_GATES_PASS_REVIEW_PENDING");
   for (const x of report.bySkill.filter(x => x.status === "PLANNED_F19")) assert.ok(x.minimum === 20000 || x.minimum === 50000);
 });
 test("near duplicate policy ignores names, IDs and seed while preserving semantic structure", () => {

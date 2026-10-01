@@ -23,6 +23,9 @@ function decimalCanonical(s) {
   return rational({ numerator: d.unscaledValue, denominator: 10 ** d.scale });
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+// Unordered two-digit factor pairs. No product-value or display permutations enter the count.
+export const PRODUCT_COMPARISON_PAIRS = Object.freeze(Array.from({ length: 90 }, (_, i) => i + 10)
+  .flatMap(a => Array.from({ length: 100 - a }, (_, i) => Object.freeze([a, a + i]))));
 export function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   if (value && typeof value === "object") return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${stableJson(value[k])}`).join(",")}}`;
@@ -30,7 +33,7 @@ export function stableJson(value) {
 }
 export function rawSpace(specOrId) {
   const s = typeof specOrId === "string" ? getMathSpec(specOrId) : specOrId;
-  if (s.domain === "multiplication") return 998 * 98;
+  if (s.domain === "multiplication") return s.task === "compare_products" ? PRODUCT_COMPARISON_PAIRS.length ** 2 : 998 * 98;
   if (s.domain === "division") return 998 * 98;
   if (s.domain === "measurement") {
     if (["unit_choice", "unit_error"].includes(s.task)) return 5;
@@ -56,6 +59,12 @@ export function parametersAt(specOrId, index) {
   const s = typeof specOrId === "string" ? getMathSpec(specOrId) : specOrId;
   if (!Number.isSafeInteger(index) || index < 0 || index >= rawSpace(s)) throw new RangeError("Candidate index out of bounds");
   const size = FRACTION_POOL.length;
+  if (s.domain === "multiplication" && s.task === "compare_products") {
+    const n = PRODUCT_COMPARISON_PAIRS.length;
+    const [a, b] = PRODUCT_COMPARISON_PAIRS[Math.floor(index / n)];
+    const [c, d] = PRODUCT_COMPARISON_PAIRS[index % n];
+    return { a, b, c, d };
+  }
   if (["multiplication", "division"].includes(s.domain)) return { a: 2 + Math.floor(index / 98), b: 2 + index % 98 };
   if (s.domain === "measurement") {
     if (["unit_choice", "unit_error"].includes(s.task)) return { pair: index, value: 1, other: 1 };
@@ -88,6 +97,12 @@ export function validateParameters(specOrId, p) {
   const s = typeof specOrId === "string" ? getMathSpec(specOrId) : specOrId;
   if (!p || typeof p !== "object") return false;
   const between = (x, min, max) => Number.isSafeInteger(x) && x >= min && x <= max;
+  if (s.domain === "multiplication" && s.task === "compare_products") {
+    // a<c<=d<b removes factor swaps, left/right reversal, identical/shared factors,
+    // and componentwise domination that could be answered without calculating either product.
+    return [p.a, p.b, p.c, p.d].every(x => between(x, 10, 99))
+      && p.a < p.c && p.c <= p.d && p.d < p.b;
+  }
   if (["multiplication", "division"].includes(s.domain)) {
     if (!between(p.a, 2, 999) || !between(p.b, 2, 99)) return false;
     if (s.domain === "multiplication") return true;
@@ -156,7 +171,13 @@ function koreanDecimal(s) {
 function derive(s, p) {
   let prompt, answer, choices = null, representation = "SYMBOLIC", visual = null, context = "none", operands, operation = s.task;
   const feature = { family: s.task };
-  if (s.domain === "multiplication") {
+  if (s.domain === "multiplication" && s.task === "compare_products") {
+    const { a, b, c, d } = p;
+    operands = [[a, b], [c, d]];
+    prompt = `${a} × ${b} □ ${c} × ${d}. 두 곱을 계산하여 알맞은 부호를 고르세요.`;
+    answer = relation(a * b - c * d); choices = symChoices();
+    Object.assign(feature, { digits: [2, 2, 2, 2], comparison: answer, independentlyCalculatedProducts: 2 });
+  } else if (s.domain === "multiplication") {
     const { a, b } = p; const product = a * b;
     operands = [a, b]; feature.digits = [String(a).length, String(b).length].sort(); feature.zero = `${a}${b}`.includes("0");
     const carry = (x, y) => String(y).split("").reduce((sum, digit) => {
@@ -279,7 +300,9 @@ export function generateMathCandidate(generatorId, index) {
   const activity = normalizeLearningActivity({ ...spec, id, version: 1, moduleId: spec.domain,
     activityType: d.choices ? "MULTIPLE_CHOICE" : "SHORT_ANSWER", responseType: d.choices ? "CHOICE" : "TEXT", gradingMode: "GUARDIAN_MANUAL",
     prompt: d.prompt, expectedAnswer: d.expectedAnswer, choices: d.choices,
-    explanation: "동치 답안의 허용 여부와 최종 판정은 보호자가 확인합니다.", curriculumVersion: "2022-revised",
+    explanation: spec.task === "compare_products"
+      ? `${parameters.a} × ${parameters.b} = ${parameters.a * parameters.b}, ${parameters.c} × ${parameters.d} = ${parameters.c * parameters.d}이므로 ${d.expectedAnswer}입니다.`
+      : "동치 답안의 허용 여부와 최종 판정은 보호자가 확인합니다.", curriculumVersion: "2022-revised",
     achievementStandardIds: spec.domain === "measurement" ? [UNIT_PAIRS[parameters.pair].standard] : spec.achievementStandardIds,
     contentRef: { packageId: "math-f16d-generator", packageVersion: MATH_GENERATOR_VERSION, contentId: id, contentVersion: 1 },
     sourceMetadata: { sourceType: "PROJECT_OWNED", sourceId: generatorId, license: "PROJECT_OWNED", attribution: "Math Canvas Pro", reviewStatus: "AUTO_VALIDATED" },
