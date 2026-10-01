@@ -11,15 +11,16 @@ export function countMathSpec(spec) {
     proof = "original 10..99: C(90,4)+C(90,3); disjoint b=100..999 extension with 10<=a<c<=d<=99 adds 900*C(91,3). Only b may have three digits, thus every multiplication remains at most three digits × two digits; rank segment has no Cartesian rejections";
   } else if (spec.domain === "multiplication") {
     canonical = ["multiply", "equation", "estimate"].includes(spec.task) ? raw - choose2(98) : raw;
-    effective = spec.task === "equation" ? 0 : canonical;
-    proof = "998×98; symmetric multiply/equation/estimate subtract C(98,2); equation contributes 0 because it repeats multiply response task";
+    effective = spec.task === "equation" ? 0 : spec.task === "missing_left" ? canonical - 98 ** 2 : canonical;
+    proof = "998×98; symmetric multiply/equation/estimate subtract C(98,2); equation contributes 0 because it repeats multiply response task; missing_left subtracts 98² tasks with both factors 2..99 shared by missing_factor (known and unknown factors, independent of blank position)";
   } else if (spec.domain === "division") {
     valid = 0;
     for (let i = 0; i < raw; i++) if (validateParameters(spec, parametersAt(spec, i))) valid++;
     canonical = valid; effective = spec.task === "missing_quotient" ? 0 : valid;
     proof = "bounded enumeration: 2≤dividend≤999, 2≤divisor≤99, dividend≥2×divisor; exact/missing divisor require a%b=0; remainder requires 0<a%b<b; missing quotient aliases exact";
   } else if (spec.domain === "measurement") {
-    proof = "five disjoint dimension/unit-pairs × values 1..9999; compare/multistep add other 1..99; unit-sense tasks have only five fixed scenarios";
+    if (spec.task === "context") effective = 0;
+    proof = "five disjoint dimension/unit-pairs × values 1..9999; compare/multistep add other 1..99; unit-sense tasks have only five fixed scenarios; context contributes 0: same mixed-unit to small-unit conversion as composite, expression/context presentation only";
   } else if (spec.domain === "fraction_concept") {
     const n = FRACTION_POOL.length;
     if (spec.task === "identify") effective = n;
@@ -44,6 +45,7 @@ export function countMathSpec(spec) {
   }
   return { generatorId: spec.generatorId, skillId: spec.skillId, domain: spec.domain, task: spec.task,
     rawCartesian: raw, validatedParameterSpace: valid, canonicalUniqueSpace: canonical, effectiveMathematicalContribution: effective,
+    semanticDuplicateSpaceExcluded: canonical - effective,
     representationVariation: spec.task === "identify" ? canonical : 0, materializedPublicCount: 0,
     invalidParameterSpace: raw - valid, duplicateParameterSpace: valid - canonical, proof, calculation: spec.domain === "division" ? "BOUNDED_ENUMERATION" : "FORMULA" };
 }
@@ -56,7 +58,7 @@ export function createMathCoverageReports() {
     return { domain, rawCartesian: all.reduce((sum, x) => sum + x.rawCartesian, 0), validatedParameterSpace: all.reduce((sum, x) => sum + x.validatedParameterSpace, 0),
       canonicalByTaskSum: all.reduce((sum, x) => sum + x.canonicalUniqueSpace, 0), effectiveUniqueSpace: effective,
       minimum: minimum[domain], minimumGate: effective >= minimum[domain] ? "PASS" : "NG", ...(stretch[domain] ? { stretch: stretch[domain], stretchGate: effective >= stretch[domain] ? "PASS" : "NG" } : {}),
-      approvedPublicSupply: 0, expertReview: "PENDING", countingPolicy: "disjoint response tasks; alias equation/exact quotient excluded; identify representation variation excluded from effective count" };
+      approvedPublicSupply: 0, expertReview: "PENDING", countingPolicy: "task union: equation/exact quotient aliases, missing-factor orientation overlap and composite/context overlap excluded; identify representation variation excluded. Counts are not educational approval" };
   });
   const bySkill = MATH_SPECS.map(spec => ({ ...spec, status: "PARTIAL", implementedFamily: true, missingFamilies: [],
     achievementStandardIds: spec.domain === "measurement" ? UNIT_PAIRS.map(x => x.standard) : spec.achievementStandardIds,

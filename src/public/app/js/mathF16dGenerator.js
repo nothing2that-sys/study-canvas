@@ -182,6 +182,8 @@ function fractionVisual(p, type = "SYMBOLIC_FRACTION") {
 function koreanDecimal(s) {
   const [whole, frac = ""] = s.split(".");
   const digits = ["영", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구"];
+  // Concept operands stay below 10; boundary distractors must stay in that range too.
+  if (!/^\d$/.test(whole) || !/^\d*$/.test(frac)) throw new Error("Invalid decimal reading range");
   return frac ? `${digits[Number(whole)]} 점 ${frac.split("").map(x => digits[Number(x)]).join(" ")}` : digits[Number(whole)];
 }
 //+_+// Derivation returns the response task and its exact answer; presentation is reconstructed on validation.
@@ -253,7 +255,9 @@ function derive(s, p) {
       feature.denominators = p.f1.denominator === p.f2.denominator ? "same" : "unlike";
       feature.regroup = add ? p.f1.numerator * p.f2.denominator + p.f2.numerator * p.f1.denominator >= p.f1.denominator * p.f2.denominator
         : p.f1.numerator * p.f2.denominator < p.f2.numerator * p.f1.denominator;
-      prompt = `${ftext(p.f1)} ${add ? "+" : "−"} ${ftext(p.f2)}를 기약분수 또는 대분수로 쓰세요.`; answer = ftext(result);
+      const [n,d] = rational(result);
+      prompt = `${ftext(p.f1)} ${add ? "+" : "−"} ${ftext(p.f2)}를 기약분수 또는 대분수로 쓰세요.`;
+      answer = d === 1 ? String(n) : `${n}/${d}`;
       //+_+// Legacy operation bars omit mixed wholes and unlike subtraction units. Render exact symbolic operands instead.
       representation = "SYMBOLIC_FRACTION";
     } else {
@@ -276,7 +280,10 @@ function derive(s, p) {
     if (s.task === "div") a = formatDecimal(multiplyDecimals(parseDecimal(a), parseDecimal(b)));
     operands = p.values ? p.values.map(x => decimalCanonical(decimal(x, 2))) : [decimalCanonical(a), ...(b ? [decimalCanonical(b)] : [])];
     feature.decimalPlaces = two ? 2 : 3; feature.integerDigits = a.split(".")[0].length; feature.zero = String(p.a).includes("0");
-    if (s.task === "read") { prompt = `${a}를 읽은 것을 고르세요.`; answer = koreanDecimal(a); choices = numberChoices(answer, [koreanDecimal(decimal(p.a + 1, 3)), koreanDecimal(decimal(p.a + 10, 3))]); }
+    if (s.task === "read") { prompt = `${a}를 읽은 것을 고르세요.`; answer = koreanDecimal(a);
+      // Move down at the upper boundary instead of leaking 10+ into a single-digit reader.
+      const offset = p.a + 10 <= 9999 ? 1 : -1;
+      choices = numberChoices(answer, [koreanDecimal(decimal(p.a + offset, 3)), koreanDecimal(decimal(p.a + 10 * offset, 3))]); }
     if (s.task === "write") { prompt = `'${koreanDecimal(a)}'를 소수로 쓰세요.`; answer = a; }
     if (s.task === "place") { const padded = String(p.a).padStart(4, "0"); const digit = Number(padded.slice(-3)[p.place - 1]);
       prompt = `${a}의 소수 ${p.place}째 자리 숫자가 나타내는 값은?`; answer = decimal(digit, p.place); operands.push(p.place); feature.place = p.place; }
@@ -304,6 +311,18 @@ export function mathFingerprint(candidate, { includeRepresentation = true } = {}
 }
 export function mathNearDuplicateKey(candidate) {
   const m = candidate.metadata.math;
+  const spec = getMathSpec(m.generatorId);
+  // A blank factor's position is a presentation variant; key the known and unknown factors.
+  if (spec.domain === "multiplication" && ["missing_factor", "missing_left"].includes(spec.task)) {
+    const [a,b] = m.operands;
+    return stableJson({domain:spec.domain, operation:"missing_factor", knownFactor:spec.task === "missing_left" ? b : a,
+      unknownFactor:spec.task === "missing_left" ? a : b});
+  }
+  const measurementDimension = spec.domain === "measurement" ? UNIT_PAIRS.find(u => u.id === m.operands[0])?.dimension : null;
+  if (spec.domain === "measurement" && ((spec.task === "composite" && m.contextSemanticId === "none")
+    || (spec.task === "context" && m.contextSemanticId === `measurement_read_${measurementDimension}`))) {
+    return stableJson({domain:spec.domain,operation:"mixed_to_small",operands:m.operands});
+  }
   //+_+// Prompt nouns, seed and ID never establish a new mathematical/semantic problem.
   return stableJson({ domain: getMathSpec(m.generatorId).domain, operation: m.operation, operands: m.operands, context: m.contextSemanticId });
 }
@@ -335,6 +354,10 @@ export function validateMathCandidate(candidate) {
     const m = candidate?.metadata?.math;
     if (!m || m.version !== MATH_GENERATOR_VERSION) return { valid: false, reason: "STALE_VERSION" };
     const spec = getMathSpec(m.generatorId);
+    const text = [candidate.prompt, candidate.expectedAnswer, candidate.explanation,
+      ...(candidate.choices || []).flatMap(c => [c.id,c.label])];
+    if (text.some(t => typeof t !== "string" || !t.trim() || /undefined|NaN|\bnull\b/.test(t)))
+      return {valid:false,reason:"INVALID_PRESENTATION_TEXT"};
     if (!validateParameters(spec, m.parameters) || !same(parametersAt(spec, m.index), m.parameters)) return { valid: false, reason: "PARAMETERS" };
     const fresh = generateMathCandidate(m.generatorId, m.index);
     if (!same(candidate, fresh)) return { valid: false, reason: "ANSWER_OR_REPRESENTATION_MISMATCH" };
