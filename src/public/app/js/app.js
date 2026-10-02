@@ -107,7 +107,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261002T104041017Z-17ee043";
+const APP_BUILD_ID = "20261002T115743230Z-e3bd34f";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -2738,9 +2738,12 @@ function handleRedPenInput(event) {
 function handleGradeAllCorrect() {
   if (!currentSession) return;
   playCorrectSound();
-  currentSession.gradeAll(GradeDecision.CORRECT);
-  currentSession.questions.forEach((question) => {
-    if (question.grade) gradingResultsMap.set(question.id, question.grade);
+  // Visible input may include a latest edit; off-screen ungraded notes live in the saved grading map.
+  currentSession.questions.forEach(question => {
+    const input = document.getElementById(`redPenInput_${question.id}`);
+    const comment = input ? input.value : (gradingResultsMap.get(question.id)?.comment ?? question.grade?.comment ?? "");
+    const { gradeData } = currentSession.gradeQuestion(question.id, GradeDecision.CORRECT, comment);
+    gradingResultsMap.set(question.id, gradeData);
   });
   triggerDraftSave();
   persistCurrentGradingProgress().catch((error) => console.error("보호자 일괄 판정 저장 실패:", error));
