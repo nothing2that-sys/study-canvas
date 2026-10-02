@@ -107,7 +107,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261002T044432163Z-04293c9";
+const APP_BUILD_ID = "20261002T061944772Z-a2da290";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -1063,7 +1063,7 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
         if (canvasEl) {
           const studentStrokes = r.studentStrokes || r.strokes || [];
           const gradingStrokes = r.gradingStrokes || [];
-          const canvasInst = createDrawingCanvas(canvasEl, { readOnly: true, backgroundStrokes: studentStrokes });
+          const canvasInst = createDrawingCanvas(canvasEl, { readOnly: true, backgroundStrokes: studentStrokes, sourcePageSize: session.config?.pageSize || session.pageSize });
           modalReviewCanvasInstances.set(canvasId, canvasInst);
           if (gradingStrokes.length > 0) {
             canvasInst.setStrokes(gradingStrokes);
@@ -1285,6 +1285,7 @@ async function renderReviewModalItem(reviewItem) {
       if (canvasEl) {
         reviewModalCanvasInstance = createDrawingCanvas(canvasEl, {
           readOnly: true,
+          sourcePageSize: sourceSub?.config?.pageSize || sourceSub?.pageSize,
           backgroundStrokes: studentStrokes
         });
         if (gradingStrokes.length > 0) {
@@ -1917,6 +1918,7 @@ function renderCurrentWorksheetPage() {
     const canvasEl = document.querySelector(`#canvas_${q.id}`);
     if (canvasEl) {
       const canvasInstance = createDrawingCanvas(canvasEl, {
+        sourcePageSize: currentSession?.pageSize,
         color: currentPenColor,
         width: currentPenWidth,
         isEraser: currentIsEraser,
@@ -2006,6 +2008,7 @@ function autoFitProblemStages() {
     const cardBody = stage.closest(".card-problem-body");
     const grid = stage.querySelector(".math-grid-container, .div-grid-container, .horizontal-math-container");
     if (!cardBody || !grid) return;
+    if (grid.dataset.canvasSceneManaged === '1') return;
 
     grid.style.transform = "none";
 
@@ -2471,6 +2474,7 @@ function renderGradingView() {
         const studentStrokes = questionStrokesMap.get(q.id) || questionStrokesMap.get(String(q.id)) || [];
         const gradingStrokes = gradingStrokesMap.get(q.id) || gradingStrokesMap.get(String(q.id)) || [];
         const gInstance = createDrawingCanvas(gCanvasEl, {
+          sourcePageSize: currentSubmission?.config?.pageSize || currentSession?.pageSize,
           color: "#c62828", // 기본 빨간 펜 잉크
           width: 3.0,
           readOnly: false, // 채점자가 직접 빨간 펜으로 첨삭 가능!
@@ -2898,7 +2902,7 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
         if (canvasEl) {
           const studentStrokes = r.studentStrokes || r.strokes || questionStrokesMap.get(r.questionId) || [];
           const gradingStrokes = r.gradingStrokes || gradingStrokesMap.get(r.questionId) || [];
-          const canvasInst = createDrawingCanvas(canvasEl, { readOnly: true, backgroundStrokes: studentStrokes });
+          const canvasInst = createDrawingCanvas(canvasEl, { readOnly: true, backgroundStrokes: studentStrokes, sourcePageSize: currentSubmission?.config?.pageSize || currentSession?.pageSize });
           resultReviewCanvasInstances.set(canvasId, canvasInst);
           if (gradingStrokes.length > 0) {
             canvasInst.setStrokes(gradingStrokes);

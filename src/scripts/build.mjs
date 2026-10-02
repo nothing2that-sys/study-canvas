@@ -90,6 +90,16 @@ export function buildSync({
     : new Date().toISOString()
 } = {}) {
   console.log(`[build] Applying BUILD_ID: ${buildId}...`);
+  const modulePaths = [];
+  function collectModules(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      if (entry.isDirectory()) collectModules(file);
+      else if (entry.name.endsWith('.js')) modulePaths.push(`./${path.relative(appDir, file).replace(/\\/g, '/')}`);
+    }
+  }
+  collectModules(path.join(appDir, 'js')); modulePaths.sort();
+  const importMap = { imports: Object.fromEntries(modulePaths.map(file => [file, `${file}?v=${buildId}`])) };
 
   // 1. service-worker.js 갱신
   const swPath = path.join(appDir, "service-worker.js");
@@ -100,6 +110,10 @@ export function buildSync({
   );
   swContent = swContent.replace(/\.\/css\/app\.css\?v=[^"']+/g, `./css/app.css?v=${buildId}`);
   swContent = swContent.replace(/\.\/js\/app\.js\?v=[^"']+/g, `./js/app.js?v=${buildId}`);
+  const moduleMarker = /\/\* MODULES_PRECACHE_START \*\/[\s\S]*?\/\* MODULES_PRECACHE_END \*\//;
+  const moduleCache = ['/* MODULES_PRECACHE_START */', ...modulePaths.filter(file => file !== './js/app.js').map(file => `  "${file}?v=${buildId}",`), '  /* MODULES_PRECACHE_END */'].join('\n');
+  if (moduleMarker.test(swContent)) swContent = swContent.replace(moduleMarker, moduleCache);
+  else swContent = swContent.replace('const APP_SHELL = [', `const APP_SHELL = [\n  ${moduleCache}`);
 
   //+_+// Phase F10B: Registry 기반 정적 콘텐츠 패키지 오프라인 프리캐시 동적 주입
   const contentAssets = collectContentPrecacheAssets({ contentDir: path.join(appDir, "content") });
@@ -119,6 +133,9 @@ export function buildSync({
   let htmlContent = fs.readFileSync(htmlPath, "utf8");
   htmlContent = htmlContent.replace(/css\/app\.css\?v=[^"]+/g, `css/app.css?v=${buildId}`);
   htmlContent = htmlContent.replace(/js\/app\.js\?v=[^"]+/g, `js/app.js?v=${buildId}`);
+  const mapScript = `<script type="importmap">${JSON.stringify(importMap)}</script>`;
+  if (/<script type="importmap">[\s\S]*?<\/script>/.test(htmlContent)) htmlContent = htmlContent.replace(/<script type="importmap">[\s\S]*?<\/script>/, mapScript);
+  else htmlContent = htmlContent.replace('<script type="module"', `${mapScript}\n    <script type="module"`);
   fs.writeFileSync(htmlPath, htmlContent, "utf8");
 
   // 3. app.js 내부 BUILD_ID 갱신
@@ -134,7 +151,7 @@ export function buildSync({
     buildId,
     generatedAt,
     gitSha,
-    sourceMutationPolicy: "service-worker.js (version & content precache marker), index.html, js/app.js의 version marker만 교체",
+    sourceMutationPolicy: "service-worker.js version/content/module precache, index.html version/import map, js/app.js version marker; module source unchanged",
     reproducibilityPolicy: "BUILD_ID와 SOURCE_DATE_EPOCH를 고정하면 동일 source에서 동일 산출물 생성"
   };
   fs.writeFileSync(path.join(appDir, "build-manifest.json"), `${JSON.stringify(buildManifest, null, 2)}\n`, "utf8");

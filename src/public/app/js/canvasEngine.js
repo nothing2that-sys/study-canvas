@@ -1,3 +1,11 @@
+import { sceneReference, fitScene, mapScenePoint } from './canvasSceneGeometry.js';
+const GRID_STYLE_KEYS = ['--grid-cell-w', '--grid-cell-h', '--grid-font-size', '--carry-cell-w', '--carry-cell-h', '--carry-font-size', '--box-cell-w', '--box-cell-h', '--box-font-size'];
+function readGridStyle(element) {
+  const view = element?.ownerDocument?.defaultView;
+  if (!view?.getComputedStyle) return undefined;
+  const computed = view.getComputedStyle(element);
+  return Object.fromEntries(GRID_STYLE_KEYS.map(key => [key, computed.getPropertyValue(key).trim()]).filter(([, value]) => value));
+}
 /**
  * Math Canvas Pro - Canvas 손계산 필기 및 제스처 펜 엔진 (iPad 최적화 확정본)
  * SSOT Section 23~35 및 CODEX_IPAD_WEBAPP_STABILIZATION_AND_UX_IMPLEMENTATION 명세 준수
@@ -201,6 +209,33 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     // Layout and formula transforms can change between grading and compact review.
     cachedCanvasRect = rect;
     cachedGridInfo = getGridBoundingInfo();
+    const archived = [...backgroundStrokes, ...strokes];
+    currentScene = sceneReference(archived.length ? archived : (currentStroke ? [currentStroke] : []));
+    currentSceneFit = currentScene ? fitScene(currentScene, rect.width, rect.height) : null;
+    if (currentSceneFit?.grid) {
+      const grid = canvasElement.parentElement?.querySelector('.math-grid-container, .div-grid-container, .horizontal-math-container');
+      let sourceStyle = currentScene.gridStyle;
+      if (!sourceStyle && grid?.ownerDocument && options.sourcePageSize) {
+        const size = Number(options.sourcePageSize);
+        const density = size === 1 ? '1x1' : size === 2 ? '1x2' : size <= 4 ? '2x2' : size <= 6 ? '2x3' : '2x5';
+        const probe = grid.ownerDocument.createElement('div');
+        probe.className = `worksheet-grid density-${density}`; probe.style.display = 'none';
+        grid.ownerDocument.body.appendChild(probe); sourceStyle = readGridStyle(probe); probe.remove();
+      }
+      if (sourceStyle && grid?.style?.setProperty) {
+        for (const key of GRID_STYLE_KEYS) if (sourceStyle[key]) grid.style.setProperty(key, sourceStyle[key]);
+      }
+      if (grid?.style && grid.offsetWidth > 0 && grid.offsetHeight > 0) {
+        const target = currentSceneFit.grid;
+        grid.dataset.canvasSceneManaged = '1';
+        grid.style.position = 'absolute'; grid.style.maxWidth = 'none';
+        grid.style.width = 'max-content';
+        grid.style.left = `${target.gridLeft}px`; grid.style.top = `${target.gridTop}px`;
+        grid.style.transformOrigin = '0 0';
+        grid.style.transform = `scale(${target.gridWidth / grid.offsetWidth}, ${target.gridHeight / grid.offsetHeight})`;
+      }
+      cachedGridInfo = currentSceneFit.grid;
+    }
 
     if (typeof ctx.setTransform === "function") {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -239,7 +274,8 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       gridLeft: gridRect.left - canvasRect.left,
       gridTop: gridRect.top - canvasRect.top,
       gridWidth: Math.max(20, gridRect.width || cW),
-      gridHeight: Math.max(20, gridRect.height || cH)
+      gridHeight: Math.max(20, gridRect.height || cH),
+      gridStyle: readGridStyle(gridEl)
     };
   }
 
@@ -252,6 +288,10 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     const currentGrid = cachedGridInfo;
     const currentCanvas = cachedCanvasRect;
 
+    if (currentScene && currentSceneFit) {
+      const mapped = mapScenePoint(pt, stroke, currentScene, currentSceneFit);
+      if (mapped) return mapped;
+    }
     // The stored canvas geometry is the common frame for ALL strokes/layers.
     // Choosing a frame from each stroke's first point breaks crossing annotations.
     // Uniform fit preserves shapes; centering handles a different review aspect ratio.
@@ -421,6 +461,8 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
   let cachedGridInfo = null;
   let cachedCanvasRect = null;
+  let currentScene = null;
+  let currentSceneFit = null;
 
   function extractPoints(e) {
     if (!cachedCanvasRect || !cachedGridInfo) {
@@ -567,6 +609,10 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       gridHeight: cachedGridInfo.gridHeight,
       gridLeft: cachedGridInfo.gridLeft,
       gridTop: cachedGridInfo.gridTop,
+      gridStyle: cachedGridInfo.gridStyle,
+      sceneGeometry: currentScene ? { baseWidth: currentScene.baseWidth, baseHeight: currentScene.baseHeight,
+        gridLeft: currentScene.gridLeft, gridTop: currentScene.gridTop,
+        gridWidth: currentScene.gridWidth, gridHeight: currentScene.gridHeight, gridStyle: currentScene.gridStyle } : undefined,
       points: pts,
       timestamp: Date.now()
     };
