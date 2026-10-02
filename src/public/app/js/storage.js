@@ -2554,6 +2554,26 @@ export async function finalizeSubmissionGrading(id, options = {}) {
   const allFinalizedForLearner = [...otherFinalized, finalizedSubmission];
   const calculatedAggregates = calculateProgressAggregatesForLearner(rawExisting.learnerId, allFinalizedForLearner, { updatedAt: completedAt });
 
+  // Complete the Attempt created at Retry start instead of adding a second Attempt
+  // for the same session/question. Historical records are never merged or deleted.
+  let retryAttempts = [];
+  if (rawExisting.config?.reviewItemId) {
+    if (db.isMemory) retryAttempts = [...db.attempts.values()].filter(a => a.sessionId === sessionId);
+    else retryAttempts = await new Promise((resolve, reject) => {
+      const tx = db.transaction("attempts", "readonly");
+      const request = tx.objectStore("attempts").index("sessionId").getAll(sessionId);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    retryAttempts = retryAttempts.filter(a => a.attemptKind === "RETRY" && a.learnerId === rawExisting.learnerId &&
+      a.reviewItemId === rawExisting.config.reviewItemId);
+  }
+  const retryByQuestion = new Map();
+  for (const attempt of retryAttempts) {
+    if (retryByQuestion.has(attempt.questionId)) throw new Error("Ambiguous Retry Attempt identity; finalization blocked");
+    retryByQuestion.set(attempt.questionId, attempt);
+  }
+
   if (db.isMemory) {
     if (typeof finalizeFailureInjector === "function") {
       finalizeFailureInjector({ isMemory: true, phase: "before_write" });
@@ -2571,8 +2591,10 @@ export async function finalizeSubmissionGrading(id, options = {}) {
       db.sessions.set(sessionId, sessionRecord);
 
       sessionResults.forEach((r, idx) => {
-        const attemptId = `att_${sessionId}_${r.questionId || idx}_${now}`;
+        const retryAttempt = retryByQuestion.get(r.questionId);
+        const attemptId = retryAttempt?.id || `att_${sessionId}_${r.questionId || idx}_${now}`;
         db.attempts.set(attemptId, {
+          ...retryAttempt,
           id: attemptId,
           sessionId,
           learnerId: rawExisting.learnerId,
@@ -2710,8 +2732,10 @@ export async function finalizeSubmissionGrading(id, options = {}) {
       sessStore.put(sessionRecord);
 
       sessionResults.forEach((r, idx) => {
-        const attemptId = `att_${sessionId}_${r.questionId || idx}_${now}`;
+        const retryAttempt = retryByQuestion.get(r.questionId);
+        const attemptId = retryAttempt?.id || `att_${sessionId}_${r.questionId || idx}_${now}`;
         attStore.put({
+          ...retryAttempt,
           id: attemptId,
           sessionId,
           learnerId: rawExisting.learnerId,

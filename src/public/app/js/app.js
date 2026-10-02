@@ -1,4 +1,5 @@
 import { openReviewRetryResult } from "./reviewRetryPresentation.js";
+import { createExactMultiplicationReviewFixture } from "./f16dReviewEvidence.js";
 import { getSessionHistoryLabel } from "./sessionHistoryLabel.js";
 import { getQuestionAnswerDisplay } from "./questionAnswerDisplay.js";
 import { generateQuestionSet, REFERENCE_CURRICULUM, mapToRefLevel, calculateCandidateCapacity } from "./mathGen.js";
@@ -40,6 +41,7 @@ import {
   getReviewItemBySourceAttemptId,
   getAllProgressAggregates
 } from "./data/learningQueries.js";
+import { getF16dReviewEvidence } from "./data/learningQueries.js";
 import { getActiveLearner, getActiveLearnerId, getLearners } from "./learners/learnerQueries.js";
 import { selectLearner, createLearner, configureLearnerSessionGuard } from "./learners/learnerCommands.js";
 import { bootstrapApp } from "./platform/appBootstrap.js";
@@ -105,7 +107,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261002T021340128Z-83ac1cd";
+const APP_BUILD_ID = "20261002T035939062Z-b34cb09";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -1779,12 +1781,42 @@ function renderF16dPreviewPanel() {
   const panel = document.createElement("section"); panel.id = "mathF16dPreviewPanel";
   panel.innerHTML = `<h2>수학 확장 연습</h2><p>검수 전 연습입니다. 학년·학기 배치와 교육 적합성은 검토 중입니다.</p>
     <label for="mathF16dFamily">연습 주제</label><select id="mathF16dFamily">${MATH_SPECS.map(s => `<option value="${escapeHtml(s.generatorId)}">${escapeHtml(s.title)}</option>`).join("")}</select>
-    <button type="button" id="mathF16dStart">연습 시작</button><p id="mathF16dMessage" role="status"></p>`;
+    <button type="button" id="mathF16dStart">연습 시작</button>
+    <p>아래 검증은 전용 시험 학습자에서 진행하세요. 12×4는 수량 집계에 포함하지 않는 필기 검증 문항입니다.</p>
+    <button type="button" id="mathF16dExactStart">12×4 필기 검증 시작</button>
+    <button type="button" id="mathF16dEvidenceExport">현재 학습자 검증 기록 다운로드</button>
+    <p id="mathF16dMessage" role="status"></p>`;
   setupView.appendChild(panel);
   panel.querySelector("#mathF16dStart").addEventListener("click", async event => {
     const button = event.currentTarget; button.disabled = true;
     try { await startF16dMathPractice(panel.querySelector("select").value); }
     catch (error) { panel.querySelector("#mathF16dMessage").textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  panel.querySelector("#mathF16dExactStart").addEventListener("click", async event => {
+    const button = event.currentTarget; button.disabled = true;
+    try {
+      const learnerId = getActiveLearnerId();
+      if (!learnerId) throw new Error("학습자를 먼저 선택하세요.");
+      if (await getDraft({ learnerId })) throw new Error("진행 중인 풀이가 있습니다. 이어풀기를 완료한 뒤 검증을 시작하세요.");
+      if (getActiveLearnerId() !== learnerId) throw new Error("학습자가 변경되었습니다. 다시 시작하세요.");
+      const fixture = createExactMultiplicationReviewFixture(learnerId);
+      startSessionWithQuestions(fixture.questions, fixture.config);
+    } catch (error) { panel.querySelector("#mathF16dMessage").textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  panel.querySelector("#mathF16dEvidenceExport").addEventListener("click", async event => {
+    const button = event.currentTarget; button.disabled = true;
+    try {
+      const learnerId = getActiveLearnerId();
+      const evidence = await getF16dReviewEvidence(learnerId, APP_BUILD_ID);
+      if (getActiveLearnerId() !== learnerId) throw new Error("학습자가 변경되었습니다. 다시 다운로드하세요.");
+      const url = URL.createObjectURL(new Blob([JSON.stringify(evidence, null, 2)], { type: "application/json" }));
+      const link = document.createElement("a"); link.href = url; link.download = "f16d-learner-evidence.json";
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      panel.querySelector("#mathF16dMessage").textContent = "현재 학습자의 저장 기록을 다운로드했습니다. 저장값과 실제 화면 증거를 함께 대조하세요.";
+    } catch (error) { panel.querySelector("#mathF16dMessage").textContent = error.message; }
     finally { button.disabled = false; }
   });
 }

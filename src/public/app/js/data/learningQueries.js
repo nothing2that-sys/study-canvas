@@ -3,6 +3,7 @@
 //+_+// - UI -> Query -> storage.js 읽기 전용 경계 제공
 
 import {
+  getDB as storageGetDB,
   getRecentSessions as storageGetRecentSessions,
   getMistakeQuestions as storageGetMistakeQuestions,
   getLearningStats as storageGetLearningStats,
@@ -30,6 +31,11 @@ import {
   DEFAULT_LEGACY_LEARNER_ID
 } from "../storage.js";
 import { evaluateStartupDraftResumePolicy } from "../submissionLifecycle.js";
+import { collectReviewEvidence } from "../f16dReviewEvidence.js";
+
+export async function getF16dReviewEvidence(learnerId, buildId) {
+  return collectReviewEvidence(await storageGetDB(), learnerId, buildId);
+}
 import { getAllSubjects } from "../platform/subjectRegistry.js";
 //+_+// Phase F9: 추천 엔진 빌더 import
 import { buildLearningRecommendations } from "../recommendations/recommendationEngine.js";
@@ -617,7 +623,6 @@ export async function getLearningRecommendations(learnerId, options = {}) {
     limit: options.limit || 5
   });
 }
-
 
 
 
