@@ -131,10 +131,12 @@ function pageProgressLabel(status) {
   }[status] || status;
 }
 
-async function selectAssignment(assignment) {
+async function selectAssignment(assignment, { pageIndex } = {}) {
   currentAssignment = assignment;
   currentCatalogItem = getWorkbookCatalogItem(assignment.workbookId);
-  currentPageIndex = Math.max(0, currentCatalogItem?.edition.pages.findIndex((page) => page.pageId === assignment.lastPageId) || 0);
+  const pages = currentCatalogItem?.edition.pages || [];
+  const savedIndex = Math.max(0, pages.findIndex((page) => page.pageId === assignment.lastPageId));
+  currentPageIndex = Math.min(Math.max(0, Number.isInteger(pageIndex) ? pageIndex : savedIndex), Math.max(0, pages.length - 1));
   saveSelection({ assignmentId: assignment.assignmentId, workbookId: assignment.workbookId, pageIndex: currentPageIndex });
 }
 
@@ -145,8 +147,8 @@ async function resolveSelectedAssignment() {
   const selection = getSelection();
   const selected = assignments.find((item) => item.assignmentId === selection.assignmentId) || assignments[0] || null;
   if (selected) {
-    await selectAssignment(selected);
-    if (Number.isInteger(selection.pageIndex)) currentPageIndex = Math.max(0, selection.pageIndex);
+    // Restore a selection only for its own assignment, and persist the same index once.
+    await selectAssignment(selected, selected.assignmentId === selection.assignmentId ? { pageIndex: selection.pageIndex } : {});
   }
   return selected;
 }
@@ -220,18 +222,26 @@ export async function renderWorkbookDetailView() {
     </div>`;
   root.querySelector("#workbookBackToShelfBtn")?.addEventListener("click", () => navigate(ROUTES.BOOKSHELF));
   root.querySelector("#workbookContinueBtn")?.addEventListener("click", () => navigate(ROUTES.WORKBOOK_READER));
-  root.querySelectorAll("[data-page-index]").forEach((button) => button.addEventListener("click", () => {
-    currentPageIndex = Number(button.dataset.pageIndex) || 0;
-    saveSelection({ assignmentId: assignment.assignmentId, workbookId: assignment.workbookId, pageIndex: currentPageIndex });
-    navigate(ROUTES.WORKBOOK_READER);
+  root.querySelectorAll("[data-page-index]").forEach((button) => button.addEventListener("click", async () => {
+    try {
+      await persistReaderPage(edition.pages[Number(button.dataset.pageIndex)]);
+      navigate(ROUTES.WORKBOOK_READER);
+    } catch {
+      windowRef?.alert?.("저장에 실패하여 페이지를 이동하지 않았습니다.");
+    }
   }));
 }
 
 async function persistReaderPage(page, options = {}) {
   if (!currentAssignment || !page) return false;
+  const pageIndex = currentCatalogItem.edition.pages.findIndex((item) => item.pageId === page.pageId);
+  if (pageIndex < 0) throw new Error("문제집 페이지를 찾을 수 없습니다.");
   if (typeof beforePageChange === "function") await beforePageChange();
-  currentAssignment = moveWorkbookAssignment(currentAssignment, page.pageId, options);
-  currentAssignment = await saveWorkbookAssignment(currentAssignment, { learnerId: currentAssignment.learnerId });
+  const nextAssignment = moveWorkbookAssignment(currentAssignment, page.pageId, options);
+  const saved = await saveWorkbookAssignment(nextAssignment, { learnerId: currentAssignment.learnerId });
+  // Commit memory/selection only after the target page and Draft have been saved.
+  currentAssignment = saved;
+  currentPageIndex = pageIndex;
   saveSelection({ assignmentId: currentAssignment.assignmentId, workbookId: currentAssignment.workbookId, pageIndex: currentPageIndex });
   return true;
 }
@@ -270,12 +280,12 @@ export async function renderWorkbookReaderView() {
     <button type="button" id="workbookBookmarkBtn">책갈피</button>
     <button type="button" id="workbookNextPageBtn" ${currentPageIndex >= pages.length - 1 ? "disabled" : ""}>다음</button>`;
   const move = async (nextIndex) => {
-    const currentPage = pages[currentPageIndex];
+    const targetIndex = Math.min(Math.max(0, nextIndex), pages.length - 1);
     try {
-      await persistReaderPage(currentPage);
-      currentPageIndex = Math.min(Math.max(0, nextIndex), pages.length - 1);
+      await persistReaderPage(pages[targetIndex]);
       await renderWorkbookReaderView();
     } catch (error) {
+      navigator.querySelector("#workbookPageSelect").value = String(currentPageIndex);
       windowRef?.alert?.("저장에 실패하여 페이지를 이동하지 않았습니다.");
     }
   };
