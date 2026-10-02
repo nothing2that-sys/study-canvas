@@ -18,6 +18,27 @@ export function isSubmittedSnapshotStatus(status) {
   return SUBMITTED_SNAPSHOT_STATUSES.includes(status);
 }
 
+// Restore the persisted lifecycle without writing or finalizing storage again.
+export function restoreSessionStateFromSubmission(session, submission) {
+  if (session.state === SessionState.IDLE) session.start();
+  if (session.state === SessionState.PRACTICE_ACTIVE) session.startSubmitting();
+  if (session.state === SessionState.SUBMITTING) {
+    session.submitPractice(submission.totalSolveTimeMs || 0, submission.perQuestionElapsedMs || {});
+  }
+  if (session.state === SessionState.SUBMITTED_LOCKED) session.setPendingGrading();
+  const completed = submission.status === "GRADED" || submission.status === "SESSION_COMPLETE";
+  if (submission.status === "GRADING_ACTIVE" || completed) {
+    if (session.state === SessionState.PARENT_GRADING_PENDING) session.startGrading();
+    for (const [id, grade] of Object.entries(submission.gradingResults || {})) {
+      const questionId = session.questions.find(question => String(question.id) === String(id))?.id ?? id;
+      session.gradeQuestion(questionId, grade.decision ?? grade.isCorrect, grade.comment || "");
+    }
+    if (completed) return { ...session.finishGrading(), submittedAt: submission.submittedAt,
+      completedAt: submission.completedAt, totalSolveTimeMs: submission.totalSolveTimeMs };
+  }
+  return null;
+}
+
 //+_+// F4-R5-01 ~ F4-R5-05: 제출 실패 시 시간 무손실 유지 및 PRACTICE_ACTIVE / Draft 복구
 export async function rollbackSubmissionToPractice({
   session,

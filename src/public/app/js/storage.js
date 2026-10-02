@@ -1,4 +1,4 @@
-import { normalizeDraft } from "./draftEngine.js";
+import { normalizeDraft, getDraftVersion } from "./draftEngine.js";
 import { normalizeWorkbookAssignment } from "./workbookEngine.js";
 import { isVocabularyReviewDue, normalizeVocabularyMemoryState } from "./englishVocabularyStudy.js";
 import { getGradingProgress, normalizeGradeDecision, createGradeDecision } from "./parentGrading.js";
@@ -843,11 +843,23 @@ export async function saveDraftSession(draft, options = {}) {
     ...normalizeDraft(normalizedInput),
     id: draftKey,
     learnerId: targetLearnerId,
-    updatedAt: Date.now()
+    updatedAt: Date.now(),
+    writeId: globalThis.crypto?.randomUUID?.() || `${Date.now()}_${Math.random()}`
+  };
+
+  const checkBase = existing => {
+    if (!Object.hasOwn(options, "expectedBaseVersion")) return;
+    const expected = options.expectedBaseVersion;
+    const actual = getDraftVersion(existing);
+    const matches = expected === null ? !actual : actual &&
+      actual.sessionId === expected.sessionId && actual.revision === expected.revision &&
+      actual.updatedAt === expected.updatedAt && actual.writeId === (expected.writeId || null);
+    if (!matches) throw Object.assign(new Error("다른 탭에서 풀이가 변경되었습니다. 이 탭의 내용은 저장되지 않았습니다. 내용은 유지되며 다시 저장해도 덮어쓰지 않습니다."), { code: "DRAFT_CONFLICT" });
   };
 
   if (db.isMemory) {
     const existing = db.draftSessions.get(draftKey);
+    checkBase(existing);
     if (options.protectExisting && existing?.questions?.length && existing.sessionId !== draftRecord.sessionId && existing.sessionState !== 'SESSION_COMPLETE') {
       throw new Error('진행 중인 풀이가 있습니다. 기존 이어풀기를 완료한 뒤 새 학습을 시작하세요.');
     }
@@ -862,6 +874,7 @@ export async function saveDraftSession(draft, options = {}) {
     const request = store.get(draftKey);
     request.onsuccess = () => {
       const existing = request.result;
+      try { checkBase(existing); } catch (error) { conflict = error; tx.abort(); return; }
       if (options.protectExisting && existing?.questions?.length && existing.sessionId !== draftRecord.sessionId && existing.sessionState !== 'SESSION_COMPLETE') {
         conflict = new Error('진행 중인 풀이가 있습니다. 기존 이어풀기를 완료한 뒤 새 학습을 시작하세요.');
         tx.abort(); return;
@@ -931,7 +944,8 @@ export async function clearDraftSession(options = {}) {
   // Optional compare-and-delete for failed new starts; legacy unguarded cleanup is unchanged.
   const matches = record => options.expectedSessionId === undefined ||
     (record?.sessionId === options.expectedSessionId && record.updatedAt === options.expectedUpdatedAt &&
-      record.revision === options.expectedRevision);
+       record.revision === options.expectedRevision &&
+       (options.expectedWriteId === undefined || (record.writeId || null) === options.expectedWriteId));
   if (db.isMemory) {
     if (!matches(db.draftSessions.get(draftKey))) return false;
     db.draftSessions.delete(draftKey);

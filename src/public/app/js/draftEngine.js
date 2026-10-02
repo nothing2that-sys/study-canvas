@@ -8,12 +8,18 @@ export const DraftSaveStatus = Object.freeze({
   SCHEDULED: "scheduled",
   SAVING: "saving",
   SAVED: "saved",
-  FAILED: "failed"
+  FAILED: "failed",
+  CONFLICT: "conflict"
 });
 
 export function cloneDraftSnapshot(value) {
   if (typeof structuredClone === "function") return structuredClone(value);
   return JSON.parse(JSON.stringify(value));
+}
+
+export function getDraftVersion(draft) {
+  return draft ? { sessionId: draft.sessionId, revision: draft.revision,
+    updatedAt: draft.updatedAt, writeId: draft.writeId || null } : null;
 }
 
 function objectOrEmpty(value) {
@@ -62,6 +68,7 @@ export function normalizeDraft(input) {
     schemaVersion: DRAFT_SCHEMA_VERSION,
     appBuildId: String(input.appBuildId || "unknown"),
     revision: Math.max(0, Number(input.revision) || 0),
+    writeId: typeof input.writeId === "string" ? input.writeId : null,
     sessionId: input.sessionId || null,
     submissionId: input.submissionId || (input.sessionId ? `sub_${input.sessionId}` : null),
     sessionType: input.sessionType || "practice",
@@ -103,6 +110,8 @@ export function createDraftSaveCoordinator(options = {}) {
   }
 
   let revision = Math.max(0, Number(options.initialRevision) || 0);
+  let baseVersion = options.initialBaseVersion || null;
+  let generation = 0;
   let status = DraftSaveStatus.IDLE;
   let debounceTimer = null;
   let queue = Promise.resolve();
@@ -139,17 +148,22 @@ export function createDraftSaveCoordinator(options = {}) {
     }
     const currentRevision = ++revision;
     const snapshot = cloneDraftSnapshot({ ...captured, revision: currentRevision });
+    const capturedGeneration = generation;
     setStatus(DraftSaveStatus.SAVING);
 
     const operation = queue
       .catch(() => {})
-      .then(() => save(snapshot))
+      .then(async () => {
+        if (capturedGeneration !== generation) throw Object.assign(new Error("풀이가 변경되어 이전 저장을 중단했습니다."), { code: "DRAFT_CONFLICT" });
+        const saved = await save(snapshot, options.requireBaseVersion ? { expectedBaseVersion: cloneDraftSnapshot(baseVersion) } : {});
+        if (saved && capturedGeneration === generation) baseVersion = getDraftVersion(saved);
+      })
       .then(() => {
         if (!destroyed && currentRevision === revision) setStatus(DraftSaveStatus.SAVED);
         return true;
       })
       .catch((error) => {
-        if (!destroyed && currentRevision === revision) setStatus(DraftSaveStatus.FAILED, error);
+        if (!destroyed && currentRevision === revision) setStatus(error?.code === "DRAFT_CONFLICT" ? DraftSaveStatus.CONFLICT : DraftSaveStatus.FAILED, error);
         throw error;
       });
     queue = operation;
@@ -168,6 +182,12 @@ export function createDraftSaveCoordinator(options = {}) {
     revision = Math.max(revision, Number(nextRevision) || 0);
   }
 
+  function setBaseVersion(draft) {
+    generation += 1;
+    baseVersion = getDraftVersion(draft);
+    if (draft) setRevision(draft.revision);
+  }
+
   function destroy() {
     destroyed = true;
     if (debounceTimer !== null) {
@@ -181,9 +201,11 @@ export function createDraftSaveCoordinator(options = {}) {
     flush,
     retry,
     setRevision,
+    setBaseVersion,
     destroy,
     get status() { return status; },
     get revision() { return revision; },
+    get baseVersion() { return cloneDraftSnapshot(baseVersion); },
     get activePromise() { return activePromise; }
   };
 }

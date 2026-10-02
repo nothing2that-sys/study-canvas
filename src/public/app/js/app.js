@@ -94,6 +94,7 @@ import {
 import {
   rollbackSubmissionToPractice as sharedRollbackSubmissionToPractice,
   restoreSessionStateFromDraft,
+  restoreSessionStateFromSubmission,
   evaluateStartupDraftResumePolicy
 } from "./submissionLifecycle.js";
 import { resolvePracticeRoute, resolveLandingRoute, resolvePracticeRouteForSession } from "./learningRouteResolver.js";
@@ -107,7 +108,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261002T115743230Z-e3bd34f";
+const APP_BUILD_ID = "20261002T183436040Z-393f5be";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -393,6 +394,7 @@ function resolveSessionQuestionId(rawQuestionId) {
 
 function captureDraftSnapshot() {
   if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) return null;
+  if (![SessionState.PRACTICE_ACTIVE, SessionState.SUBMITTING, SessionState.GRADING_ACTIVE].includes(currentSession.state)) return null;
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
@@ -433,7 +435,8 @@ function updateDraftSaveStatus(status) {
     [DraftSaveStatus.SCHEDULED]: "저장 예정",
     [DraftSaveStatus.SAVING]: "저장 중",
     [DraftSaveStatus.SAVED]: "저장됨",
-    [DraftSaveStatus.FAILED]: "저장 실패"
+    [DraftSaveStatus.FAILED]: "저장 실패",
+    [DraftSaveStatus.CONFLICT]: "다른 탭에서 변경됨 · 이 탭의 내용은 저장되지 않았습니다. 내용은 유지되며 다시 저장해도 덮어쓰지 않습니다."
   };
   const targets = [
     [draftSaveStatus, draftSaveStatusText, retryDraftSaveBtn],
@@ -444,13 +447,14 @@ function updateDraftSaveStatus(status) {
     container.hidden = !currentSession;
     container.dataset.status = status;
     text.textContent = labels[status] || "저장 대기";
-    if (retry) retry.hidden = status !== DraftSaveStatus.FAILED;
+    if (retry) retry.hidden = status !== DraftSaveStatus.FAILED && status !== DraftSaveStatus.CONFLICT;
   });
 }
 
 export const draftCoordinator = createDraftSaveCoordinator({
   captureSnapshot: captureDraftSnapshot,
-  save: draft => saveDraft(draft, { protectExisting: true }),
+  save: (draft, options) => saveDraft(draft, { ...options, protectExisting: true }),
+  requireBaseVersion: true,
   onStatusChange: updateDraftSaveStatus
 });
 
@@ -1755,6 +1759,7 @@ async function startSessionWithQuestions(questions, config) {
     return false;
   }
   lastSessionConfig = effectiveConfig;
+  draftCoordinator.setBaseVersion(initialDraft);
   currentDraftCreatedAt = Date.now();
   currentQuestions = questions;
   // A new worksheet must not inherit the previous submitted answer or disabled tools.
@@ -2285,6 +2290,11 @@ async function handleSubmitPractice() {
 
   //+_+// 3. 제출 전 Draft flush (실패 시 제출 중단 및 PRACTICE_ACTIVE 복구)
   try {
+    const existing = await getSubmissionBySessionId(currentSession.id, { learnerId: getActiveLearnerId() });
+    if (existing) {
+      restoreSessionFromSubmission(existing);
+      return;
+    }
     await flushDraftSave();
   } catch (draftErr) {
     await rollbackSubmissionToPractice(draftErr, elapsedBeforeSubmitMs);
@@ -2307,7 +2317,8 @@ async function handleSubmitPractice() {
       perQuestionElapsedMs: currentSession.getQuestionSolveTimes?.() || {},
       studentStrokesMap: questionStrokesMap,
       responseSnapshots: mapToObject(questionResponseRecordsMap),
-      appBuildId: APP_BUILD_ID
+      appBuildId: APP_BUILD_ID,
+      expectedDraftVersion: draftCoordinator.baseVersion
     });
   } catch (err) {
     await rollbackSubmissionToPractice(err, elapsedMs || elapsedBeforeSubmitMs);
@@ -2315,14 +2326,7 @@ async function handleSubmitPractice() {
     return;
   }
 
-  //+_+// Phase F5: 학생 제출 직후에는 PARENT_GRADING_PENDING을 유지하고 보호자의 명시적 시작을 기다린다.
-  switchView(gradingView);
-  hideAnswersInGrading = false;
-  gradingViewMode = "detail";
-  if (parentGradingStartPanel) parentGradingStartPanel.hidden = false;
-  if (gradingGrid) gradingGrid.hidden = true;
-  if (finishGradingBtn?.parentElement) finishGradingBtn.parentElement.hidden = true;
-  updateGradingStatusUI();
+  restoreSessionFromSubmission(currentSubmission);
 }
 
 async function handleStartParentGrading() {
@@ -2814,7 +2818,10 @@ async function handleFinishGrading() {
 
     currentSubmission = finalizeResult.submission;
     const summary = currentSession.finishGrading();
-    await clearDraft({ learnerId: activeLId });
+    const base = draftCoordinator.baseVersion;
+    await clearDraft({ learnerId: activeLId, expectedSessionId: currentSession.id,
+      expectedRevision: base?.revision, expectedUpdatedAt: base?.updatedAt,
+      expectedWriteId: base?.writeId || null });
 
     showSessionResult(finalizeResult.sessionRecord || summary);
   } catch (error) {
@@ -3556,7 +3563,7 @@ function restoreSessionFromDraft(draft) {
   currentPenWidth = Number(draft.penWidth) || currentPenWidth;
   currentIsEraser = Boolean(draft.isEraser);
 
-  draftCoordinator.setRevision(draft.revision || 0);
+  draftCoordinator.setBaseVersion(draft);
 
   //+_+// 단일 계약으로 복원 시간부터 정밀 흐름 시작!
   startSessionTimer(questionTimer, draft.totalElapsedMs || 0);
@@ -3588,9 +3595,9 @@ function restoreSessionFromDraft(draft) {
 function restoreSessionFromSubmission(submission) {
   if (!submission?.questions?.length) return false;
   lastSessionConfig = submission.config || {};
-  currentQuestions = submission.questions;
+  currentQuestions = JSON.parse(JSON.stringify(submission.questions));
   currentSubmission = submission;
-  currentSession = createSession({ ...lastSessionConfig, sessionId: submission.sessionId }, submission.questions);
+  currentSession = createSession({ ...lastSessionConfig, sessionId: submission.sessionId }, currentQuestions);
   questionStrokesMap.clear();
   questionResponseRecordsMap.clear();
   gradingStrokesMap.clear();
@@ -3600,20 +3607,20 @@ function restoreSessionFromSubmission(submission) {
   Object.entries(submission.gradingStrokesMap || {}).forEach(([questionId, strokes]) => gradingStrokesMap.set(resolveSessionQuestionId(questionId), strokes));
   Object.entries(submission.gradingResults || {}).forEach(([questionId, grade]) => gradingResultsMap.set(resolveSessionQuestionId(questionId), grade));
 
-  currentSession.start();
-  currentSession.setQuestionSolveTimes(submission.perQuestionElapsedMs || {});
-  currentSession.startSubmitting();
-  currentSession.submitPractice(submission.totalSolveTimeMs || 0, submission.perQuestionElapsedMs || {});
-  currentSession.setPendingGrading();
+  const completedSummary = restoreSessionStateFromSubmission(currentSession, submission);
+  draftCoordinator.setBaseVersion(null);
   gradingViewMode = "detail";
   currentGradingQuestionId = submission.currentGradingQuestionId || null;
   hideAnswersInGrading = Boolean(submission.answersHidden);
   questionTimer.stop();
+  if (completedSummary) {
+    setPracticeInteractionLocked(true);
+    showSessionResult(completedSummary);
+    return true;
+  }
   switchView(gradingView, false);
 
   if (submission.status === "GRADING_ACTIVE") {
-    currentSession.startGrading();
-    applyPersistedGradesToCurrentSession();
     renderGradingView();
   } else {
     if (parentGradingStartPanel) parentGradingStartPanel.hidden = false;
@@ -3768,6 +3775,8 @@ export async function handleSafeLearningNavigation(targetRoute) {
       await flushDraftSave();
     } catch (e) {
       console.error("채점 진행상황 저장 실패:", e);
+      alert(e.message || "저장되지 않은 채점 내용을 유지하기 위해 이동을 중단했습니다.");
+      return;
     }
     gradingCanvasInstances.forEach((instance) => instance.destroy());
     gradingCanvasInstances.clear();
@@ -3790,6 +3799,8 @@ export async function handleSafeLearningNavigation(targetRoute) {
       await flushDraftSave();
     } catch (e) {
       console.error("풀이 드래프트 저장 실패:", e);
+      alert(e.message || "저장되지 않은 풀이 내용을 유지하기 위해 이동을 중단했습니다.");
+      return;
     }
     questionTimer.stop();
     activeCanvasInstances.forEach((inst) => inst.destroy());

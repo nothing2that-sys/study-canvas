@@ -5,6 +5,7 @@
 import {
   saveSessionRecord,
   saveDraftSession,
+  getDraftSession,
   clearDraftSession,
   clearAllData,
   saveSubmissionSnapshot,
@@ -23,6 +24,8 @@ import {
   resolveReviewItem as storageResolveReviewItem,
   retryReviewItemAgain as storageRetryReviewItemAgain
 } from "../storage.js";
+import { getDraftVersion } from "../draftEngine.js";
+import { restoreSessionStateFromSubmission } from "../submissionLifecycle.js";
 
 //+_+// 완료된 학습 세션 레코드 저장 (최종 채점 완료 후 sessions/attempts/mistakes 반영)
 export async function saveSession(sessionRecord, strokesMap = new Map(), gradingStrokesMap = new Map(), options = {}) {
@@ -78,6 +81,8 @@ export async function submitLearningSession(options = {}) {
   }
 
   // 2. 불변 Snapshot 영구 스토리지에 원자적 저장 (멱등성 보장)
+  const expectedDraft = Object.hasOwn(options, "expectedDraftVersion") ? options.expectedDraftVersion :
+    getDraftVersion(await getDraftSession({ learnerId: snapshot.learnerId || options.learnerId }));
   let savedSubmission;
   try {
     savedSubmission = await saveSubmissionSnapshot(snapshot, options);
@@ -92,12 +97,7 @@ export async function submitLearningSession(options = {}) {
   // 3. 저장 성공 확인 후 세션 상태를 SUBMITTED_LOCKED -> PARENT_GRADING_PENDING으로 확정
   if (session) {
     if (session.state === "SUBMITTING") {
-      if (typeof session.submitPractice === "function") {
-        session.submitPractice(snapshot.totalSolveTimeMs);
-      }
-      if (typeof session.setPendingGrading === "function") {
-        session.setPendingGrading();
-      }
+      restoreSessionStateFromSubmission(session, savedSubmission);
     }
   }
 
@@ -106,7 +106,11 @@ export async function submitLearningSession(options = {}) {
   let draftCleanupError = null;
   if (savedSubmission && savedSubmission.learnerId) {
     try {
-      await clearDraftSession({ learnerId: savedSubmission.learnerId });
+      draftCleaned = await clearDraftSession({ learnerId: savedSubmission.learnerId,
+        expectedSessionId: savedSubmission.sessionId,
+        expectedUpdatedAt: expectedDraft?.updatedAt,
+        expectedRevision: expectedDraft?.revision,
+        expectedWriteId: expectedDraft?.writeId || null });
     } catch (cleanupErr) {
       draftCleaned = false;
       draftCleanupError = cleanupErr?.message || String(cleanupErr);
@@ -116,7 +120,7 @@ export async function submitLearningSession(options = {}) {
 
   //+_+// Phase F7: 재풀이 세션인 경우 ReviewItem을 review_pending 상태로 전이
   const targetReviewItemId = options.reviewItemId || session?.reviewItemId || session?.config?.reviewItemId;
-  if (targetReviewItemId && savedSubmission) {
+  if (targetReviewItemId && savedSubmission && !["GRADED", "SESSION_COMPLETE"].includes(savedSubmission.status)) {
     try {
       await storageMarkReviewItemReviewPending(targetReviewItemId, savedSubmission.id, options);
     } catch (pendingErr) {

@@ -19,7 +19,9 @@ test("actual worksheet entry reserves storage before clearing previous submitted
   const context = vm.createContext({
     consumeActiveWorkbookContext: () => null, getCurrentRoute: () => "/home", getActiveWorkbookContext: () => null,
     createSession, SessionState, Date, questionTimer: {}, practiceView: {}, getActiveLearnerId:()=>null,
-    flushDraftSave:async()=>{}, getDraft:async()=>null, saveDraft:async()=>{}, alert:message=>assert.fail(message),
+    flushDraftSave:async()=>{}, getDraft:async()=>null,
+    saveDraft:async draft=>({...draft,revision:0,updatedAt:123,writeId:'reserved'}),
+    draftCoordinator:{setBaseVersion(draft){context.base=draft;}}, alert:message=>assert.fail(message),
     currentSubmission: { responseSnapshots: { q: { value: "old answer" } } }, currentResultSummary: { old: true },
     questionStrokesMap: new Map(), questionResponseRecordsMap: new Map(), gradingStrokesMap: new Map(), gradingResultsMap: new Map(), activeCanvasInstances: new Map(),
     startSessionTimer() {}, switchView() {}, renderCurrentWorksheetPage() {}, triggerDraftSave() {}, updateGlobalLearningNav() {}, updateToolDockUI() {},
@@ -32,6 +34,8 @@ test("actual worksheet entry reserves storage before clearing previous submitted
   assert.equal(context.currentResultSummary, null);
   assert.equal(context.locked, false);
   assert.equal(context.currentSession.state, "PRACTICE_ACTIVE");
+  assert.equal(context.base.sessionId, "retry-ui-reset");
+  assert.equal(context.base.writeId, "reserved");
 });
 
 test("UI Retry adapter opens actual command result; retrying recovery reuses identity and original snapshot", async () => {
