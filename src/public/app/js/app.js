@@ -107,7 +107,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261002T093100425Z-22d86e0";
+const APP_BUILD_ID = "20261002T104041017Z-17ee043";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -1059,7 +1059,7 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
         const isTyped = r.responseType === "TEXT" || r.activityType === "SHORT_ANSWER" || r.responseType === "CHOICE" || r.activityType === "MULTIPLE_CHOICE";
         if (isTyped) return;
         const canvasId = `modalReviewCanvas_${session.id || "temp"}_${r.questionId || idx}`;
-        const canvasEl = document.querySelector(`#${canvasId}`);
+        const canvasEl = document.getElementById(canvasId);
         if (canvasEl) {
           const studentStrokes = r.studentStrokes || r.strokes || [];
           const gradingStrokes = r.gradingStrokes || [];
@@ -1281,7 +1281,7 @@ async function renderReviewModalItem(reviewItem) {
   // 캔버스 복원 (CANVAS 기반 활동)
   if (!isTypedActivity) {
     requestAnimationFrame(() => {
-      const canvasEl = document.querySelector(`#${canvasId}`);
+      const canvasEl = document.getElementById(canvasId);
       if (canvasEl) {
         reviewModalCanvasInstance = createDrawingCanvas(canvasEl, {
           readOnly: true,
@@ -1736,7 +1736,7 @@ function renderProblemStageContent(q, options = {}) {
 // ----------------------------------------------------
 async function startSessionWithQuestions(questions, config) {
   if (!questions || questions.length === 0) return false;
-  let effectiveConfig, nextSession;
+  let effectiveConfig, nextSession, initialDraft;
   try {
     const learnerId = getActiveLearnerId();
     await flushDraftSave();
@@ -1746,7 +1746,7 @@ async function startSessionWithQuestions(questions, config) {
     effectiveConfig = workbookContext ? { ...config, ...workbookContext, learnerId } : { ...config, learnerId };
     nextSession = createSession(effectiveConfig, questions);
     nextSession.start();
-    await saveDraft({ learnerId, sessionId: nextSession.id, config: effectiveConfig, questions,
+    initialDraft = await saveDraft({ learnerId, sessionId: nextSession.id, config: effectiveConfig, questions,
       sessionState: SessionState.PRACTICE_ACTIVE, totalElapsedMs: 0 }, { protectExisting: true });
     if (getActiveLearnerId() !== learnerId) throw new Error('학습자가 변경되었습니다. 저장된 학습은 해당 학습자의 이어풀기에서 열 수 있습니다.');
     consumeActiveWorkbookContext(undefined, { launchTarget: getCurrentRoute() });
@@ -1769,18 +1769,39 @@ async function startSessionWithQuestions(questions, config) {
 
   currentSession = nextSession;
 
-  startSessionTimer(questionTimer, 0);
-
-  switchView(practiceView);
-  renderCurrentWorksheetPage();
-  setPracticeInteractionLocked(false);
-  updateToolDockUI();
-  triggerDraftSave();
-  updateGlobalLearningNav(getCurrentRoute(), {
-    workbookTitle: getActiveWorkbookContext()?.title,
-    subjectId: currentSession?.config?.subjectId
-  });
-  return true;
+  try {
+    switchView(practiceView);
+    renderCurrentWorksheetPage();
+    setPracticeInteractionLocked(false);
+    updateToolDockUI();
+    updateGlobalLearningNav(getCurrentRoute(), {
+      workbookTitle: getActiveWorkbookContext()?.title,
+      subjectId: currentSession?.config?.subjectId
+    });
+    startSessionTimer(questionTimer, 0);
+    triggerDraftSave();
+    return true;
+  } catch (error) {
+    questionTimer.stop();
+    activeCanvasInstances.forEach(instance => instance.destroy());
+    activeCanvasInstances.clear();
+    currentSession = null;
+    currentQuestions = [];
+    setPracticeInteractionLocked(true);
+    let cleaned = false;
+    try {
+      if (initialDraft) cleaned = await clearDraft({ learnerId: effectiveConfig.learnerId,
+        expectedSessionId: nextSession.id, expectedUpdatedAt: initialDraft.updatedAt,
+        expectedRevision: initialDraft.revision });
+    } catch (cleanupError) {
+      console.error('새 학습 화면 실패 후 Draft 정리 실패:', cleanupError);
+    }
+    navigate(ROUTES.HOME);
+    console.error('새 학습 화면 시작 실패:', error);
+    alert(cleaned ? '학습 화면을 여는 데 실패했습니다. 새 학습을 다시 시작하세요.' :
+      '학습 화면을 여는 데 실패했습니다. 저장 기록은 보존했습니다. 홈의 이어풀기에서 확인하세요.');
+    return false;
+  }
 }
 
 //+_+// F16D review preview enters the existing typed input, draft, submission and Guardian lifecycle.
@@ -1942,7 +1963,7 @@ function renderCurrentWorksheetPage() {
   // 각 문제 카드의 캔버스 초기화
   pageData.questions.forEach((q) => {
     if (!usesDrawingCanvas(q)) return;
-    const canvasEl = document.querySelector(`#canvas_${q.id}`);
+    const canvasEl = document.getElementById(`canvas_${q.id}`);
     if (canvasEl) {
       const canvasInstance = createDrawingCanvas(canvasEl, {
         sourcePageSize: currentSession?.pageSize,
@@ -2496,7 +2517,7 @@ function renderGradingView() {
     const questionById = new Map(canvasQuestions.map((question) => [String(question.id), question]));
     const createVisibleCanvas = (q) => {
       if (!q || gradingCanvasInstances.has(q.id) || renderRevision !== gradingRenderRevision) return;
-      const gCanvasEl = document.querySelector(`#gradingCanvas_${q.id}`);
+      const gCanvasEl = document.getElementById(`gradingCanvas_${q.id}`);
       if (gCanvasEl) {
         const studentStrokes = questionStrokesMap.get(q.id) || questionStrokesMap.get(String(q.id)) || [];
         const gradingStrokes = gradingStrokesMap.get(q.id) || gradingStrokesMap.get(String(q.id)) || [];
@@ -2529,7 +2550,7 @@ function renderGradingView() {
         });
       }, { rootMargin: "320px 0px" });
       canvasQuestions.forEach((q) => {
-        const canvas = document.querySelector(`#gradingCanvas_${q.id}`);
+        const canvas = document.getElementById(`gradingCanvas_${q.id}`);
         if (canvas) gradingCanvasObserver.observe(canvas);
       });
     } else {
@@ -2618,7 +2639,7 @@ function handleGradeClick(event) {
 
   const qId = resolveSessionQuestionId(btn.dataset.id);
   const decision = normalizeGradeDecision(btn.dataset.decision);
-  const commentInput = document.querySelector(`#redPenInput_${qId}`);
+  const commentInput = document.getElementById(`redPenInput_${qId}`);
   const comment = commentInput ? commentInput.value : "";
 
   let gradeResult;
@@ -2639,7 +2660,7 @@ function handleGradeClick(event) {
     playWrongSound();
   }
 
-  const card = document.querySelector(`#gradingCard_${qId}`);
+  const card = document.getElementById(`gradingCard_${qId}`);
   if (card) {
     card.classList.toggle("is-graded-correct", decision === GradeDecision.CORRECT);
     card.classList.toggle("is-graded-wrong", decision === GradeDecision.WRONG);
@@ -2664,7 +2685,7 @@ function handleRedChipClick(event) {
 
   const qId = resolveSessionQuestionId(chip.dataset.id);
   const text = chip.dataset.text;
-  const commentInput = document.querySelector(`#redPenInput_${qId}`);
+  const commentInput = document.getElementById(`redPenInput_${qId}`);
 
   if (commentInput) {
     commentInput.value = text;
@@ -2678,7 +2699,7 @@ function handleRedChipClick(event) {
     }
     triggerDraftSave();
 
-    const card = document.querySelector(`#gradingCard_${qId}`);
+    const card = document.getElementById(`gradingCard_${qId}`);
     if (card && decision) {
       card.classList.toggle("is-graded-correct", decision === GradeDecision.CORRECT);
       card.classList.toggle("is-graded-wrong", decision === GradeDecision.WRONG);
@@ -2741,7 +2762,7 @@ function selectGradingQuestion(questionId) {
   gradingViewMode = "detail";
   currentGradingQuestionId = resolvedQuestionId;
   document.querySelectorAll(".grading-card[aria-current]").forEach((card) => card.removeAttribute("aria-current"));
-  const card = document.querySelector(`#gradingCard_${resolvedQuestionId}`);
+  const card = document.getElementById(`gradingCard_${resolvedQuestionId}`);
   card?.setAttribute("aria-current", "step");
   renderGradingQuestionNavigator();
   card?.scrollIntoView({ behavior: getPreferredScrollBehavior(), block: "start" });
@@ -2925,7 +2946,7 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
         const isTyped = r.responseType === "TEXT" || r.activityType === "SHORT_ANSWER" || r.responseType === "CHOICE" || r.activityType === "MULTIPLE_CHOICE";
         if (isTyped) return;
         const canvasId = `resultReviewCanvas_${r.questionId || idx}`;
-        const canvasEl = document.querySelector(`#${canvasId}`);
+        const canvasEl = document.getElementById(canvasId);
         if (canvasEl) {
           const studentStrokes = r.studentStrokes || r.strokes || questionStrokesMap.get(r.questionId) || [];
           const gradingStrokes = r.gradingStrokes || gradingStrokesMap.get(r.questionId) || [];

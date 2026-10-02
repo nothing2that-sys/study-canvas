@@ -928,16 +928,25 @@ export async function clearDraftSession(options = {}) {
   const targetLearnerId = options.learnerId !== undefined ? options.learnerId : getCurrentLearnerId();
   const draftKey = !targetLearnerId || targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
 
+  // Optional compare-and-delete for failed new starts; legacy unguarded cleanup is unchanged.
+  const matches = record => options.expectedSessionId === undefined ||
+    (record?.sessionId === options.expectedSessionId && record.updatedAt === options.expectedUpdatedAt &&
+      record.revision === options.expectedRevision);
   if (db.isMemory) {
+    if (!matches(db.draftSessions.get(draftKey))) return false;
     db.draftSessions.delete(draftKey);
     return true;
   }
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction("draftSessions", "readwrite");
-    tx.objectStore("draftSessions").delete(draftKey);
-    tx.oncomplete = () => resolve(true);
+    const store = tx.objectStore("draftSessions");
+    let deleted = false;
+    const req = store.get(draftKey);
+    req.onsuccess = () => { if (matches(req.result)) { store.delete(draftKey); deleted = true; } };
+    tx.oncomplete = () => resolve(deleted);
     tx.onerror = (e) => reject(e.target.error);
+    tx.onabort = () => reject(tx.error || new Error('Draft 정리가 중단되었습니다.'));
   });
 }
 
