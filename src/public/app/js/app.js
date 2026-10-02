@@ -107,7 +107,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261002T061944772Z-a2da290";
+const APP_BUILD_ID = "20261002T074441153Z-cc537ca";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -450,7 +450,7 @@ function updateDraftSaveStatus(status) {
 
 export const draftCoordinator = createDraftSaveCoordinator({
   captureSnapshot: captureDraftSnapshot,
-  save: saveDraft,
+  save: draft => saveDraft(draft, { protectExisting: true }),
   onStatusChange: updateDraftSaveStatus
 });
 
@@ -1360,6 +1360,7 @@ async function renderReviewModalItem(reviewItem) {
       const button = event.currentTarget;
       button.disabled = true;
       try {
+        await flushDraftSave();
         const retryResult = await command(reviewItem.id, { learnerId });
         openReviewRetryResult(retryResult, { startSession: startSessionWithQuestions, restoreDraft: handleRestoreDraftSession });
         if (currentSession) currentSession.reviewItemId = reviewItem.id;
@@ -1404,7 +1405,7 @@ async function handleStartMistakeSession() {
     //+_+// mistakeToQuestion 매퍼를 사용하여 정답, 키, 연산자 완전 보존
     const questions = mistakes.map((m, idx) => mistakeToQuestion(m, idx));
 
-    startSessionWithQuestions(questions, {
+    await startSessionWithQuestions(questions, {
       operation: questions[0].operation,
       difficulty: "custom",
       pageSize: 4,
@@ -1723,10 +1724,26 @@ function renderProblemStageContent(q, options = {}) {
 // ----------------------------------------------------
 // 워크시트 세션 풀이 흐름 (단일 표준 진입점)
 // ----------------------------------------------------
-function startSessionWithQuestions(questions, config) {
-  if (!questions || questions.length === 0) return;
-  const workbookContext = consumeActiveWorkbookContext(undefined, { launchTarget: getCurrentRoute() });
-  const effectiveConfig = workbookContext ? { ...config, ...workbookContext } : config;
+async function startSessionWithQuestions(questions, config) {
+  if (!questions || questions.length === 0) return false;
+  let effectiveConfig, nextSession;
+  try {
+    const learnerId = getActiveLearnerId();
+    await flushDraftSave();
+    if (await getDraft({ learnerId })) throw new Error('진행 중인 풀이가 있습니다. 홈의 이어풀기를 완료한 뒤 새 학습을 시작하세요.');
+    if (getActiveLearnerId() !== learnerId) throw new Error('학습자가 변경되었습니다. 다시 시작하세요.');
+    const workbookContext = getActiveWorkbookContext(undefined, { launchTarget: getCurrentRoute() });
+    effectiveConfig = workbookContext ? { ...config, ...workbookContext, learnerId } : { ...config, learnerId };
+    nextSession = createSession(effectiveConfig, questions);
+    nextSession.start();
+    await saveDraft({ learnerId, sessionId: nextSession.id, config: effectiveConfig, questions,
+      sessionState: SessionState.PRACTICE_ACTIVE, totalElapsedMs: 0 }, { protectExisting: true });
+    if (getActiveLearnerId() !== learnerId) throw new Error('학습자가 변경되었습니다. 저장된 학습은 해당 학습자의 이어풀기에서 열 수 있습니다.');
+    consumeActiveWorkbookContext(undefined, { launchTarget: getCurrentRoute() });
+  } catch (error) {
+    alert(error.message || '저장에 실패하여 새 학습을 시작하지 않았습니다.');
+    return false;
+  }
   lastSessionConfig = effectiveConfig;
   currentDraftCreatedAt = Date.now();
   currentQuestions = questions;
@@ -1740,8 +1757,7 @@ function startSessionWithQuestions(questions, config) {
   activeCanvasInstances.forEach((instance) => instance.destroy());
   activeCanvasInstances.clear();
 
-  currentSession = createSession(effectiveConfig, questions);
-  currentSession.start();
+  currentSession = nextSession;
 
   startSessionTimer(questionTimer, 0);
 
@@ -1754,6 +1770,7 @@ function startSessionWithQuestions(questions, config) {
     workbookTitle: getActiveWorkbookContext()?.title,
     subjectId: currentSession?.config?.subjectId
   });
+  return true;
 }
 
 //+_+// F16D review preview enters the existing typed input, draft, submission and Guardian lifecycle.
@@ -1774,7 +1791,7 @@ export async function startF16dMathPractice(generatorId, { count = DEFAULT_PROBL
     unitId: spec.unitId, skillId: spec.skillId, stageId: spec.skillId, macroLevelId: spec.skillId,
     skillTitle: spec.title, problemCount: result.activities.length, pageSize: 4, mathFormat: "horizontal",
     mathGeneration: { generatorId, seed, version: spec.version, selection: result.selection, timings: result.timings, reviewStatus: "REVIEW_REQUIRED" } };
-  startSessionWithQuestions(result.activities, config);
+  if (!await startSessionWithQuestions(result.activities, config)) throw new Error("진행 중인 풀이를 먼저 완료하세요.");
   return result;
 }
 function renderF16dPreviewPanel() {
@@ -1803,7 +1820,7 @@ function renderF16dPreviewPanel() {
       if (await getDraft({ learnerId })) throw new Error("진행 중인 풀이가 있습니다. 이어풀기를 완료한 뒤 검증을 시작하세요.");
       if (getActiveLearnerId() !== learnerId) throw new Error("학습자가 변경되었습니다. 다시 시작하세요.");
       const fixture = createExactMultiplicationReviewFixture(learnerId);
-      startSessionWithQuestions(fixture.questions, fixture.config);
+      await startSessionWithQuestions(fixture.questions, fixture.config);
     } catch (error) { panel.querySelector("#mathF16dMessage").textContent = error.message; }
     finally { button.disabled = false; }
   });
@@ -3039,11 +3056,11 @@ function handlePrintWorksheet(isAnswerKey = false) {
 if (form) {
   form.addEventListener("change", updateSummary);
   form.addEventListener("input", updateSummary);
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const questions = previewQuestions();
     if (questions) {
-      startSessionWithQuestions(questions, getFormConfig());
+      await startSessionWithQuestions(questions, getFormConfig());
     }
   });
 }
@@ -3053,9 +3070,9 @@ if (multiplierMode) {
 }
 
 if (startFromQueueBtn) {
-  startFromQueueBtn.addEventListener("click", () => {
+  startFromQueueBtn.addEventListener("click", async () => {
     if (currentQuestions) {
-      startSessionWithQuestions(currentQuestions, getFormConfig());
+      await startSessionWithQuestions(currentQuestions, getFormConfig());
     }
   });
 }
@@ -3166,11 +3183,11 @@ if (modalCancelBtn) modalCancelBtn.addEventListener("click", () => confirmModal?
 if (modalConfirmBtn) modalConfirmBtn.addEventListener("click", terminateSession);
 
 if (restartSessionBtn) {
-  restartSessionBtn.addEventListener("click", () => {
+  restartSessionBtn.addEventListener("click", async () => {
     if (lastSessionConfig) {
       try {
         const questions = generateQuestionSet(lastSessionConfig);
-        startSessionWithQuestions(questions, lastSessionConfig);
+        await startSessionWithQuestions(questions, lastSessionConfig);
       } catch (e) {
         switchView(setupView);
         loadDashboardStats();
@@ -3405,7 +3422,7 @@ async function renderAdaptiveRecommendCard() {
         });
       }
 
-      startSessionWithQuestions(freshSession.questions, {
+      await startSessionWithQuestions(freshSession.questions, {
         operation: freshSession.questions[0]?.operation || "mul",
         count: freshSession.questions.length,
         pageSize: 4,
@@ -4014,7 +4031,7 @@ export function startMeasurementPracticeSession(skill, unitCatalog, manifest) {
     mathFormat: "horizontal"
   };
 
-  startSessionWithQuestions(activities, sessionConfig);
+  return startSessionWithQuestions(activities, sessionConfig);
 }
 
 //+_+// Phase F15A: 분수 개념 및 연산 학습 세션 시작
@@ -4038,7 +4055,7 @@ export function startFractionPracticeSession({ activities, workbookContext = nul
     mathFormat: "horizontal"
   };
   const effectiveConfig = workbookContext ? { ...sessionConfig, ...workbookContext } : sessionConfig;
-  startSessionWithQuestions(activities, effectiveConfig);
+  return startSessionWithQuestions(activities, effectiveConfig);
 }
 
 //+_+// Phase F15A / F15B: 분수 문제집 연계 실행 또는 랜딩 처리
@@ -4071,7 +4088,7 @@ export async function handleFractionLandingOrWorkbookLaunch() {
       activities = pkg.activities.slice(0, 4);
     }
     if (activities.length > 0) {
-      startFractionPracticeSession({ activities, workbookContext, pageSize: 2 });
+      await startFractionPracticeSession({ activities, workbookContext, pageSize: 2 });
       return;
     }
   } catch (err) {
@@ -4101,7 +4118,7 @@ export function startDecimalPracticeSession({ activities, workbookContext = null
     mathFormat: "horizontal"
   };
   const effectiveConfig = workbookContext ? { ...sessionConfig, ...workbookContext } : sessionConfig;
-  startSessionWithQuestions(activities, effectiveConfig);
+  return startSessionWithQuestions(activities, effectiveConfig);
 }
 
 //+_+// Phase F15C: 소수 문제집 연계 실행 또는 랜딩 처리
@@ -4130,7 +4147,7 @@ export async function handleDecimalLandingOrWorkbookLaunch() {
       activities = pkg.activities.slice(0, 4);
     }
     if (activities.length > 0) {
-      startDecimalPracticeSession({ activities, workbookContext, pageSize: 2 });
+      await startDecimalPracticeSession({ activities, workbookContext, pageSize: 2 });
       return;
     }
   } catch (err) {
@@ -4299,7 +4316,7 @@ async function renderEnglishCoreV2Paths() {
           const previousCandidateIds = getPreviousEnglishCoreV2CandidateIds(submissions, path, cohortManifestHash);
           const selected = selectEnglishCoreV2PathSession({ path, activities, previousCandidateIds,
             cohortManifestHash, seed: Date.now() });
-          startSessionWithQuestions(selected.activities, {
+          await startSessionWithQuestions(selected.activities, {
             subjectId: "english", courseId: "english-core", moduleId: "english-core",
             unitId: selected.activities[0].unitId, skillId: selected.activities[0].skillId,
             stageId: path.pathId, macroLevelId: path.pathId,
@@ -4348,7 +4365,7 @@ export function startKoreanPracticeSession(skill, allActivities, manifest) {
     mathFormat: "horizontal"
   };
 
-  startSessionWithQuestions(activities, sessionConfig);
+  return startSessionWithQuestions(activities, sessionConfig);
 }
 
 //+_+// Phase F13: English Landing View 렌더링 및 세션 생성
@@ -4483,14 +4500,14 @@ export function startEnglishPracticeSession(skill, allActivities, manifest) {
     mathFormat: "horizontal"
   };
 
-  startSessionWithQuestions(activities, sessionConfig);
+  return startSessionWithQuestions(activities, sessionConfig);
 }
 
 //+_+// Phase F14 공식 확인 학습은 기존 제출과 보호자 채점 수명주기를 사용한다
 export function startEnglishVocabularyCheckSession({ activities, gradeLevel, topicId = "ALL" } = {}) {
   if (!Array.isArray(activities) || activities.length === 0) throw new Error("확인 학습 문제가 필요합니다.");
   const stageId = `EN_VOCAB_CHECK_G${gradeLevel}`;
-  startSessionWithQuestions(activities, {
+  return startSessionWithQuestions(activities, {
     subjectId: "english",
     courseId: "english-core",
     moduleId: "english-core",

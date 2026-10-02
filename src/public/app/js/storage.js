@@ -847,15 +847,30 @@ export async function saveDraftSession(draft, options = {}) {
   };
 
   if (db.isMemory) {
+    const existing = db.draftSessions.get(draftKey);
+    if (options.protectExisting && existing?.questions?.length && existing.sessionId !== draftRecord.sessionId && existing.sessionState !== 'SESSION_COMPLETE') {
+      throw new Error('진행 중인 풀이가 있습니다. 기존 이어풀기를 완료한 뒤 새 학습을 시작하세요.');
+    }
     db.draftSessions.set(draftKey, draftRecord);
     return draftRecord;
   }
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction("draftSessions", "readwrite");
-    tx.objectStore("draftSessions").put(draftRecord);
+    const store = tx.objectStore("draftSessions");
+    let conflict;
+    const request = store.get(draftKey);
+    request.onsuccess = () => {
+      const existing = request.result;
+      if (options.protectExisting && existing?.questions?.length && existing.sessionId !== draftRecord.sessionId && existing.sessionState !== 'SESSION_COMPLETE') {
+        conflict = new Error('진행 중인 풀이가 있습니다. 기존 이어풀기를 완료한 뒤 새 학습을 시작하세요.');
+        tx.abort(); return;
+      }
+      store.put(draftRecord);
+    };
     tx.oncomplete = () => resolve(draftRecord);
-    tx.onerror = (e) => reject(e.target.error);
+    tx.onerror = (e) => reject(conflict || e.target.error);
+    tx.onabort = () => reject(conflict || tx.error || new Error('Draft 저장이 중단되었습니다.'));
   });
 }
 
@@ -3514,10 +3529,11 @@ export async function resumeReviewRetry(reviewItemId, options = {}) {
   const retrySession = createReviewRetrySession(item, rawSub, question, retryAttempt.sessionId);
   const saved = await getDraftSession({ learnerId: item.learnerId });
   const draft = saved?.sessionId === retryAttempt.sessionId ? saved : null;
+  if (!draft) throw new Error('저장된 재풀이 내용을 찾을 수 없습니다. 빈 풀이로 이어풀기를 시작하지 않았습니다.');
   if (draft && (draft.config?.reviewItemId !== item.id || draft.sessionState !== "PRACTICE_ACTIVE")) {
     throw new Error("저장된 재풀이 상태가 일치하지 않습니다.");
   }
-  return { reviewItem: item, retryAttempt, retrySession, draft };
+  return { reviewItem: item, retryAttempt, retrySession, draft, resumed: true };
 }
 
 export async function startReviewRetry(reviewItemId, options = {}) {
@@ -3588,9 +3604,16 @@ export async function startReviewRetry(reviewItemId, options = {}) {
     updatedAt: now
   };
 
+  const draftKey = item.learnerId === DEFAULT_LEGACY_LEARNER_ID ? 'current_draft' : `current_draft_${item.learnerId}`;
+  const initialDraft = normalizeDraft({ id: draftKey, learnerId: item.learnerId, sessionId: retrySession.id,
+    config: retrySession.config, questions: retrySession.questions, sessionState: 'PRACTICE_ACTIVE', totalElapsedMs: 0 });
+  const conflictError = () => new Error('진행 중인 풀이가 있습니다. 기존 이어풀기를 완료한 뒤 재풀이를 시작하세요.');
+  const hasActiveDraft = draft => draft?.questions?.length && draft.sessionState !== 'SESSION_COMPLETE';
+
   const db = await getDB();
 
   if (db.isMemory) {
+    if (hasActiveDraft(db.draftSessions.get(draftKey))) throw conflictError();
     if (typeof retryFailureInjector === "function") {
       retryFailureInjector({ isMemory: true, phase: "before_write" });
     }
@@ -3607,11 +3630,14 @@ export async function startReviewRetry(reviewItemId, options = {}) {
         retryFailureInjector({ isMemory: true, phase: "during_review_item_write" });
       }
       db.reviewItems.set(item.id, updatedReviewItem);
+      if (typeof retryFailureInjector === 'function') retryFailureInjector({ isMemory:true, phase:'during_draft_write' });
+      db.draftSessions.set(draftKey, initialDraft);
 
       return {
         reviewItem: updatedReviewItem,
         retryAttempt,
-        retrySession
+        retrySession,
+        draft: initialDraft
       };
     } catch (err) {
       db.attempts = backupAttempts;
@@ -3624,29 +3650,34 @@ export async function startReviewRetry(reviewItemId, options = {}) {
 
   return new Promise((resolve, reject) => {
     try {
-      const tx = db.transaction(["attempts", "reviewItems"], "readwrite");
+      const tx = db.transaction(["attempts", "reviewItems", "draftSessions"], "readwrite");
       const attStore = tx.objectStore("attempts");
       const revStore = tx.objectStore("reviewItems");
-
-      if (typeof retryFailureInjector === "function") {
-        retryFailureInjector({ tx, phase: "during_attempt_write" });
-      }
-      attStore.put(retryAttempt);
-
-      if (typeof retryFailureInjector === "function") {
-        retryFailureInjector({ tx, phase: "during_review_item_write" });
-      }
-      revStore.put(updatedReviewItem);
+      const draftStore = tx.objectStore('draftSessions');
+      let conflict;
+      const request = draftStore.get(draftKey);
+      request.onsuccess = () => {
+        if (hasActiveDraft(request.result)) { conflict = conflictError(); tx.abort(); return; }
+        try {
+          if (typeof retryFailureInjector === 'function') retryFailureInjector({tx, phase:'during_attempt_write'});
+          attStore.put(retryAttempt);
+          if (typeof retryFailureInjector === 'function') retryFailureInjector({tx, phase:'during_review_item_write'});
+          revStore.put(updatedReviewItem);
+          if (typeof retryFailureInjector === 'function') retryFailureInjector({tx, phase:'during_draft_write'});
+          draftStore.put(initialDraft);
+        } catch(error) { conflict = error; try { tx.abort(); } catch {} }
+      };
 
       tx.oncomplete = () => {
         resolve({
           reviewItem: updatedReviewItem,
           retryAttempt,
-          retrySession
+          retrySession,
+          draft: initialDraft
         });
       };
-      tx.onerror = (e) => reject(tx.error || e.target?.error || new Error("Retry transaction failed"));
-      tx.onabort = (e) => reject(tx.error || e.target?.error || new Error("Retry transaction aborted"));
+      tx.onerror = (e) => reject(conflict || tx.error || e.target?.error || new Error("Retry transaction failed"));
+      tx.onabort = (e) => reject(conflict || tx.error || e.target?.error || new Error("Retry transaction aborted"));
     } catch (err) {
       reject(err);
     }

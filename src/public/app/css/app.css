@@ -1847,7 +1847,9 @@ button:focus-visible, input:focus-visible + span, select:focus-visible { outline
 }
 
 .detail-review-stage .problem-canvas-stage {
-  width: fit-content;
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 auto;
   margin: 0 auto;
 }
 
@@ -5459,5 +5461,4 @@ body.theme-midnight .active-learner-pill {
     min-width: 40px;
   }
 }
-
 

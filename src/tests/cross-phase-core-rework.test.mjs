@@ -257,7 +257,7 @@ test("P0 DOM Runtime: 10문제 Session 채점 전체 흐름 및 0/10 일관성 �
     };
 
     // 1. 세션 시작 및 워크시트 생성
-    appModule.startSessionWithQuestions(questions10, sessionConfig);
+    await appModule.startSessionWithQuestions(questions10, sessionConfig);
 
     // 2. 학생 제출 시뮬레이션
     await appModule.handleSubmitPractice();
@@ -367,7 +367,7 @@ test("P0 DOM Runtime: 20문제 Session에서도 0/20 -> 20/20 일치 검증", as
 
   try {
     const questions20 = createMockMathQuestions(20);
-    appModule.startSessionWithQuestions(questions20, {
+    await appModule.startSessionWithQuestions(questions20, {
       sessionId: `test_session_20_${Date.now()}`,
       pageSize: 4,
       problemCount: 20,
@@ -422,7 +422,7 @@ test("P0 DOM Runtime: Typed Activity (국어 CHOICE) 문제 채점 렌더링 및
 
   try {
     const koreanActivities = createMockTypedActivities(5, "korean");
-    appModule.startSessionWithQuestions(koreanActivities, {
+    await appModule.startSessionWithQuestions(koreanActivities, {
       sessionId: `test_session_korean_${Date.now()}`,
       subjectId: "korean",
       skillId: "KO_VOCAB_MEANING",

@@ -45,24 +45,24 @@ function saveSelection(value) {
   writeJson(windowRef?.localStorage, SELECTION_KEY, value);
 }
 
-export function getActiveWorkbookContext(storage = typeof sessionStorage !== "undefined" ? sessionStorage : null) {
-  return readJson(storage, CONTEXT_KEY);
+export function getActiveWorkbookContext(storage = typeof sessionStorage !== "undefined" ? sessionStorage : null, options = null) {
+  const context = readJson(storage, CONTEXT_KEY);
+  if (!context || !options) return context;
+  const expectedLaunchTarget = String(options.launchTarget || '').trim();
+  if (expectedLaunchTarget && String(context.launchTarget || '') !== expectedLaunchTarget) return null;
+  const maxAgeMs = Math.max(0, Number(options.maxAgeMs) || 30 * 60 * 1000);
+  const createdAt = Number(context.createdAt);
+  return createdAt > 0 && Date.now() - createdAt > maxAgeMs ? null : context;
 }
 
 export function consumeActiveWorkbookContext(
   storage = typeof sessionStorage !== "undefined" ? sessionStorage : null,
   options = {}
 ) {
-  const context = readJson(storage, CONTEXT_KEY);
+  const context = getActiveWorkbookContext(storage, options);
   try {
     storage?.removeItem(CONTEXT_KEY);
   } catch {}
-  if (!context) return null;
-  const expectedLaunchTarget = String(options.launchTarget || "").trim();
-  if (expectedLaunchTarget && String(context.launchTarget || "") !== expectedLaunchTarget) return null;
-  const maxAgeMs = Math.max(0, Number(options.maxAgeMs) || 30 * 60 * 1000);
-  const createdAt = Number(context.createdAt);
-  if (createdAt > 0 && Date.now() - createdAt > maxAgeMs) return null;
   return context;
 }
 

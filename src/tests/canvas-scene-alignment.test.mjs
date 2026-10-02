@@ -11,10 +11,10 @@ function setup(width, height) {
   const paths = []; let path; const listeners = {};
   const context = { setTransform() {}, clearRect() {}, save() {}, restore() {}, beginPath() { path = []; },
     arc() {}, fill() {}, moveTo(x,y) { path.push([x,y]); }, lineTo(x,y) { path.push([x,y]); }, stroke() { paths.push(path); } };
-  const grid = { style: {}, dataset: {}, offsetWidth: 200, offsetHeight: 160,
+  const grid = { style: {}, dataset: {}, offsetWidth: 300, offsetHeight: 200,
     getBoundingClientRect() { const scale = /scale\(([^,]+), ([^)]+)\)/.exec(this.style.transform || '');
       return { left: parseFloat(this.style.left || 20), top: parseFloat(this.style.top || 20),
-        width: 200 * (scale ? +scale[1] : 1), height: 160 * (scale ? +scale[2] : 1) }; } };
+        width: this.offsetWidth * (scale ? +scale[1] : 1), height: this.offsetHeight * (scale ? +scale[2] : 1) }; } };
   const canvas = { style: {}, getContext: () => context, getBoundingClientRect: () => ({ left:0, top:0, width, height }),
     parentElement: { querySelector: () => grid }, addEventListener(type, fn) { listeners[type] = fn; }, removeEventListener() {}, setPointerCapture() {}, releasePointerCapture() {} };
   return { grid, canvas, paths, listeners, resize(w,h) { width=w; height=h; resized(); } };
@@ -53,6 +53,30 @@ test('combined capture bounds retain margin strokes without choosing different f
   const reference=sceneReference([student,extra]),fit=fitScene(reference,300,200);
   const point=mapScenePoint(extra.points[0],extra,reference,fit);
   assert.ok(point.x>=0&&point.x<=300&&point.y>=0&&point.y<=200);
+});
+
+test('horizontal formula preserves captured layout and uses uniform scale', () => {
+  const m=setup(320,258);
+  m.grid.matches = selector => selector === '.horizontal-math-container';
+  Object.defineProperty(m.grid, 'offsetWidth', {get:()=>parseFloat(m.grid.style.width)||240});
+  Object.defineProperty(m.grid, 'offsetHeight', {get:()=>120});
+  const source={...student,gridWidth:600,gridHeight:180,gridLayoutWidth:400,gridLayoutHeight:120};
+  const engine=createDrawingCanvas(m.canvas,{readOnly:true,backgroundStrokes:[source]});
+  const scale=/scale\(([^,]+), ([^)]+)\)/.exec(m.grid.style.transform);
+  assert.ok(Math.abs(+scale[1]-+scale[2])<1e-8, 'formula must not stretch independently on each axis');
+  assert.equal(m.grid.style.width,'400px');
+  const legacy={...source,gridLayoutWidth:undefined,gridLayoutHeight:undefined};
+  engine.setBackgroundStrokes([legacy]);
+  assert.equal(m.grid.style.width,'400px', 'legacy horizontal width follows its original uniform capture scale');
+  engine.destroy();
+});
+
+test('detail stage has an independent full-width layout even when formula and canvas are absolute', () => {
+  const css=fs.readFileSync(new URL('../public/app/css/app.css',import.meta.url),'utf8');
+  const rule=/\.detail-review-stage \.problem-canvas-stage\s*\{([^}]+)\}/.exec(css)[0];
+  const dom=new JSDOM(`<style>${rule}</style><div class="detail-review-stage"><div class="problem-canvas-stage"><div style="position:absolute"></div><canvas style="position:absolute"></canvas></div></div>`);
+  assert.equal(dom.window.getComputedStyle(dom.window.document.querySelector('.problem-canvas-stage')).width,'100%');
+  dom.window.close();
 });
 
 test('legacy page density and newly captured formula styles preserve internal cell dimensions', () => {

@@ -229,10 +229,18 @@ export function createDrawingCanvas(canvasElement, options = {}) {
         const target = currentSceneFit.grid;
         grid.dataset.canvasSceneManaged = '1';
         grid.style.position = 'absolute'; grid.style.maxWidth = 'none';
-        grid.style.width = 'max-content';
+        // Horizontal formulas originally fill their capture stage. Preserve that
+        // layout width; shrinking to max-content then stretching both axes distorts text.
+        const horizontal = grid.matches?.('.horizontal-math-container');
+        grid.style.width = currentScene.gridLayoutWidth > 0 ? `${currentScene.gridLayoutWidth}px` : (horizontal ? `${currentScene.gridWidth}px` : 'max-content');
+        if (horizontal && !(currentScene.gridLayoutWidth > 0) && grid.offsetHeight > 0) {
+          const captureScale = currentScene.gridHeight / grid.offsetHeight;
+          grid.style.width = `${currentScene.gridWidth / captureScale}px`;
+        }
+        const uniformScale = Math.min(target.gridWidth / grid.offsetWidth, target.gridHeight / grid.offsetHeight);
         grid.style.left = `${target.gridLeft}px`; grid.style.top = `${target.gridTop}px`;
         grid.style.transformOrigin = '0 0';
-        grid.style.transform = `scale(${target.gridWidth / grid.offsetWidth}, ${target.gridHeight / grid.offsetHeight})`;
+        grid.style.transform = `scale(${uniformScale}, ${uniformScale})`;
       }
       cachedGridInfo = currentSceneFit.grid;
     }
@@ -275,6 +283,8 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       gridTop: gridRect.top - canvasRect.top,
       gridWidth: Math.max(20, gridRect.width || cW),
       gridHeight: Math.max(20, gridRect.height || cH),
+      gridLayoutWidth: gridEl?.offsetWidth,
+      gridLayoutHeight: gridEl?.offsetHeight,
       gridStyle: readGridStyle(gridEl)
     };
   }
@@ -610,9 +620,12 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       gridLeft: cachedGridInfo.gridLeft,
       gridTop: cachedGridInfo.gridTop,
       gridStyle: cachedGridInfo.gridStyle,
+      gridLayoutWidth: cachedGridInfo.gridLayoutWidth,
+      gridLayoutHeight: cachedGridInfo.gridLayoutHeight,
       sceneGeometry: currentScene ? { baseWidth: currentScene.baseWidth, baseHeight: currentScene.baseHeight,
         gridLeft: currentScene.gridLeft, gridTop: currentScene.gridTop,
-        gridWidth: currentScene.gridWidth, gridHeight: currentScene.gridHeight, gridStyle: currentScene.gridStyle } : undefined,
+        gridWidth: currentScene.gridWidth, gridHeight: currentScene.gridHeight, gridStyle: currentScene.gridStyle,
+        gridLayoutWidth: currentScene.gridLayoutWidth, gridLayoutHeight: currentScene.gridLayoutHeight } : undefined,
       points: pts,
       timestamp: Date.now()
     };
