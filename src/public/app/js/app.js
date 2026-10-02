@@ -107,7 +107,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261002T074441153Z-cc537ca";
+const APP_BUILD_ID = "20261002T093100425Z-22d86e0";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -1045,7 +1045,7 @@ function renderModalDetailItems(session, mode = currentModalViewMode) {
         <!-- 학생 필기 및 빨간 펜 첨삭 복원 영역 -->
         <div class="detail-review-stage">
           <div class="problem-canvas-stage">
-            ${renderProblemStageContent(r, { showGuides: false, readOnly: true, responseSnapshots: session.responseSnapshots || {}, session: null, currentSubmission: null, questionResponseRecordsMap: null })}
+            ${renderProblemStageContent(r, { mathFormat: session.config?.mathFormat || session.mathFormat || r.mathFormat || "vertical", showGuides: false, readOnly: true, responseSnapshots: session.responseSnapshots || {}, session, currentSubmission: null, questionResponseRecordsMap: null })}
             ${isTyped ? "" : `<canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>`}
           </div>
         </div>
@@ -1256,7 +1256,7 @@ async function renderReviewModalItem(reviewItem) {
       <div class="review-section-title">${isTypedActivity ? "학생 응답 및 보호자 피드백 확인" : "학생 필기 및 보호자 첨삭 확인"}</div>
       <div class="review-preview detail-review-stage">
         <div class="problem-canvas-stage">
-          ${renderProblemStageContent(question, { showGuides: false, readOnly: true, responseSnapshots: sourceSub?.responseSnapshots })}
+          ${renderProblemStageContent(question, { mathFormat: sourceSub?.config?.mathFormat || sourceSub?.mathFormat || question.mathFormat || "vertical", showGuides: false, readOnly: true, responseSnapshots: sourceSub?.responseSnapshots, session: sourceSub, currentSubmission: sourceSub, questionResponseRecordsMap: null })}
           ${isTypedActivity ? "" : `<canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>`}
         </div>
       </div>
@@ -1396,7 +1396,14 @@ async function renderReviewModalItem(reviewItem) {
 
 async function handleStartMistakeSession() {
   try {
-    const mistakes = await getMistakeQuestions();
+    const learnerId = getActiveLearnerId();
+    await flushDraftSave();
+    if (await getDraft({ learnerId })) {
+      alert('진행 중인 풀이가 있습니다. 홈의 이어풀기를 완료한 뒤 새 학습을 시작하세요.');
+      return;
+    }
+    if (getActiveLearnerId() !== learnerId) throw new Error('학습자가 변경되었습니다. 다시 시작하세요.');
+    const mistakes = await getMistakes({ learnerId });
     if (!mistakes || mistakes.length === 0) {
       alert("현재 복습할 오답 문제가 없습니다! 잘하셨어요! 👍");
       return;
@@ -1414,7 +1421,7 @@ async function handleStartMistakeSession() {
     });
   } catch (e) {
     console.error("오답 세션 생성 실패:", e);
-    alert("오답 세션 생성 중 오류가 발생했습니다.");
+    alert(e?.message || "오답 세션 생성 중 오류가 발생했습니다.");
   }
 }
 
@@ -1675,11 +1682,13 @@ function renderVerticalMathGrid(q, options = {}) {
 function renderHorizontalMathGrid(q, options = {}) {
   const showGuides = Boolean(options.showGuides);
   const symbol = q.operation === "div" ? "÷" : "×";
-  const ansStr = String(q.answer);
+  // Saved Retry questions can carry the grading contract without the legacy answer field.
+  const answer = q.expectedAnswer ?? q.gradingReference?.displayAnswer ?? q.gradingReference?.correctAnswer ?? q.answer;
+  const ansStr = typeof answer === "string" || (typeof answer === "number" && Number.isFinite(answer)) ? String(answer) : "";
 
   let answerBoxesHtml = "";
   for (let i = 0; i < ansStr.length; i++) {
-    const digit = ansStr[i];
+    const digit = ansStr[i].replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     answerBoxesHtml += `<div class="grid-cell box-cell accent-box"><span class="guide-digit">${digit}</span></div>`;
   }
 
@@ -1714,7 +1723,8 @@ function renderProblemStageContent(q, options = {}) {
   if (responseType === ResponseType.CHOICE) {
     return renderChoiceActivityStage(q, mergedOptions);
   }
-  const mathFormat = q.mathFormat || currentSession?.mathFormat || (currentResultSummary?.mathFormat) || (currentModalSession?.mathFormat) || "vertical";
+  const mathFormat = options.mathFormat || options.session?.config?.mathFormat || options.session?.mathFormat || q.mathFormat ||
+    currentSession?.mathFormat || currentResultSummary?.mathFormat || currentModalSession?.mathFormat || "vertical";
   if (mathFormat === "horizontal") {
     return renderHorizontalMathGrid(q, options);
   }
@@ -2873,7 +2883,7 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
         <!-- 학생 필기 및 빨간 펜 첨삭 복원 영역 -->
         <div class="detail-review-stage">
           <div class="problem-canvas-stage">
-            ${renderProblemStageContent(r, { showGuides: false, readOnly: true, responseSnapshots: currentSubmission?.responseSnapshots })}
+            ${renderProblemStageContent(r, { mathFormat: summary.config?.mathFormat || summary.mathFormat || r.mathFormat || "vertical", showGuides: false, readOnly: true, responseSnapshots: currentSubmission?.responseSnapshots, session: summary })}
             ${isTyped ? "" : `<canvas class="drawing-canvas review-canvas" id="${canvasId}"></canvas>`}
           </div>
         </div>
