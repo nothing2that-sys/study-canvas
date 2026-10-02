@@ -48,6 +48,47 @@ function createMockCanvas() {
   };
 }
 
+test('crossing red strokes use one canvas transform even when first points straddle formula bounds', async () => {
+  globalThis.window = { devicePixelRatio: 1 };
+  let resized; globalThis.ResizeObserver = class { constructor(fn) { resized = fn; } observe() {} disconnect() {} };
+  const { createDrawingCanvas } = await import('../public/app/js/canvasEngine.js');
+  const canvas = createMockCanvas(); let width = 300, height = 200; const paths = []; let path;
+  canvas.getBoundingClientRect = () => ({ left: 0, top: 0, width, height });
+  canvas.parentElement = { querySelector: () => ({ getBoundingClientRect: () => ({ left: 60, top: 10, width: 180, height: 160 }) }) };
+  const context = canvas.getContext(); context.beginPath = () => { path = []; };
+  context.moveTo = context.lineTo = (x, y) => path.push([x, y]); context.stroke = () => paths.push(path);
+  canvas.getContext = () => context;
+  const geometry = { baseWidth: 600, baseHeight: 400, gridLeft: 180, gridTop: 120, gridWidth: 260, gridHeight: 150 };
+  const point = (x, y) => ({ x, y, relX: (x - 180) / 260, relY: (y - 120) / 150 });
+  const archived = [
+    { ...geometry, color: '#c62828', points: [point(200, 150), point(400, 350)] },
+    { ...geometry, color: '#c62828', points: [point(200, 350), point(400, 150)] }
+  ];
+  const before = structuredClone(archived); const engine = createDrawingCanvas(canvas, { readOnly: true });
+  engine.setStrokes(archived);
+  assert.deepEqual(paths.slice(-2), [[[100, 75], [200, 175]], [[100, 175], [200, 75]]]);
+  width = 600; height = 500; resized();
+  assert.deepEqual(paths.slice(-2), [[[200, 200], [400, 400]], [[200, 400], [400, 200]]], 'uniform scale and centered canvas preserve X under aspect changes');
+  assert.deepEqual(engine.getStrokes(), before); assert.deepEqual(archived, before);
+  engine.destroy();
+});
+
+test('student and guardian layers share the same geometry transform and grid-only archives remain readable', async () => {
+  globalThis.window = { devicePixelRatio: 2 };
+  globalThis.ResizeObserver = class { observe() {} disconnect() {} };
+  const { createDrawingCanvas } = await import('../public/app/js/canvasEngine.js');
+  const canvas = createMockCanvas(); const moved = []; const context = canvas.getContext();
+  context.moveTo = (x, y) => moved.push([x, y]); canvas.getContext = () => context;
+  canvas.parentElement = { querySelector: () => ({ getBoundingClientRect: () => ({ left: 40, top: 20, width: 180, height: 160 }) }) };
+  const student = [{ baseWidth: 600, baseHeight: 400, points: [{ x: 100, y: 100, relX: 0.2, relY: 0.2 }, { x: 200, y: 200 }] }];
+  const guardian = [{ baseWidth: 300, baseHeight: 200, points: [{ x: 50, y: 50, relX: -0.1, relY: -0.1 }, { x: 100, y: 100 }] }];
+  const engine = createDrawingCanvas(canvas, { readOnly: true, backgroundStrokes: student }); engine.setStrokes(guardian);
+  assert.deepEqual(moved.slice(-2), [[50, 50], [50, 50]], 'recording at different sizes preserves layer overlap');
+  engine.setBackgroundStrokes([]);
+  engine.setStrokes([{ gridWidth: 180, points: [{ relX: 0.5, relY: 0.5 }, { relX: 1, relY: 1 }] }]);
+  assert.deepEqual(moved.at(-1), [130, 100]); engine.destroy();
+});
+
 test("canvasEngine: 캔버스 생성 및 기본 스트로크 관리", async () => {
   // 브라우저 전역 모의
   globalThis.ResizeObserver = class {

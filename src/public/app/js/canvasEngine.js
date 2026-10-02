@@ -252,11 +252,21 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     const currentGrid = cachedGridInfo;
     const currentCanvas = cachedCanvasRect;
 
-    const first = stroke.points?.[0];
-    const outsideFormula = first && (first.relX < 0 || first.relX > 1 || first.relY < 0 || first.relY > 1);
-    // An annotation begun outside the formula belongs to the canvas margin.
-    // Keep one coordinate frame for the whole stroke, including archived strokes.
-    if (!outsideFormula && pt.relX !== undefined && pt.relY !== undefined && currentGrid.gridWidth > 0) {
+    // The stored canvas geometry is the common frame for ALL strokes/layers.
+    // Choosing a frame from each stroke's first point breaks crossing annotations.
+    // Uniform fit preserves shapes; centering handles a different review aspect ratio.
+    if (Number.isFinite(stroke.baseWidth) && stroke.baseWidth > 0 &&
+        Number.isFinite(stroke.baseHeight) && stroke.baseHeight > 0 &&
+        Number.isFinite(pt.x) && Number.isFinite(pt.y)) {
+      const scale = Math.min(currentCanvas.width / stroke.baseWidth, currentCanvas.height / stroke.baseHeight);
+      return {
+        x: (currentCanvas.width - stroke.baseWidth * scale) / 2 + pt.x * scale,
+        y: (currentCanvas.height - stroke.baseHeight * scale) / 2 + pt.y * scale,
+        scale: Math.max(0.5, Math.min(2.0, scale))
+      };
+    }
+    // Older grid-only snapshots have no recoverable canvas geometry.
+    if (Number.isFinite(pt.relX) && Number.isFinite(pt.relY) && currentGrid.gridWidth > 0) {
       const x = currentGrid.gridLeft + (pt.relX * currentGrid.gridWidth);
       const y = currentGrid.gridTop + (pt.relY * currentGrid.gridHeight);
       const scale = stroke.gridWidth > 0 ? (currentGrid.gridWidth / stroke.gridWidth) : 1;
