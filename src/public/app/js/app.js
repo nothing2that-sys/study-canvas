@@ -108,7 +108,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261002T183436040Z-393f5be";
+const APP_BUILD_ID = "20261003T014452358Z-66add6a";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -2880,7 +2880,7 @@ function renderResultDetailItems(summary, mode = currentResultViewMode) {
     const commentHtml = safeComment ? `<span class="comment-badge">✏️ 피드백: ${safeComment}</span>` : "";
     const canvasId = `resultReviewCanvas_${r.questionId || idx}`;
     const isTyped = r.responseType === "TEXT" || r.activityType === "SHORT_ANSWER" || r.responseType === "CHOICE" || r.activityType === "MULTIPLE_CHOICE";
-    const exprText = (r.operandA !== undefined && r.operandB !== undefined)
+    const exprText = (!isTyped && r.operandA !== undefined && r.operandB !== undefined)
       ? `${r.operandA.toLocaleString()} ${symbol} ${r.operandB.toLocaleString()} = <strong>${r.answer?.toLocaleString() ?? r.expectedAnswer}</strong>`
       : escapeHtml(r.prompt || r.question || "");
 
@@ -3615,7 +3615,11 @@ function restoreSessionFromSubmission(submission) {
   questionTimer.stop();
   if (completedSummary) {
     setPracticeInteractionLocked(true);
-    showSessionResult(completedSummary);
+    // The engine summary owns grades/timing; the saved question owns its display context.
+    const questionsById = new Map(currentQuestions.map(question => [String(question.id), question]));
+    showSessionResult({ ...completedSummary, results: completedSummary.results.map(result => ({
+      ...questionsById.get(String(result.questionId)), ...result
+    })) });
     return true;
   }
   switchView(gradingView, false);
@@ -3626,6 +3630,11 @@ function restoreSessionFromSubmission(submission) {
     if (parentGradingStartPanel) parentGradingStartPanel.hidden = false;
     if (gradingGrid) gradingGrid.hidden = true;
     if (finishGradingBtn?.parentElement) finishGradingBtn.parentElement.hidden = true;
+    if (gradingQuestionNavigator) gradingQuestionNavigator.hidden = true;
+    if (gradingQuestionChips) gradingQuestionChips.replaceChildren();
+    if (gradingQuestionPosition) gradingQuestionPosition.textContent = "";
+    if (gradingPrevQuestionBtn) gradingPrevQuestionBtn.disabled = true;
+    if (gradingNextQuestionBtn) gradingNextQuestionBtn.disabled = true;
     updateGradingStatusUI();
   }
   return true;
