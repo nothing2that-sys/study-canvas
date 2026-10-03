@@ -359,6 +359,18 @@ export function validateMathCandidate(candidate) {
     if (text.some(t => typeof t !== "string" || !t.trim() || /undefined|NaN|\bnull\b/.test(t)))
       return {valid:false,reason:"INVALID_PRESENTATION_TEXT"};
     if (!validateParameters(spec, m.parameters) || !same(parametersAt(spec, m.index), m.parameters)) return { valid: false, reason: "PARAMETERS" };
+    // Independently check quotient * divisor == dividend. Do not reuse derive,
+    // parseDecimal or divideDecimals: regeneration alone can repeat a math bug.
+    if (spec.domain === "decimal" && spec.task === "div") {
+      const match = /^(\d+)(?:\.(\d+))?$/.exec(candidate.expectedAnswer);
+      const [a, b] = m.operands;
+      if (!match || ![...a, ...b].every(Number.isSafeInteger) || a[1] <= 0 || b[0] <= 0 || b[1] <= 0)
+        return { valid: false, reason: "DECIMAL_DIVISION_MATH" };
+      const numerator = BigInt(match[1] + (match[2] || ""));
+      const denominator = 10n ** BigInt((match[2] || "").length);
+      if (BigInt(a[0]) * BigInt(b[1]) * denominator !== numerator * BigInt(b[0]) * BigInt(a[1]))
+        return { valid: false, reason: "DECIMAL_DIVISION_MATH" };
+    }
     const fresh = generateMathCandidate(m.generatorId, m.index);
     if (!same(candidate, fresh)) return { valid: false, reason: "ANSWER_OR_REPRESENTATION_MISMATCH" };
     if (candidate.choices && (new Set(candidate.choices.map(x => x.label)).size !== candidate.choices.length

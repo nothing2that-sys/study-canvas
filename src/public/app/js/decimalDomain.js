@@ -335,6 +335,7 @@ export function divideDecimals(a, b, options = {}) {
   while (den !== 1 && currentScale < 10) {
     if (den % 10 === 0) {
       den /= 10;
+      currentScale += 1;
     } else if (den % 2 === 0) {
       num *= 5;
       den /= 2;

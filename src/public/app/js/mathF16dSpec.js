@@ -1,5 +1,5 @@
 //+_+// F16D spec is project-owned; grade-band evidence is not placement or publication approval.
-export const MATH_GENERATOR_VERSION = "1.3.0";
+export const MATH_GENERATOR_VERSION = "1.3.1";
 export const MIXED_OPERATION_WHOLE_MAX = 19;
 export const MATH_SOURCE = Object.freeze({ notice: "2022-33", annex: 8,
   url: "https://www.moe.go.kr/boardCnts/viewRenew.do?boardID=141&boardSeq=93458&lev=0",
