@@ -11,3 +11,8 @@ export function getQuestionKey(question, context = {}) {
   }
   return `${question.operation || context.operation}:${question.operandA}:${question.operandB}`;
 }
+
+export function getQuestionMathFormat(question, session = {}) {
+  return [question?.mathFormat, session.config?.mathFormat, session.mathFormat]
+    .find(format => format === "horizontal" || format === "vertical") || "vertical";
+}

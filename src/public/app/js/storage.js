@@ -3,7 +3,7 @@ import { normalizeWorkbookAssignment } from "./workbookEngine.js";
 import { isVocabularyReviewDue, normalizeVocabularyMemoryState } from "./englishVocabularyStudy.js";
 import { getGradingProgress, normalizeGradeDecision, createGradeDecision } from "./parentGrading.js";
 import { createSession } from "./sessionEngine.js";
-import { getQuestionKey } from "./questionIdentity.js";
+import { getQuestionKey, getQuestionMathFormat } from "./questionIdentity.js";
 import {
   normalizeSchoolGrade,
   normalizeGuardianLearningPolicy
@@ -631,6 +631,7 @@ export async function saveSessionRecord(summary, strokesMap = new Map(), grading
         ...r,
         learnerId,
         operation: r.operation || operation,
+        mathFormat: getQuestionMathFormat(r, { mathFormat }),
         answer: qAns,
         expectedAnswer: qAns,
         strokes: strokesMap.get(r.questionId) || r.strokes || [],
@@ -1174,9 +1175,34 @@ export async function getMistakeQuestions(filter = {}) {
     all = all.filter((m) => (m.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId);
   }
 
+  // Older mistakes omitted the source format. Hydrate only a proven, exact
+  // learner/question/key match; this read never rewrites historical records.
+  const hasFormat = record => record.mathFormat === "horizontal" || record.mathFormat === "vertical";
+  const needsFormat = all.some(m => !hasFormat(m) && m.questionId && m.operandA !== undefined && m.operandB !== undefined);
+  const sources = needsFormat ? await getAllSessions(targetLearnerId ? { learnerId: targetLearnerId } : { allLearners: true }) : [];
+  const sourceFormats = new Map();
+  const formatKey = (learnerId, questionId, key, sessionId = null) => JSON.stringify([learnerId || DEFAULT_LEGACY_LEARNER_ID, questionId, key, sessionId]);
+  for (const source of sources) {
+    for (const result of source.results || []) {
+      if (![result.mathFormat, source.config?.mathFormat, source.mathFormat].some(format => format === "horizontal" || format === "vertical")) continue;
+      const key = result.questionKey || result.key || `${result.operation || source.operation}:${result.operandA}:${result.operandB}`;
+      const format = getQuestionMathFormat(result, source);
+      for (const sessionId of [null, source.id]) {
+        const id = formatKey(source.learnerId, result.questionId || result.id, key, sessionId);
+        if (!sourceFormats.has(id)) sourceFormats.set(id, new Set());
+        sourceFormats.get(id).add(format);
+      }
+    }
+  }
+  const hydrateFormat = mistake => {
+    if (hasFormat(mistake) || !mistake.questionId || mistake.operandA === undefined || mistake.operandB === undefined) return mistake;
+    const formats = sourceFormats.get(formatKey(mistake.learnerId, mistake.questionId, mistake.questionKey || mistake.key, mistake.sourceSessionId || null));
+    return formats?.size === 1 ? { ...mistake, mathFormat: [...formats][0] } : mistake;
+  };
+
   return all
     .map((m) => ({
-      ...m,
+      ...hydrateFormat(m),
       key: m.questionKey || m.key
     }))
     .sort((a, b) => (b.lastWrongAt || 0) - (a.lastWrongAt || 0));
@@ -2536,6 +2562,7 @@ export async function finalizeSubmissionGrading(id, options = {}) {
       questionId: q.id || `q_${idx}`,
       questionKey: qKey,
       operation: q.operation || operation,
+      mathFormat: getQuestionMathFormat(q, rawExisting),
       level: q.level || macroLevelId,
       macroLevelId: q.macroLevelId || macroLevelId,
       stageId: q.stageId || stageId,
@@ -2979,6 +3006,7 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
   const calculatedAggregates = calculateProgressAggregatesForLearner(rawExisting.learnerId, allFinalizedForLearner);
 
   const qKey = getQuestionKey(question, { subjectId: rawExisting.subjectId, courseId: rawExisting.config?.courseId });
+  const questionMathFormat = getQuestionMathFormat(question, rawExisting);
   const mistakeCompoundKey = (!rawExisting.learnerId || rawExisting.learnerId === DEFAULT_LEGACY_LEARNER_ID)
     ? qKey
     : `${rawExisting.learnerId}:${qKey}`;
@@ -3102,6 +3130,8 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
         const wrongCount = wasMistake ? Math.max(1, prev.wrongCount || 1) : ((prev.wrongCount || 0) + 1);
         db.mistakes.set(mistakeCompoundKey, {
           ...question,
+          questionId,
+          mathFormat: questionMathFormat,
           key: mistakeCompoundKey,
           id: mistakeCompoundKey,
           compoundKey: mistakeCompoundKey,
@@ -3279,6 +3309,8 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
           const wrongCount = wasMistake ? Math.max(1, prev.wrongCount || 1) : ((prev.wrongCount || 0) + 1);
           misStore.put({
             ...question,
+            questionId,
+            mathFormat: questionMathFormat,
             key: mistakeCompoundKey,
             id: mistakeCompoundKey,
             compoundKey: mistakeCompoundKey,

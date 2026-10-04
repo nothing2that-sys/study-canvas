@@ -108,7 +108,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261004T051420234Z-53113b2";
+const APP_BUILD_ID = "20261004T065451933Z-8c6adc8";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -1746,7 +1746,7 @@ function renderProblemStageContent(q, options = {}) {
   if (responseType === ResponseType.CHOICE) {
     return renderChoiceActivityStage(q, mergedOptions);
   }
-  const mathFormat = options.mathFormat || options.session?.config?.mathFormat || options.session?.mathFormat || q.mathFormat ||
+  const mathFormat = q.mathFormat || options.mathFormat || options.session?.config?.mathFormat || options.session?.mathFormat ||
     currentSession?.mathFormat || currentResultSummary?.mathFormat || currentModalSession?.mathFormat || "vertical";
   if (mathFormat === "horizontal") {
     return renderHorizontalMathGrid(q, options);
