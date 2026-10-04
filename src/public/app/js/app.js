@@ -108,7 +108,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261004T124653494Z-73349a5";
+const APP_BUILD_ID = "20261004T140654540Z-bbe30a4";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -2634,6 +2634,11 @@ function moveGradingQuestion(offset) {
 }
 
 function updateGradingStatusUI() {
+  if (gradeAllCorrectBtn) {
+    const canGrade = currentSession?.state === SessionState.GRADING_ACTIVE;
+    gradeAllCorrectBtn.disabled = !canGrade;
+    gradeAllCorrectBtn.setAttribute("aria-disabled", String(!canGrade));
+  }
   if (!currentSession) return;
   const status = currentSession.getGradingStatus();
 
@@ -2759,7 +2764,7 @@ function handleRedPenInput(event) {
 
 // 전체 정답 처리
 function handleGradeAllCorrect() {
-  if (!currentSession) return;
+  if (!currentSession || currentSession.state !== SessionState.GRADING_ACTIVE) return;
   playCorrectSound();
   // Visible input may include a latest edit; off-screen ungraded notes live in the saved grading map.
   currentSession.questions.forEach(question => {
