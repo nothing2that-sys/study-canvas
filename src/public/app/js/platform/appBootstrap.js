@@ -125,12 +125,14 @@ export async function bootstrapApp(options = {}) {
 
         //+_+// 채점 화면 전용 대기/진행 중 제출본 조회
         activeGradingSubmission = persistedSubmission;
-        if (!activeGradingSubmission || (activeGradingSubmission.status !== "PARENT_GRADING_PENDING" && activeGradingSubmission.status !== "GRADING_ACTIVE")) {
+        const isRequestedGradingSubmission = (submission) => submission &&
+          (submission.status === "PARENT_GRADING_PENDING" || submission.status === "GRADING_ACTIVE") &&
+          (normalizedUrl !== ROUTES.MATH_DECIMAL_PRACTICE ||
+            (submission.config?.courseId || submission.courseId) === "decimal");
+        if (!isRequestedGradingSubmission(activeGradingSubmission)) {
           try {
             const submissions = await getAllSubmissions({ learnerId: restoredLearnerId });
-            activeGradingSubmission = submissions.find((submission) => (
-              submission.status === "PARENT_GRADING_PENDING" || submission.status === "GRADING_ACTIVE"
-            )) || null;
+            activeGradingSubmission = submissions.find(isRequestedGradingSubmission) || null;
           } catch (subErr) {
             console.warn("[Bootstrap] Active grading submission query failed:", subErr);
           }
@@ -138,6 +140,12 @@ export async function bootstrapApp(options = {}) {
       } catch (draftErr) {
         console.warn("[Bootstrap] Persisted draft query failed:", draftErr);
       }
+    }
+
+    const canRestorePractice = draftResumePolicy?.canResumePractice &&
+      persistedDraft?.sessionState !== "GRADING_ACTIVE" && persistedDraft?.sessionType !== "grading";
+    if (desiredRoute === ROUTES.MATH_DECIMAL_PRACTICE && !canRestorePractice && activeGradingSubmission) {
+      desiredRoute = ROUTES.MATH_GRADING;
     }
 
     //+_+// 세션 활성 및 복원 가능 여부 콜백 구성
@@ -205,8 +213,9 @@ export async function bootstrapApp(options = {}) {
       route: finalRoute,
       restoredLearnerId,
       learnerCount: activeLearners.length,
-      persistedDraft: resumableDraft,
-      persistedSubmission: finalRoute === ROUTES.MATH_GRADING ? (persistedSubmission || activeGradingSubmission) : persistedSubmission,
+      persistedDraft: finalRoute === ROUTES.MATH_GRADING && activeGradingSubmission &&
+        resumableDraft?.sessionId !== activeGradingSubmission.sessionId ? null : resumableDraft,
+      persistedSubmission: finalRoute === ROUTES.MATH_GRADING ? (activeGradingSubmission || persistedSubmission) : persistedSubmission,
       draftResumePolicy
     };
 

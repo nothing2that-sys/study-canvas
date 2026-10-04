@@ -108,7 +108,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261004T015027988Z-3f8a7a2";
+const APP_BUILD_ID = "20261004T031811250Z-80b0f61";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -395,6 +395,10 @@ function resolveSessionQuestionId(rawQuestionId) {
 function captureDraftSnapshot() {
   if (!currentSession || currentSession.state === SessionState.SESSION_COMPLETE) return null;
   if (![SessionState.PRACTICE_ACTIVE, SessionState.SUBMITTING, SessionState.GRADING_ACTIVE].includes(currentSession.state)) return null;
+  // Persisted grading belongs to its Submission, not the learner's exclusive practice Draft.
+  // Legacy grading Draft restores (without a persisted status) retain their CAS-protected cache.
+  if (currentSession.state === SessionState.GRADING_ACTIVE && currentSubmission?.sessionId === currentSession.id
+      && currentSubmission.status === "GRADING_ACTIVE" && !draftCoordinator.baseVersion) return null;
   const now = Date.now();
   return {
     schemaVersion: DRAFT_SCHEMA_VERSION,
@@ -4178,6 +4182,11 @@ export function startDecimalPracticeSession({ activities, workbookContext = null
 //+_+// Phase F15C: 소수 문제집 연계 실행 또는 랜딩 처리
 export async function handleDecimalLandingOrWorkbookLaunch() {
   const workbookContext = getActiveWorkbookContext();
+  // A route fallback/reload is navigation, not consent to create a new worksheet.
+  if (!workbookContext?.workbookId) {
+    navigate(ROUTES.BOOKSHELF);
+    return;
+  }
   let targetPackageId = "math-decimal-v1";
   if (workbookContext?.workbookId) {
     const catalogItem = getWorkbookCatalogItem(workbookContext.workbookId);
