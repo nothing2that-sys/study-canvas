@@ -16,6 +16,7 @@ import { detectLegacyData, migrateLegacyData } from "../migrationEngine.js";
 import { restoreActiveLearner, getLearners, getActiveLearner } from "../learners/learnerQueries.js";
 import { getDraft, getSubmissionBySessionId, getAllSubmissions } from "../data/learningQueries.js";
 import { evaluateStartupDraftResumePolicy } from "../submissionLifecycle.js";
+import { LEARNING_ROUTES, resolvePracticeRouteForSession } from "../learningRouteResolver.js";
 import { initRouter, ROUTES, getCurrentRoute, normalizePath } from "./appRouter.js";
 import { initAppShell, updateShellHeader, renderRouteView, showMigrationError } from "./appShell.js";
 
@@ -147,6 +148,9 @@ export async function bootstrapApp(options = {}) {
 
     const canRestorePractice = draftResumePolicy?.canResumePractice &&
       persistedDraft?.sessionState !== "GRADING_ACTIVE" && persistedDraft?.sessionType !== "grading";
+    if (canRestorePractice && Object.values(LEARNING_ROUTES).some(route => route.endsWith("/practice") && route === desiredRoute)) {
+      desiredRoute = resolvePracticeRouteForSession(persistedDraft);
+    }
     if ([ROUTES.MATH_DECIMAL_PRACTICE, ROUTES.MATH_PRACTICE].includes(desiredRoute) && !canRestorePractice && activeGradingSubmission) {
       desiredRoute = ROUTES.MATH_GRADING;
     }

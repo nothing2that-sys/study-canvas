@@ -30,6 +30,8 @@ export function restoreSessionStateFromSubmission(session, submission) {
   if (submission.status === "GRADING_ACTIVE" || completed) {
     if (session.state === SessionState.PARENT_GRADING_PENDING) session.startGrading();
     for (const [id, grade] of Object.entries(submission.gradingResults || {})) {
+      // Notes may be persisted before a decision; keep them in the UI map without grading.
+      if (!grade || (!grade.decision && typeof grade.isCorrect !== "boolean")) continue;
       const questionId = session.questions.find(question => String(question.id) === String(id))?.id ?? id;
       session.gradeQuestion(questionId, grade.decision ?? grade.isCorrect, grade.comment || "");
     }

@@ -108,7 +108,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261004T085524150Z-dcc9e3f";
+const APP_BUILD_ID = "20261004T124653494Z-73349a5";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);

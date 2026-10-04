@@ -12,6 +12,22 @@ const source=fs.readFileSync(new URL('../public/app/js/app.js',import.meta.url),
 function extract(name,end){const start=source.indexOf('function '+name+'(');return source.slice(source.slice(start-6,start)==='async '?start-6:start,source.indexOf(end,start));}
 const q={id:'q:12:4',operation:'mul',operandA:12,operandB:4,answer:48,expectedAnswer:48};
 const record=status=>({id:'sub_same',sessionId:'same',learnerId:'ui',status,config:{pageSize:1},questions:[q],totalSolveTimeMs:4321,submittedAt:123,completedAt:456,studentStrokesMap:{[q.id]:[{id:'student'}]},responseSnapshots:{},gradingStrokesMap:{[q.id]:[{id:'red'}]},gradingResults:{[q.id]:{decision:'CORRECT',comment:'persisted'}}});
+for(const responseType of ['CHOICE','TEXT'])test(`${responseType} active Retry restores comment-only grades without counting a decision`,()=>{
+  for(const grade of [null,{decision:null,isCorrect:null,comment:'메모만 저장'}, {comment:'판정 없음'}]){
+    const question={id:'typed:comment',responseType,prompt:'소수 답',choices:[{id:'a',text:'0.5'},{id:'b',text:'0.8'}],expectedAnswer:responseType==='CHOICE'?'a':'0.5'};
+    const sub={...record('GRADING_ACTIVE'),questions:[question],gradingResults:{[question.id]:grade},responseSnapshots:{[question.id]:{value:question.expectedAnswer}}};
+    const before=structuredClone(sub),c=harness(sub);
+    assert.equal(c.restoreSessionFromSubmission(sub),true);
+    assert.equal(c.rendered,true);assert.equal(c.currentSession.state,'GRADING_ACTIVE');
+    assert.equal(c.currentSession.getGradingStatus().total,1);
+    assert.equal(c.currentSession.getGradingStatus().graded,0);
+    assert.deepEqual(c.gradingResultsMap.get(question.id),grade);
+    assert.equal(c.questionResponseRecordsMap.get(question.id).value,question.expectedAnswer);
+    assert.deepEqual(sub,before);
+    const result=c.currentSession.gradeQuestion(question.id,'WRONG',grade?.comment||'');
+    assert.equal(result.gradeData.isCorrect,false);assert.equal(result.gradeData.comment,grade?.comment||'');
+  }
+});
 function harness(submission){const state={Date,Map,createSession,SessionState,restoreSessionStateFromSubmission,resolveSessionQuestionId:id=>id,questionStrokesMap:new Map(),questionResponseRecordsMap:new Map(),gradingStrokesMap:new Map(),gradingResultsMap:new Map(),draftCoordinator:{setBaseVersion(){}},questionTimer:{getElapsedMs:()=>5,stop(){}},parentGradingStartPanel:{hidden:true},gradingGrid:{hidden:false},finishGradingBtn:{parentElement:{hidden:false}},gradingView:{},setPracticeInteractionLocked(){},switchView(){},renderGradingView(){state.rendered=true},updateGradingStatusUI(){state.pending=true},showSessionResult(summary){state.summary=summary},getActiveLearnerId:()=> 'ui',getSubmissionBySessionId:async()=>submission,canMutatePractice:s=>s.state==='PRACTICE_ACTIVE',flushDraftSave:async()=>{state.flushes++},flushes:0,alert:m=>{throw Error(m)},currentSession:createSession({sessionId:'same'},[q])};state.currentSession.start();Object.assign(state,{gradingQuestionNavigator:null,gradingQuestionPosition:null,gradingQuestionChips:null,gradingPrevQuestionBtn:null,gradingNextQuestionBtn:null});const c=vm.createContext(state);vm.runInContext(extract('restoreSessionFromSubmission','//+_+// 🌟')+extract('handleSubmitPractice','async function handleStartParentGrading'),c);return c;}
 
 test('real app restore renders completed persisted payload instead of ungraded 0/1',()=>{
