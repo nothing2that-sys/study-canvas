@@ -27,6 +27,16 @@ test('existing active and pending submissions restore their own grading lifecycl
   for(const status of ['PARENT_GRADING_PENDING','GRADING_ACTIVE']){const c=harness(record(status));c.restoreSessionFromSubmission(record(status));assert.equal(c.currentSession.state,status);assert.equal(status==='GRADING_ACTIVE'?c.rendered:c.pending,true);}
 });
 
+test('pending and active submission restoration requests the canonical grading URL',()=>{
+  for(const status of ['PARENT_GRADING_PENDING','GRADING_ACTIVE']){
+    const c=harness(record(status));const calls=[];
+    c.switchView=(view,updateRoute=true)=>calls.push({view,updateRoute});
+    c.restoreSessionFromSubmission(record(status));
+    assert.equal(calls.length,1);assert.equal(calls[0].view,c.gradingView);
+    assert.equal(calls[0].updateRoute,true);
+  }
+});
+
 test('global navigation after a conflict leaves local session, ink, answers and time intact',async()=>{
   for(const state of ['PRACTICE_ACTIVE','GRADING_ACTIVE']){
     const session={state},ink=new Map([['q',[{id:'local'}]]]),answers=new Map([['q',{value:'typed'}]]),messages=[];

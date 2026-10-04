@@ -2018,7 +2018,8 @@ test("Phase F4: 55. [F4-R6-12] bootstrapApp: Snapshot + stale Practice Draft + /
 
   assert.equal(result.success, true);
   assert.notEqual(result.route, ROUTES.MATH_PRACTICE, "/math/practice 직접 진입은 차단되어야 함");
-  assert.equal(result.route, ROUTES.MATH_ARITHMETIC, "Submission이 존재할 경우 안전 fallback 경로인 /math/arithmetic으로 라우팅");
+  assert.equal(result.route, ROUTES.MATH_GRADING, "제출된 산술 풀이의 practice 재진입 대신 채점 화면 복원");
+  assert.equal(result.persistedSubmission.sessionId, "sess_boot_sub_first");
   assert.equal(result.persistedDraft, null, "stale Draft는 bootstrap 결과에서 null 처리되어야 함");
   assert.equal(result.draftResumePolicy?.canResumePractice, false, "policy상 practice 복원 차단");
 });
@@ -2060,7 +2061,8 @@ test("Phase F4: 56. [F4-R6-13] bootstrapApp: Draft cleanup failure crash window�
 
     assert.equal(result.success, true);
     assert.notEqual(result.route, ROUTES.MATH_PRACTICE, "Crash window 상태에서도 Practice route 진입 차단");
-    assert.equal(result.route, ROUTES.MATH_ARITHMETIC);
+    assert.equal(result.route, ROUTES.MATH_GRADING);
+    assert.equal(result.persistedSubmission.sessionId, "sess_boot_crash_window");
     assert.equal(result.persistedDraft, null, "stale Draft 반환 차단");
     assert.equal(result.draftResumePolicy?.canResumePractice, false);
 

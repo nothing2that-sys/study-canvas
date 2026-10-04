@@ -128,7 +128,10 @@ export async function bootstrapApp(options = {}) {
         const isRequestedGradingSubmission = (submission) => submission &&
           (submission.status === "PARENT_GRADING_PENDING" || submission.status === "GRADING_ACTIVE") &&
           (normalizedUrl !== ROUTES.MATH_DECIMAL_PRACTICE ||
-            (submission.config?.courseId || submission.courseId) === "decimal");
+            (submission.config?.courseId || submission.courseId) === "decimal") &&
+          (normalizedUrl !== ROUTES.MATH_PRACTICE ||
+            ((submission.config?.subjectId || submission.subjectId || "math") === "math" &&
+             (submission.config?.courseId || submission.courseId || "arithmetic") === "arithmetic"));
         if (!isRequestedGradingSubmission(activeGradingSubmission)) {
           try {
             const submissions = await getAllSubmissions({ learnerId: restoredLearnerId });
@@ -144,7 +147,7 @@ export async function bootstrapApp(options = {}) {
 
     const canRestorePractice = draftResumePolicy?.canResumePractice &&
       persistedDraft?.sessionState !== "GRADING_ACTIVE" && persistedDraft?.sessionType !== "grading";
-    if (desiredRoute === ROUTES.MATH_DECIMAL_PRACTICE && !canRestorePractice && activeGradingSubmission) {
+    if ([ROUTES.MATH_DECIMAL_PRACTICE, ROUTES.MATH_PRACTICE].includes(desiredRoute) && !canRestorePractice && activeGradingSubmission) {
       desiredRoute = ROUTES.MATH_GRADING;
     }
 
