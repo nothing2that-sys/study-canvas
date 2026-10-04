@@ -3,6 +3,7 @@ import { normalizeWorkbookAssignment } from "./workbookEngine.js";
 import { isVocabularyReviewDue, normalizeVocabularyMemoryState } from "./englishVocabularyStudy.js";
 import { getGradingProgress, normalizeGradeDecision, createGradeDecision } from "./parentGrading.js";
 import { createSession } from "./sessionEngine.js";
+import { getQuestionKey } from "./questionIdentity.js";
 import {
   normalizeSchoolGrade,
   normalizeGuardianLearningPolicy
@@ -2518,7 +2519,7 @@ export async function finalizeSubmissionGrading(id, options = {}) {
     const grade = updatedGradingResults[q.id];
     const decision = normalizeGradeDecision(grade?.decision ?? grade?.isCorrect);
     const isCorrect = decision === "CORRECT";
-    const qKey = q.questionKey || q.key || `${q.operation || operation}:${q.operandA}:${q.operandB}`;
+    const qKey = getQuestionKey(q, { operation, subjectId: rawExisting.subjectId, courseId: rawExisting.config?.courseId });
     const qAns = q.answer !== undefined ? q.answer : q.expectedAnswer;
     let qSolveTime = 0;
     if (rawExisting.perQuestionElapsedMs && rawExisting.perQuestionElapsedMs[q.id] !== undefined) {
@@ -2977,7 +2978,7 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
   const allFinalizedForLearner = [...otherFinalized, revisedSubmission];
   const calculatedAggregates = calculateProgressAggregatesForLearner(rawExisting.learnerId, allFinalizedForLearner);
 
-  const qKey = question.questionKey || question.key || `${question.operation}:${question.operandA}:${question.operandB}`;
+  const qKey = getQuestionKey(question, { subjectId: rawExisting.subjectId, courseId: rawExisting.config?.courseId });
   const mistakeCompoundKey = (!rawExisting.learnerId || rawExisting.learnerId === DEFAULT_LEGACY_LEARNER_ID)
     ? qKey
     : `${rawExisting.learnerId}:${qKey}`;
@@ -3590,8 +3591,7 @@ export async function startReviewRetry(reviewItemId, options = {}) {
   const retrySessionId = `sess_retry_${item.id}_${retryOrdinal}_${now}`;
 
   const retrySession = createReviewRetrySession(item, rawSub, origQuestion, retrySessionId);
-  const retryQuestionKey = retrySession.questions[0].questionKey || retrySession.questions[0].key ||
-    (origQuestion.skillId ? `${origQuestion.subjectId || item.subjectId || "math"}:${origQuestion.skillId}:${origQuestion.id}` : `${origQuestion.operation}:${origQuestion.operandA}:${origQuestion.operandB}`);
+  const retryQuestionKey = getQuestionKey(retrySession.questions[0], { subjectId: item.subjectId, courseId: item.courseId });
 
   const retryAttempt = {
     id: retryAttemptId,

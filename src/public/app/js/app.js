@@ -108,7 +108,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261004T031811250Z-80b0f61";
+const APP_BUILD_ID = "20261004T051420234Z-53113b2";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -1412,13 +1412,28 @@ async function handleStartMistakeSession() {
     }
     if (getActiveLearnerId() !== learnerId) throw new Error('학습자가 변경되었습니다. 다시 시작하세요.');
     const mistakes = await getMistakes({ learnerId });
+    if (getActiveLearnerId() !== learnerId) throw new Error('학습자가 변경되었습니다. 다시 시작하세요.');
     if (!mistakes || mistakes.length === 0) {
       alert("현재 복습할 오답 문제가 없습니다! 잘하셨어요! 👍");
       return;
     }
 
-    //+_+// mistakeToQuestion 매퍼를 사용하여 정답, 키, 연산자 완전 보존
-    const questions = mistakes.map((m, idx) => mistakeToQuestion(m, idx));
+    // This dashboard starts legacy arithmetic practice. Typed/domain activities
+    // must use the original Submission-backed ReviewItem Retry, not this mapper.
+    const isFiniteOperand = value =>
+      (typeof value === "number" || (typeof value === "string" && value.trim() !== "")) && Number.isFinite(Number(value));
+    const arithmeticMistakes = mistakes.filter(m =>
+      resolveActivityResponseType(m) === ResponseType.CANVAS &&
+      (!m.subjectId || m.subjectId === "math") &&
+      (!m.courseId || m.courseId === "arithmetic") &&
+      (!m.operation || m.operation === "mul" || m.operation === "div") &&
+      isFiniteOperand(m.operandA) && isFiniteOperand(m.operandB) &&
+      isFiniteOperand(m.answer !== undefined ? m.answer : m.expectedAnswer));
+    if (arithmeticMistakes.length !== mistakes.length) {
+      alert('소수·선택형 등 다른 과목의 오답과 원본 확인이 필요한 문제는 홈의 “오답 함께 보기 → 바로 다시 풀기”에서 다시 풀어 주세요. 이 화면에서는 산술 오답만 시작합니다.');
+    }
+    if (arithmeticMistakes.length === 0) return;
+    const questions = arithmeticMistakes.map((m, idx) => mistakeToQuestion(m, idx));
 
     await startSessionWithQuestions(questions, {
       operation: questions[0].operation,
