@@ -96,7 +96,7 @@ export function parseDecimal(input, options = {}) {
 
   // 이미 Decimal 객체인 경우
   if (typeof input === "object" && typeof input.unscaledValue === "number" && typeof input.scale === "number") {
-    if (!Number.isSafeInteger(input.unscaledValue) || !Number.isSafeInteger(input.scale) || input.scale < 0) {
+    if (!Number.isSafeInteger(input.unscaledValue) || input.unscaledValue < 0 || !Number.isSafeInteger(input.scale) || input.scale < 0) {
       return fail("유효하지 않은 Decimal 객체입니다.");
     }
     return {
@@ -443,7 +443,8 @@ export function toFraction(dec) {
  * @returns {{ unscaledValue: number, scale: number }}
  */
 export function fromFraction(fraction) {
-  if (!fraction || typeof fraction.numerator !== "number" || typeof fraction.denominator !== "number") {
+  if (!fraction || !Number.isSafeInteger(fraction.numerator) || fraction.numerator < 0
+      || !Number.isSafeInteger(fraction.denominator) || fraction.denominator <= 0) {
     throw new Error("올바른 분수 객체가 아닙니다.");
   }
   return divideDecimals(
