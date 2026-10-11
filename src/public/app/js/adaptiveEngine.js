@@ -6,9 +6,47 @@
  * - 학습자 맞춤형 추천 이유 생성
  */
 
-import { generateStageQuestions, STAGE_REGISTRY } from "./curriculumRegistry.js";
+import { generateStageQuestions, STAGE_REGISTRY, getAllStages, analyzeMultiplicationFeatures } from "./curriculumRegistry.js";
 import { analyzeWeaknesses } from "./masteryEngine.js";
 import { randomInt, questionKey } from "./mathGen.js";
+import { resolveActivityResponseType, ResponseType } from "./learningActivity.js";
+
+// Only the legacy arithmetic registry is eligible for this recommendation card.
+// F16D review-only content keeps autoRecommend=false; never coerce it into mul/div.
+export function resolveAdaptiveStageId(stageId, record = {}) {
+  if (STAGE_REGISTRY[stageId]) return stageId;
+  const stages = getAllStages().filter(stage => stage.macroLevelId === stageId);
+  if (!stages.length) return null;
+  const a = record.operandA, b = record.operandB;
+  if (Number.isSafeInteger(a) && a > 0 && Number.isSafeInteger(b) && b > 0) {
+    if (stageId === "M2") {
+      const carries = analyzeMultiplicationFeatures(a, b).carries;
+      return carries === 0 ? "M2-1" : carries === 1 ? "M2-2" : "M2-3";
+    }
+    if (stageId === "D2") return Math.floor(a / 10) % b === 0 ? "D2-1" : "D2-2";
+  }
+  return stages[0].id;
+}
+
+function adaptiveRecord(record, requireOperands = false) {
+  if (!record || (record.subjectId && record.subjectId !== "math") ||
+      (record.courseId && record.courseId !== "arithmetic")) return null;
+  try {
+    if (resolveActivityResponseType(record) !== ResponseType.CANVAS) return null;
+  } catch (_) { return null; }
+  const stageId = resolveAdaptiveStageId(record.stageId || record.macroLevelId || record.level, record);
+  if (!stageId) return null;
+  const operation = STAGE_REGISTRY[stageId].operation;
+  if (record.operation && record.operation !== operation) return null;
+  if (requireOperands && (![record.operandA, record.operandB].every(n => Number.isSafeInteger(n) && n > 0) ||
+      (operation === "div" && record.operandA % record.operandB !== 0))) return null;
+  return { ...record, stageId, operation };
+}
+
+export function analyzeAdaptiveWeaknesses(attempts = [], mistakes = []) {
+  return analyzeWeaknesses(attempts.map(a => adaptiveRecord(a)).filter(Boolean),
+    mistakes.map(m => adaptiveRecord(m, true)).filter(Boolean));
+}
 
 function makeId() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -20,6 +58,8 @@ function makeId() {
  */
 export function generateSimilarQuestion(wrongQuestion, rand = Math.random) {
   if (!wrongQuestion) throw new Error("변형을 생성할 원본 문제가 없습니다.");
+  wrongQuestion = adaptiveRecord(wrongQuestion, true);
+  if (!wrongQuestion) throw new Error("연산 추천에 사용할 수 없는 오답입니다.");
   const op = wrongQuestion.operation || "mul";
   const origA = Number(wrongQuestion.operandA);
   const origB = Number(wrongQuestion.operandB);
@@ -83,9 +123,13 @@ export function generateSimilarQuestion(wrongQuestion, rand = Math.random) {
  */
 export function composeAdaptiveSession(options = {}) {
   const targetCount = Number(options.count) || 10;
-  const currentStageId = options.currentStageId || "M2-1";
-  const attempts = options.attempts || [];
-  const mistakes = options.mistakes || [];
+  const requestedStageId = options.currentStageId || "M2-1";
+  const sourceRecord = (options.attempts || []).find(a => a.stageId === requestedStageId || a.macroLevelId === requestedStageId);
+  const currentStageId = resolveAdaptiveStageId(requestedStageId, sourceRecord);
+  if (!currentStageId) throw new Error(`연산 추천에 사용할 수 없는 단계입니다: ${requestedStageId}`);
+  const operation = STAGE_REGISTRY[currentStageId].operation;
+  const attempts = (options.attempts || []).map(a => adaptiveRecord(a)).filter(a => a && a.operation === operation);
+  const mistakes = (options.mistakes || []).map(m => adaptiveRecord(m, true)).filter(m => m && m.operation === operation);
   const rand = options.random || Math.random;
 
   // 비율 계산: 60% 현재 단계, 20% 취약 기술, 10% 오답 변형, 10% 이전 복습
@@ -142,7 +186,7 @@ export function composeAdaptiveSession(options = {}) {
   }
 
   // 4. 이전 완료 단계 복습 문제 10%
-  const allStages = Object.keys(STAGE_REGISTRY);
+  const allStages = getAllStages().filter(stage => stage.operation === operation).map(stage => stage.id);
   const currentStageIdx = allStages.indexOf(currentStageId);
   const reviewStageId = currentStageIdx > 0 ? allStages[currentStageIdx - 1] : currentStageId;
   const reviewQuestions = generateStageQuestions(reviewStageId, reviewCount * 2, { random: rand });
@@ -198,3 +242,4 @@ export function generateAdaptiveRecommendationReason(stageTitle, topWeakness, mi
 
   return reason;
 }
+

@@ -54,7 +54,7 @@ import { launchConfetti } from "./confetti.js";
 import { applyTheme, cycleTheme, getCurrentTheme, getThemeInfo } from "./theme.js";
 import { setupKeyboardShortcuts } from "./shortcuts.js";
 import { setupInteractionGuard, AppMode } from "./interactionGuard.js";
-import { composeAdaptiveSession } from "./adaptiveEngine.js";
+import { composeAdaptiveSession, analyzeAdaptiveWeaknesses } from "./adaptiveEngine.js";
 import { calculateStageMastery, analyzeWeaknesses } from "./masteryEngine.js";
 import { createDraftSaveCoordinator, DRAFT_SCHEMA_VERSION, DraftSaveStatus, navigateWithDraftFlush } from "./draftEngine.js";
 import { createUpdateCoordinator, waitForServiceWorkerControllerChange } from "./updateEngine.js";
@@ -3464,7 +3464,7 @@ async function renderAdaptiveRecommendCard() {
         console.warn("추천 학습 기록 조회 실패, 기본 추천으로 시작합니다.", error);
       }
 
-      const weaknessAnalysis = analyzeWeaknesses(attempts, mistakes);
+      const weaknessAnalysis = analyzeAdaptiveWeaknesses(attempts, mistakes);
       const requestedStageId = weaknessAnalysis.weaknesses[0]?.stageId || "M2-2";
       let currentStageId = requestedStageId;
       let freshSession;
@@ -3512,7 +3512,7 @@ async function renderAdaptiveRecommendCard() {
   try {
     const attempts = await getRecentAttempts(50);
     const mistakes = await getMistakes();
-    const weaknessAnalysis = analyzeWeaknesses(attempts, mistakes);
+    const weaknessAnalysis = analyzeAdaptiveWeaknesses(attempts, mistakes);
     const topWeakness = weaknessAnalysis.weaknesses[0];
 
     const currentStageId = topWeakness?.stageId || "M2-2";
