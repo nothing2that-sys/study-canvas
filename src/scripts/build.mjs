@@ -138,6 +138,15 @@ export function buildSync({
   else htmlContent = htmlContent.replace('<script type="module"', `${mapScript}\n    <script type="module"`);
   fs.writeFileSync(htmlPath, htmlContent, "utf8");
 
+  // QA uses the same pinned module graph; an old worker must not supply stale storage code.
+  const qaPath = path.join(appDir, "qa.html");
+  if (fs.existsSync(qaPath)) {
+    let qa = fs.readFileSync(qaPath, "utf8").replace(/js\/f16dQaPage\.js(?:\?v=[^"]+)?/g, `js/f16dQaPage.js?v=${buildId}`);
+    if (/<script type="importmap">[\s\S]*?<\/script>/.test(qa)) qa = qa.replace(/<script type="importmap">[\s\S]*?<\/script>/, mapScript);
+    else qa = qa.replace('<script type="module"', `${mapScript}\n<script type="module"`);
+    fs.writeFileSync(qaPath, qa, "utf8");
+  }
+
   // 3. app.js 내부 BUILD_ID 갱신
   const appJsPath = path.join(appDir, "js", "app.js");
   let appJsContent = fs.readFileSync(appJsPath, "utf8");
@@ -151,7 +160,7 @@ export function buildSync({
     buildId,
     generatedAt,
     gitSha,
-    sourceMutationPolicy: "service-worker.js version/content/module precache, index.html version/import map, js/app.js version marker; module source unchanged",
+    sourceMutationPolicy: "service-worker.js version/content/module precache, index.html and optional qa.html version/import map, js/app.js version marker; module source unchanged",
     reproducibilityPolicy: "BUILD_ID와 SOURCE_DATE_EPOCH를 고정하면 동일 source에서 동일 산출물 생성"
   };
   fs.writeFileSync(path.join(appDir, "build-manifest.json"), `${JSON.stringify(buildManifest, null, 2)}\n`, "utf8");
@@ -163,3 +172,4 @@ export function buildSync({
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   buildSync();
 }
+
