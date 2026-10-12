@@ -108,7 +108,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261004T140654540Z-bbe30a4";
+const APP_BUILD_ID = "20261012T055844127Z-ebed0b4";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -3558,76 +3558,108 @@ async function renderAdaptiveRecommendCard() {
 function restoreSessionFromDraft(draft) {
   if (!draft || !draft.questions || draft.questions.length === 0) return false;
 
-  lastSessionConfig = draft.config;
-  currentDraftCreatedAt = draft.createdAt || Date.now();
-  currentQuestions = draft.questions;
-  currentSession = createSession({ ...draft.config, sessionId: draft.sessionId }, draft.questions);
-  currentSession.reviewItemId = draft.config?.reviewItemId || null;
-  currentSubmission = { id: draft.submissionId || `sub_${draft.sessionId}`, learnerId: getActiveLearnerId() };
-  questionStrokesMap.clear();
-  questionResponseRecordsMap.clear();
-  gradingStrokesMap.clear();
-  gradingResultsMap.clear();
+  questionTimer.stop();
+  try {
+    lastSessionConfig = draft.config;
+    currentDraftCreatedAt = draft.createdAt || Date.now();
+    currentQuestions = draft.questions;
+    currentSession = createSession({ ...draft.config, sessionId: draft.sessionId }, draft.questions);
+    currentSession.reviewItemId = draft.config?.reviewItemId || null;
+    currentSubmission = { id: draft.submissionId || `sub_${draft.sessionId}`, learnerId: getActiveLearnerId() };
+    questionStrokesMap.clear();
+    questionResponseRecordsMap.clear();
+    gradingStrokesMap.clear();
+    gradingResultsMap.clear();
 
-  if (draft.studentStrokesMap) {
-    Object.entries(draft.studentStrokesMap).forEach(([k, v]) => {
-      questionStrokesMap.set(k, v);
-    });
-  }
-  //+_+// Phase F10A: typed responseRecords 복원
-  if (draft.responseRecords) {
-    Object.entries(draft.responseRecords).forEach(([k, v]) => {
-      questionResponseRecordsMap.set(k, v);
-    });
-  }
-  if (draft.gradingStrokesMap) {
-    Object.entries(draft.gradingStrokesMap).forEach(([k, v]) => {
-      gradingStrokesMap.set(k, v);
-    });
-  }
-  if (draft.gradingResults) {
-    Object.entries(draft.gradingResults).forEach(([k, v]) => gradingResultsMap.set(k, v));
-  }
-
-  if (draft.inputProfile && Object.values(InputProfile).includes(draft.inputProfile)) {
-    currentInputProfile = resolveInputProfile({
-      savedProfile: draft.inputProfile,
-      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
-      maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
-      hasTouchStart: typeof window !== "undefined" && "ontouchstart" in window
-    });
-    updatePencilModeUI();
-  }
-  currentPenColor = draft.penColor || currentPenColor;
-  currentPenWidth = Number(draft.penWidth) || currentPenWidth;
-  currentIsEraser = Boolean(draft.isEraser);
-
-  draftCoordinator.setBaseVersion(draft);
-
-  //+_+// 단일 계약으로 복원 시간부터 정밀 흐름 시작!
-  startSessionTimer(questionTimer, draft.totalElapsedMs || 0);
-
-  //+_+// F4-R5-08 ~ F4-R5-11: strict state machine을 준수하는 공용 restore helper 호출
-  restoreSessionStateFromDraft({
-    session: currentSession,
-    draft,
-    onGradingActive: () => {
-      hideAnswersInGrading = Boolean(draft.answersHidden);
-      gradingViewMode = "detail";
-      currentGradingQuestionId = draft.currentGradingQuestionId || null;
-      questionTimer.stop();
-      switchView(gradingView, false);
-      renderGradingView();
-    },
-    onPracticeActive: () => {
-      switchView(practiceView, false);
-      renderCurrentWorksheetPage();
-      setPracticeInteractionLocked(false);
+    if (draft.studentStrokesMap) {
+      Object.entries(draft.studentStrokesMap).forEach(([k, v]) => {
+        questionStrokesMap.set(k, v);
+      });
     }
-  });
+    //+_+// Phase F10A: typed responseRecords 복원
+    if (draft.responseRecords) {
+      Object.entries(draft.responseRecords).forEach(([k, v]) => {
+        questionResponseRecordsMap.set(k, v);
+      });
+    }
+    if (draft.gradingStrokesMap) {
+      Object.entries(draft.gradingStrokesMap).forEach(([k, v]) => {
+        gradingStrokesMap.set(k, v);
+      });
+    }
+    if (draft.gradingResults) {
+      Object.entries(draft.gradingResults).forEach(([k, v]) => gradingResultsMap.set(k, v));
+    }
 
-  updateToolDockUI();
-  return true;
+    if (draft.inputProfile && Object.values(InputProfile).includes(draft.inputProfile)) {
+      currentInputProfile = resolveInputProfile({
+        savedProfile: draft.inputProfile,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "",
+        maxTouchPoints: typeof navigator !== "undefined" ? navigator.maxTouchPoints : 0,
+        hasTouchStart: typeof window !== "undefined" && "ontouchstart" in window
+      });
+      updatePencilModeUI();
+    }
+    currentPenColor = draft.penColor || currentPenColor;
+    currentPenWidth = Number(draft.penWidth) || currentPenWidth;
+    currentIsEraser = Boolean(draft.isEraser);
+
+    draftCoordinator.setBaseVersion(draft);
+
+    //+_+// F4-R5-08 ~ F4-R5-11: strict state machine을 준수하는 공용 restore helper 호출
+    restoreSessionStateFromDraft({
+      session: currentSession,
+      draft,
+      onGradingActive: () => {
+        hideAnswersInGrading = Boolean(draft.answersHidden);
+        gradingViewMode = "detail";
+        currentGradingQuestionId = draft.currentGradingQuestionId || null;
+        questionTimer.stop();
+        switchView(gradingView, false);
+        renderGradingView();
+      },
+      onPracticeActive: () => {
+        switchView(practiceView, false);
+        renderCurrentWorksheetPage();
+        setPracticeInteractionLocked(false);
+      }
+    });
+
+    updateToolDockUI();
+    if (currentSession.state === SessionState.PRACTICE_ACTIVE) {
+      startSessionTimer(questionTimer, draft.totalElapsedMs || 0);
+    }
+    return true;
+  } catch (error) {
+    questionTimer.stop();
+    // Invalidate queued snapshots before releasing the failed in-memory session.
+    // The persisted Draft remains the sole retry source; never save or delete it here.
+    draftCoordinator.setBaseVersion(null);
+    gradingRenderRevision += 1;
+    gradingCanvasObserver?.disconnect();
+    gradingCanvasObserver = null;
+    activeCanvasInstances.forEach((instance) => instance.destroy());
+    activeCanvasInstances.clear();
+    gradingCanvasInstances.forEach((instance) => instance.destroy());
+    gradingCanvasInstances.clear();
+    worksheetGrid?.replaceChildren();
+    gradingGrid?.replaceChildren();
+    currentSession = null;
+    currentSubmission = null;
+    currentQuestions = [];
+    currentResultSummary = null;
+    questionStrokesMap.clear();
+    questionResponseRecordsMap.clear();
+    gradingStrokesMap.clear();
+    gradingResultsMap.clear();
+    currentFocusedProblemIndex = 0;
+    lastActiveCanvasId = null;
+    setPracticeInteractionLocked(true);
+    navigate(ROUTES.HOME);
+    console.error("이어풀기 화면 복원 실패:", error);
+    alert("이어풀기 화면 복원에 실패했습니다. 저장된 풀이와 필기는 유지됩니다. 다시 이어풀기를 시도해 주세요.");
+    return false;
+  }
 }
 
 //+_+// Phase F5: Draft가 없어도 Submission의 불변 학생 payload와 가변 grading payload로 채점 흐름을 복원한다.
