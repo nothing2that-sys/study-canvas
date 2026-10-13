@@ -108,7 +108,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261012T055844127Z-ebed0b4";
+const APP_BUILD_ID = "20261012T082515709Z-e28e875";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -3726,9 +3726,13 @@ async function checkDraftResumeOnStartup() {
     const policy = evaluateStartupDraftResumePolicy({ draft, submission });
 
     if (!policy.canResumePractice) {
-      if (policy.shouldCleanupStaleDraft) {
+      const cleanupVersion = Object.hasOwn(submission || {}, "submittedDraftVersion")
+        ? submission.submittedDraftVersion : draft;
+      if (policy.shouldCleanupStaleDraft && cleanupVersion) {
         try {
-          await clearDraft();
+          await clearDraft({ learnerId: draft.learnerId, expectedSessionId: cleanupVersion.sessionId,
+            expectedRevision: cleanupVersion.revision, expectedUpdatedAt: cleanupVersion.updatedAt,
+            expectedWriteId: cleanupVersion.writeId || null });
         } catch (cleanupErr) {
           console.warn("Stale practice draft cleanup on startup failed:", cleanupErr);
         }

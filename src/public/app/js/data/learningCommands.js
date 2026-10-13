@@ -85,7 +85,7 @@ export async function submitLearningSession(options = {}) {
     getDraftVersion(await getDraftSession({ learnerId: snapshot.learnerId || options.learnerId }));
   let savedSubmission;
   try {
-    savedSubmission = await saveSubmissionSnapshot(snapshot, options);
+    savedSubmission = await saveSubmissionSnapshot(snapshot, { ...options, expectedDraftVersion: expectedDraft });
   } catch (saveError) {
     // 저장 실패 시 세션 상태를 PRACTICE_ACTIVE로 롤백하고 에러 전파
     if (session && typeof session.rollbackSubmitting === "function") {
@@ -104,13 +104,15 @@ export async function submitLearningSession(options = {}) {
   // 4. 스냅샷 저장 성공이 확인된 경우에만 활성 Draft 삭제 (실패 시에도 스냅샷 보존 및 경고 반환)
   let draftCleaned = true;
   let draftCleanupError = null;
+  const cleanupDraft = Object.hasOwn(savedSubmission || {}, "submittedDraftVersion")
+    ? savedSubmission.submittedDraftVersion : expectedDraft;
   if (savedSubmission && savedSubmission.learnerId) {
     try {
       draftCleaned = await clearDraftSession({ learnerId: savedSubmission.learnerId,
         expectedSessionId: savedSubmission.sessionId,
-        expectedUpdatedAt: expectedDraft?.updatedAt,
-        expectedRevision: expectedDraft?.revision,
-        expectedWriteId: expectedDraft?.writeId || null });
+        expectedUpdatedAt: cleanupDraft?.updatedAt,
+        expectedRevision: cleanupDraft?.revision,
+        expectedWriteId: cleanupDraft?.writeId || null });
     } catch (cleanupErr) {
       draftCleaned = false;
       draftCleanupError = cleanupErr?.message || String(cleanupErr);

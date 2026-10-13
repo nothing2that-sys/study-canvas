@@ -1864,6 +1864,9 @@ export async function saveSubmissionSnapshot(snapshotData, options = {}) {
     courseId: snapshotData.courseId || snapshotData.config?.courseId || (snapshotData.subjectId === "korean" ? "korean-core" : (snapshotData.subjectId === "english" ? "english-core" : "arithmetic")),
     moduleId: snapshotData.moduleId || snapshotData.config?.moduleId || (snapshotData.subjectId === "korean" ? "korean-core" : (snapshotData.subjectId === "english" ? "english-core" : "arithmetic")),
     status: snapshotData.status || "PARENT_GRADING_PENDING",
+    // Keep the acknowledged Draft identity across reload; a later writer is not stale cleanup.
+    ...(Object.hasOwn(options, "expectedDraftVersion")
+      ? { submittedDraftVersion: deepClone(options.expectedDraftVersion) } : {}),
     config: deepClone(snapshotData.config || {}),
     questions: Array.isArray(snapshotData.questions) ? deepClone(snapshotData.questions) : [],
     studentStrokesMap: studentStrokesMapObj,
