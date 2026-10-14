@@ -10,6 +10,8 @@ F16 실행 정본: `Docs/Implementation_Phases/34_PHASE_F16_CONTENT_FACTORY_AND_
 
 ---
 
+현재 진행 규칙 (2026-10-13 사용자 지시): F16D는 기술 구현 1차 종료, F16E 개발 착수다. [진행 판정과 검증 근거](../Implementation_Phases/F16D_TECHNICAL_FIRST_STAGE_CLOSE_2026-10-13.md). 교육·실기기·지정 최종 Reviewer 및 공개 Release는 별도로 남으며 아래 수량·Coverage·원본 호환 게이트는 보존한다.
+
 # 1. 목적
 
 수학은 국어/영어처럼 정적 원문 Bank를 단순히 수십만 개로 늘리는 방식으로 확장하지 않는다.

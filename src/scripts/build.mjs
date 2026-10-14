@@ -48,12 +48,14 @@ export function collectContentPrecacheAssets({ contentDir = path.join(defaultApp
           }
           const relToContent = path.relative(contentDir, targetFull).replace(/\\/g, "/");
           const assetPath = `./content/${relToContent}`;
-          assetSet.add(assetPath);
+          //+_+// Shard bodies are verified at build time, then cached on demand, never in the initial shell.
+          if (!manifest.isSharded || !/^shards[\\/]/.test(fileRel.trim().replace(/^\.\//, ""))) assetSet.add(assetPath);
         }
       }
     }
     if (manifest.isSharded) {
       const catalogPath = path.join(manifestDir, "catalog.json");
+      assetSet.add(`./content/${path.relative(contentDir, catalogPath).replace(/\\/g, "/")}`);
       const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
       if (!Array.isArray(catalog.shards) || !catalog.shards.length) {
         throw new Error(`[build] Sharded catalog is empty: ${catalogPath}`);
@@ -65,7 +67,6 @@ export function collectContentPrecacheAssets({ contentDir = path.join(defaultApp
         }
         const shardFile = path.join(manifestDir, "shards", `${shard.shardId}.json`);
         shardContents.set(shard.shardId, fs.readFileSync(shardFile, "utf8"));
-        assetSet.add(`./content/${path.relative(contentDir, shardFile).replace(/\\/g, "/")}`);
       }
       const integrity = verifyCatalogIntegrity(catalog, shardContents);
       if (!integrity.valid) throw new Error(`[build] Sharded catalog integrity failed: ${integrity.errors.join("; ")}`);

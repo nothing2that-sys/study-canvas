@@ -58,6 +58,13 @@ async function fetchTextResource(pathOrUrl) {
  * Loads and caches english-core-v2 catalog.json
  */
 const cachedCatalogs = new Map();
+function freezeCatalog(value) {
+  if (value && typeof value === 'object') {
+    Object.values(value).forEach(freezeCatalog);
+    Object.freeze(value);
+  }
+  return value;
+}
 export async function loadEnglishCoreV2Catalog(baseDir = DEFAULT_PACKAGE_BASE) {
   const base = baseDir.replace(/\/$/, "");
   if (cachedCatalogs.has(base)) return cachedCatalogs.get(base);
@@ -74,7 +81,8 @@ export async function loadEnglishCoreV2Catalog(baseDir = DEFAULT_PACKAGE_BASE) {
     || catalog.shards.some(shard => !/^shard-[a-z0-9-]+$/.test(shard.shardId))) {
     throw new Error("[englishCoreV2Loader] Invalid or duplicate shard ID");
   }
-  const frozen = Object.freeze(catalog);
+  // Hash-verified metadata must remain immutable, including nested shard hashes and grade ranges.
+  const frozen = freezeCatalog(catalog);
   cachedCatalogs.set(base, frozen);
   return frozen;
 }

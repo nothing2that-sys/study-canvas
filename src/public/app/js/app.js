@@ -56,7 +56,7 @@ import { setupKeyboardShortcuts } from "./shortcuts.js";
 import { setupInteractionGuard, AppMode } from "./interactionGuard.js";
 import { composeAdaptiveSession, analyzeAdaptiveWeaknesses } from "./adaptiveEngine.js";
 import { calculateStageMastery, analyzeWeaknesses } from "./masteryEngine.js";
-import { createDraftSaveCoordinator, DRAFT_SCHEMA_VERSION, DraftSaveStatus, navigateWithDraftFlush } from "./draftEngine.js";
+import { createDraftSaveCoordinator, DRAFT_SCHEMA_VERSION, DraftSaveStatus, navigateWithDraftFlush, getDraftVersion } from "./draftEngine.js";
 import { createUpdateCoordinator, waitForServiceWorkerControllerChange } from "./updateEngine.js";
 import { createVisualViewportController, getPreferredScrollBehavior } from "./viewportEngine.js";
 import { setupModalManager } from "./modalEngine.js";
@@ -66,7 +66,10 @@ import { renderFractionRepresentation } from "./fractionRepresentationView.js";
 import { renderDecimalRepresentation } from "./decimalRepresentationView.js";
 import { generateDecimalProblemSet } from "./decimalGenerator.js";
 import { MATH_SPECS, getMathSpec } from "./mathF16dSpec.js";
-import { startMathGeneratedSession } from "./mathF16dRuntime.js";
+import { getMathExposureHistory } from "./mathF16dRuntime.js";
+import { generateMathCandidates } from "./mathF16dSelection.js";
+import { createLanguageRotationCandidates, createLanguageMixedRotationRequest, createMathRotationCandidates, adaptLegacyMathExposure } from "./contentRotationAdapters.js";
+import { startRotationSession, rollbackRotationStart } from "./contentRotationRuntime.js";
 import { renderMathF16dRepresentation } from "./mathF16dRepresentation.js";
 import { getWorkbookCatalogItem } from "./workbookCatalog.js";
 import { createResponseRecord, applyStudentResponseChange } from "./responseEngine.js";
@@ -108,7 +111,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261012T082515709Z-e28e875";
+const APP_BUILD_ID = "20261014T051805479Z-11d3bcb";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -1757,20 +1760,35 @@ function renderProblemStageContent(q, options = {}) {
 // ----------------------------------------------------
 // 워크시트 세션 풀이 흐름 (단일 표준 진입점)
 // ----------------------------------------------------
-async function startSessionWithQuestions(questions, config) {
-  if (!questions || questions.length === 0) return false;
+async function startSessionWithQuestions(questions, config, selectionRequest = null) {
+  if (!selectionRequest && (!questions || questions.length === 0)) return false;
   let effectiveConfig, nextSession, initialDraft;
   try {
-    const learnerId = getActiveLearnerId();
-    await flushDraftSave();
-    if (await getDraft({ learnerId })) throw new Error('진행 중인 풀이가 있습니다. 홈의 이어풀기를 완료한 뒤 새 학습을 시작하세요.');
+    const learnerId = config.learnerId || getActiveLearnerId();
     if (getActiveLearnerId() !== learnerId) throw new Error('학습자가 변경되었습니다. 다시 시작하세요.');
-    const workbookContext = getActiveWorkbookContext(undefined, { launchTarget: getCurrentRoute() });
+    await flushDraftSave();
+    const existingDraft = await getDraft({ learnerId });
+    if (existingDraft && (!selectionRequest || existingDraft.sessionId !== selectionRequest.sessionId)) throw new Error('진행 중인 풀이가 있습니다. 홈의 이어풀기를 완료한 뒤 새 학습을 시작하세요.');
+    if (getActiveLearnerId() !== learnerId) throw new Error('학습자가 변경되었습니다. 다시 시작하세요.');
+    const workbookContext = config.rotationPolicy?.kind === 'approved-core-mixed-v1'
+      ? null : getActiveWorkbookContext(undefined, { launchTarget: getCurrentRoute() });
     effectiveConfig = workbookContext ? { ...config, ...workbookContext, learnerId } : { ...config, learnerId };
-    nextSession = createSession(effectiveConfig, questions);
-    nextSession.start();
-    initialDraft = await saveDraft({ learnerId, sessionId: nextSession.id, config: effectiveConfig, questions,
-      sessionState: SessionState.PRACTICE_ACTIVE, totalElapsedMs: 0 }, { protectExisting: true });
+    if (selectionRequest) {
+      //+_+// Selection history and first Draft share one transaction; failed starts consume neither.
+      const persisted = await startRotationSession({ ...selectionRequest, learnerId, config: effectiveConfig, appBuildId: APP_BUILD_ID });
+      selectionRequest.result = persisted;
+      initialDraft = persisted.draft;
+      effectiveConfig = initialDraft.config;
+      questions = persisted.activities;
+      nextSession = persisted.session;
+      if (getActiveLearnerId() !== learnerId) throw new Error('학습자가 변경되었습니다. 저장된 학습은 해당 학습자의 이어풀기에서 열 수 있습니다.');
+      if (persisted.reused) return restoreSessionFromDraft(initialDraft);
+    } else {
+      nextSession = createSession(effectiveConfig, questions);
+      nextSession.start();
+      initialDraft = await saveDraft({ learnerId, sessionId: nextSession.id, config: effectiveConfig, questions,
+        sessionState: SessionState.PRACTICE_ACTIVE, totalElapsedMs: 0 }, { protectExisting: true });
+    }
     if (getActiveLearnerId() !== learnerId) throw new Error('학습자가 변경되었습니다. 저장된 학습은 해당 학습자의 이어풀기에서 열 수 있습니다.');
     consumeActiveWorkbookContext(undefined, { launchTarget: getCurrentRoute() });
   } catch (error) {
@@ -1799,7 +1817,7 @@ async function startSessionWithQuestions(questions, config) {
     setPracticeInteractionLocked(false);
     updateToolDockUI();
     updateGlobalLearningNav(getCurrentRoute(), {
-      workbookTitle: getActiveWorkbookContext()?.title,
+      workbookTitle: effectiveConfig.rotationPolicy?.kind === 'approved-core-mixed-v1' ? null : getActiveWorkbookContext()?.title,
       subjectId: currentSession?.config?.subjectId
     });
     startSessionTimer(questionTimer, 0);
@@ -1814,9 +1832,11 @@ async function startSessionWithQuestions(questions, config) {
     setPracticeInteractionLocked(true);
     let cleaned = false;
     try {
-      if (initialDraft) cleaned = await clearDraft({ learnerId: effectiveConfig.learnerId,
-        expectedSessionId: nextSession.id, expectedUpdatedAt: initialDraft.updatedAt,
-        expectedRevision: initialDraft.revision });
+      if (initialDraft) cleaned = effectiveConfig.f16e
+        ? await rollbackRotationStart({ learnerId: effectiveConfig.learnerId, expectedVersion: getDraftVersion(initialDraft) })
+        : await clearDraft({ learnerId: effectiveConfig.learnerId,
+          expectedSessionId: nextSession.id, expectedUpdatedAt: initialDraft.updatedAt,
+          expectedRevision: initialDraft.revision });
     } catch (cleanupError) {
       console.error('새 학습 화면 실패 후 Draft 정리 실패:', cleanupError);
     }
@@ -1839,15 +1859,25 @@ export async function startF16dMathPractice(generatorId, { count = DEFAULT_PROBL
   const weakFeatures = [...new Set(submissions.flatMap(sub => (sub.questions || []).filter(q =>
     q.metadata?.math && [GradeDecision.WRONG, GradeDecision.RETRY].includes(normalizeGradeDecision(sub.gradingResults?.[q.id]?.decision)))
     .map(q => q.metadata.math.featureVector.family)))];
-  const result = await startMathGeneratedSession({ generatorId, learnerId, sessionId, seed, count, weakFeatures });
+  const preparationStarted = performance.now();
+  const generated = generateMathCandidates(generatorId, { seed, count });
+  const candidates = createMathRotationCandidates(generated.items, { preview: MATH_F16D_PREVIEW });
+  const owner = await getActiveLearner();
+  if (owner?.id !== learnerId) throw new Error('학습자가 변경되었습니다. 다시 시작하세요.');
+  const existingExposure = owner.f16eExposure;
+  const legacyHistory = existingExposure?.legacyMathReset || Object.hasOwn(existingExposure?.scopes || {}, JSON.stringify(['math', spec.courseId]))
+    ? [] : adaptLegacyMathExposure(await getMathExposureHistory(learnerId), learnerId, spec.courseId);
+  const preparationMs = performance.now() - preparationStarted;
   //+_+// Learner switching during async DB/query work must not materialize a session for another learner.
   if (getActiveLearnerId() !== learnerId) throw new Error("학습자가 변경되었습니다. 다시 시작하세요.");
   const config = { sessionId, learnerId, subjectId: "math", courseId: spec.courseId, moduleId: spec.domain,
     unitId: spec.unitId, skillId: spec.skillId, stageId: spec.skillId, macroLevelId: spec.skillId,
-    skillTitle: spec.title, problemCount: result.activities.length, pageSize: 4, mathFormat: "horizontal",
-    mathGeneration: { generatorId, seed, version: spec.version, selection: result.selection, timings: result.timings, reviewStatus: "REVIEW_REQUIRED" } };
-  if (!await startSessionWithQuestions(result.activities, config)) throw new Error("진행 중인 풀이를 먼저 완료하세요.");
-  return result;
+    skillTitle: spec.title, problemCount: count, pageSize: 4, mathFormat: "horizontal",
+    mathGeneration: { generatorId, seed, version: spec.version, reviewStatus: "REVIEW_REQUIRED" } };
+  const request = {learnerId,sessionId,subjectId:'math',courseId:spec.courseId,candidates,count,seed,legacyHistory,weakSkills:weakFeatures.includes(spec.task)?[spec.skillId]:[]};
+  if (!await startSessionWithQuestions([], config, request)) throw new Error("새 학습을 시작하지 못했습니다. 저장된 풀이를 확인하세요.");
+  return {activities:request.result.activities,selection:request.result.selection,candidates:generated.metrics,
+    timings:{candidateGenerationValidationFingerprintMs:preparationMs,...request.result.timings}};
 }
 function renderF16dPreviewPanel() {
   if (!setupView || document.querySelector("#mathF16dPreviewPanel") || !MATH_F16D_PREVIEW) return;
@@ -4307,6 +4337,7 @@ export async function renderKoreanLandingView() {
     return;
   }
 
+  bindDefaultMixedPractice('korean', pkgData);
   tabs.forEach((tab) => {
     tab.onclick = () => {
       tabs.forEach((t) => {
@@ -4362,8 +4393,11 @@ export async function renderKoreanLandingView() {
         </button>
       `;
 
-      card.querySelector(`#startSkill_${CSS.escape(skill.skillId)}`)?.addEventListener("click", () => {
-        startKoreanPracticeSession(skill, pkgData.activities, pkgData.manifest);
+      card.querySelector(`#startSkill_${CSS.escape(skill.skillId)}`)?.addEventListener("click", async event => {
+        const button = event.currentTarget; button.disabled = true;
+        try { await startKoreanPracticeSession(skill, pkgData.activities, pkgData.manifest); }
+        catch (error) { alert(error.message || '국어 학습을 시작하지 못했습니다.'); }
+        finally { button.disabled = false; }
       });
 
       container.appendChild(card);
@@ -4475,16 +4509,29 @@ async function renderEnglishCoreV2Paths() {
 }
 
 //+_+// Phase F12: Korean 세션 시작
-export function startKoreanPracticeSession(skill, allActivities, manifest) {
+function bindDefaultMixedPractice(subjectId, pkgData) {
+  const button=document.querySelector(`#startDefaultMixed_${subjectId}`);
+  if(!button)return;
+  button.disabled=false;
+  button.onclick=async()=>{
+    button.disabled=true;
+    try{await startDefaultMixedPractice(subjectId,pkgData);}
+    catch(error){alert(error.message||'종합 학습을 시작하지 못했습니다.');}
+    finally{button.disabled=false;}
+  };
+}
+export async function startDefaultMixedPractice(subjectId,pkgData) {
+  const learnerId=getActiveLearnerId(),sessionId=`${subjectId}_mixed_${globalThis.crypto.randomUUID()}`;
+  const request=await createLanguageMixedRotationRequest({subjectId,learnerId,sessionId,...pkgData,seed:Date.now()});
+  return startSessionWithQuestions([],request.config,request);
+}
+export async function startKoreanPracticeSession(skill, allActivities, manifest) {
   const seed = Date.now();
-  const activities = selectKoreanActivities({
-    skillId: skill.skillId,
-    count: DEFAULT_PROBLEM_COUNT,
-    seed,
-    activities: allActivities
-  });
+  const learnerId = getActiveLearnerId(), sessionId = `korean_${globalThis.crypto.randomUUID()}`;
+  const candidates = await createLanguageRotationCandidates({subjectId:'korean',skillId:skill.skillId,activities:allActivities,manifest,seed});
 
   const sessionConfig = {
+    learnerId, sessionId,
     subjectId: "korean",
     courseId: "korean-core",
     moduleId: "korean-core",
@@ -4499,7 +4546,10 @@ export function startKoreanPracticeSession(skill, allActivities, manifest) {
     mathFormat: "horizontal"
   };
 
-  return startSessionWithQuestions(activities, sessionConfig);
+  return startSessionWithQuestions([], sessionConfig, {
+    learnerId, sessionId, subjectId: 'korean', courseId: 'korean-core', candidates,
+    count: DEFAULT_PROBLEM_COUNT, seed
+  });
 }
 
 //+_+// Phase F13: English Landing View 렌더링 및 세션 생성
@@ -4520,6 +4570,7 @@ export async function renderEnglishLandingView() {
     return;
   }
 
+  bindDefaultMixedPractice('english', pkgData);
   if (vocabularyContainer) {
     try {
       const learner = await getActiveLearner();
@@ -4597,8 +4648,11 @@ export async function renderEnglishLandingView() {
         </button>
       `;
 
-      card.querySelector(`#startSkill_${CSS.escape(skill.skillId)}`)?.addEventListener("click", () => {
-        startEnglishPracticeSession(skill, pkgData.activities, pkgData.manifest);
+      card.querySelector(`#startSkill_${CSS.escape(skill.skillId)}`)?.addEventListener("click", async event => {
+        const button = event.currentTarget; button.disabled = true;
+        try { await startEnglishPracticeSession(skill, pkgData.activities, pkgData.manifest); }
+        catch (error) { alert(error.message || '영어 학습을 시작하지 못했습니다.'); }
+        finally { button.disabled = false; }
       });
 
       container.appendChild(card);
@@ -4610,16 +4664,13 @@ export async function renderEnglishLandingView() {
 }
 
 //+_+// Phase F13: English 세션 시작
-export function startEnglishPracticeSession(skill, allActivities, manifest) {
+export async function startEnglishPracticeSession(skill, allActivities, manifest) {
   const seed = Date.now();
-  const activities = selectEnglishActivities({
-    skillId: skill.skillId,
-    count: DEFAULT_PROBLEM_COUNT,
-    seed,
-    activities: allActivities
-  });
+  const learnerId = getActiveLearnerId(), sessionId = `english_${globalThis.crypto.randomUUID()}`;
+  const candidates = await createLanguageRotationCandidates({subjectId:'english',skillId:skill.skillId,activities:allActivities,manifest,seed});
 
   const sessionConfig = {
+    learnerId, sessionId,
     subjectId: "english",
     courseId: "english-core",
     moduleId: "english-core",
@@ -4634,7 +4685,10 @@ export function startEnglishPracticeSession(skill, allActivities, manifest) {
     mathFormat: "horizontal"
   };
 
-  return startSessionWithQuestions(activities, sessionConfig);
+  return startSessionWithQuestions([], sessionConfig, {
+    learnerId, sessionId, subjectId: 'english', courseId: 'english-core', candidates,
+    count: DEFAULT_PROBLEM_COUNT, seed
+  });
 }
 
 //+_+// Phase F14 공식 확인 학습은 기존 제출과 보호자 채점 수명주기를 사용한다

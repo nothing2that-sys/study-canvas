@@ -439,6 +439,8 @@ export async function updateLearnerProfile(id, updates = {}) {
     throw new Error(`해당 ID(${id})의 학습자 프로필을 찾을 수 없습니다.`);
   }
 
+  //+_+// Merge profile edits against the transaction's fresh record so concurrent exposure commits survive.
+  function applyUpdates(existing) {
   const now = Date.now();
   const nextGrade = updates.schoolGrade !== undefined
     ? normalizeSchoolGrade(updates.schoolGrade, { allowUnset: true })
@@ -471,17 +473,28 @@ export async function updateLearnerProfile(id, updates = {}) {
   if (!updatedProfile.name) {
     throw new Error("학습자 이름은 비워둘 수 없습니다.");
   }
+  return updatedProfile;
+  }
 
   if (db.isMemory) {
+    const updatedProfile = applyUpdates(db.learnerProfiles.get(id));
     db.learnerProfiles.set(id, updatedProfile);
     return updatedProfile;
   }
 
   return new Promise((resolve, reject) => {
     const tx = db.transaction("learnerProfiles", "readwrite");
-    tx.objectStore("learnerProfiles").put(updatedProfile);
+    const store = tx.objectStore("learnerProfiles"), request = store.get(id);
+    let updatedProfile, failure;
+    request.onsuccess = () => {
+      try {
+        if (!request.result) throw new Error('학습자 프로필이 삭제되었습니다.');
+        updatedProfile = applyUpdates(request.result);
+        store.put(updatedProfile);
+      } catch (error) { failure = error; tx.abort(); }
+    };
     tx.oncomplete = () => resolve(updatedProfile);
-    tx.onerror = (e) => reject(e.target.error);
+    tx.onabort = tx.onerror = () => reject(failure || tx.error || new Error('프로필 저장이 중단되었습니다.'));
   });
 }
 
@@ -1675,11 +1688,19 @@ export async function clearAllData(options = {}) {
       }
       const draftKey = targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
       db.draftSessions.delete(draftKey);
+      //+_+// Exposure is learner data and resets with that learner's learning history.
+      const profile = db.learnerProfiles.get(targetLearnerId);
+      if (profile) db.learnerProfiles.set(targetLearnerId, { ...profile, f16eExposure: { schemaVersion: 1, scopes: {}, legacyMathReset: true } });
       return true;
     }
 
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems", "workbookAssignments", "vocabularyMemoryStates"], "readwrite");
+      const tx = db.transaction(["sessions", "attempts", "mistakes", "stageProgress", "strokes", "draftSessions", "submissions", "progressAggregates", "reviewItems", "workbookAssignments", "vocabularyMemoryStates", "learnerProfiles"], "readwrite");
+      //+_+// Preserve profile settings while atomically clearing the learner-owned exposure extension.
+      const profiles = tx.objectStore('learnerProfiles'), profileRequest = profiles.get(targetLearnerId);
+      profileRequest.onsuccess = () => {
+        if (profileRequest.result) profiles.put({ ...profileRequest.result, f16eExposure: { schemaVersion: 1, scopes: {}, legacyMathReset: true } });
+      };
       // sessions
       const sessionStore = tx.objectStore("sessions");
       sessionStore.openCursor().onsuccess = (e) => {
@@ -2343,7 +2364,9 @@ export function calculateProgressAggregatesForLearner(targetLearnerId, finalized
       const decision = normalizeGradeDecision(grade?.decision ?? grade?.isCorrect);
       if (!decision) return;
 
-      const unitId = sub.unitId || q.unitId || sub.config?.unitId || sub.config?.operation || (q.operation === "div" ? "div" : (q.operation === "mul" ? "mul" : "default"));
+      const unitId = sub.config?.rotationPolicy?.kind === 'approved-core-mixed-v1'
+        ? (q.unitId || q.moduleId || 'default')
+        : (sub.unitId || q.unitId || sub.config?.unitId || sub.config?.operation || (q.operation === "div" ? "div" : (q.operation === "mul" ? "mul" : "default")));
       const levelId = q.skillId || q.level || q.macroLevelId || sub.config?.macroLevelId || (q.operation === "div" ? "D1" : (q.operation === "mul" ? "M1" : "general"));
       const macroLevelId = q.macroLevelId || q.skillId || q.level || (q.operation === "div" ? "D1" : (q.operation === "mul" ? "M1" : "general"));
 
@@ -3093,8 +3116,8 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
             learnerId: rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID,
             subjectId: rawExisting.subjectId || "math",
             courseId: rawExisting.courseId || rawExisting.config?.courseId || "arithmetic",
-            unitId: rawExisting.unitId || question.operation || "mul",
-            levelId: question.macroLevelId || question.level,
+            unitId: rawExisting.config?.rotationPolicy?.kind === 'approved-core-mixed-v1' ? (question.unitId || question.moduleId || 'default') : (rawExisting.unitId || question.operation || "mul"),
+            levelId: rawExisting.config?.rotationPolicy?.kind === 'approved-core-mixed-v1' ? (question.skillId || question.macroLevelId || question.level) : (question.macroLevelId || question.level),
             sourceAttemptId: targetSourceAttemptId,
             sourceSessionId: sessionId,
             sourceSubmissionId: submissionId,
@@ -3268,8 +3291,8 @@ export async function reviseFinalizedGradeDecision(submissionId, questionId, new
                     learnerId: rawExisting.learnerId || DEFAULT_LEGACY_LEARNER_ID,
                     subjectId: rawExisting.subjectId || "math",
                     courseId: rawExisting.courseId || rawExisting.config?.courseId || "arithmetic",
-                    unitId: rawExisting.unitId || question.operation || "mul",
-                    levelId: question.macroLevelId || question.level,
+                    unitId: rawExisting.config?.rotationPolicy?.kind === 'approved-core-mixed-v1' ? (question.unitId || question.moduleId || 'default') : (rawExisting.unitId || question.operation || "mul"),
+                    levelId: rawExisting.config?.rotationPolicy?.kind === 'approved-core-mixed-v1' ? (question.skillId || question.macroLevelId || question.level) : (question.macroLevelId || question.level),
                     sourceAttemptId,
                     sourceSessionId: sessionId,
                     sourceSubmissionId: submissionId,

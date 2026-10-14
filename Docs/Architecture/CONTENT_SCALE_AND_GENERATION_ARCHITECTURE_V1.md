@@ -10,6 +10,8 @@ F16 통합 실행 정본: `Docs/Implementation_Phases/34_PHASE_F16_CONTENT_FACTO
 
 ---
 
+현재 진행 규칙 추가 (2026-10-13 사용자 지시): F16D의 기술 구현 1차 종료를 인정하고 F16E 개발을 시작한다. [정확한 범위와 미완료 수용 조건](../Implementation_Phases/F16D_TECHNICAL_FIRST_STAGE_CLOSE_2026-10-13.md)을 따른다. 사용자 진행 결정은 HUMAN 문항 검수 또는 제품 최종/공개 Release 승인이 아니며 아래 모든 수량·품질·공개 게이트를 보존한다.
+
 # 1. 목적
 
 현재 Korean Core와 English Core는 각각 8개 Skill x 20개 Activity = 160개 Activity로 구성되어 있고, 기본 세션도 20문제라 한 Skill을 한 번 수행하면 해당 Skill의 원천 문제를 사실상 모두 노출한다. English Vocabulary도 현재 48개 단어 규모이므로 실제 반복 학습 서비스 기준으로 콘텐츠 폭이 부족하다.
@@ -635,6 +637,8 @@ Shard 크기와 캐시 정책은 F16A 성능 테스트로 확정한다.
 ---
 
 # 14. 품질 KPI
+
+2026-10-14 기술1차종료의 공개 기본 경로는 기존 APPROVED 국어/영어 각160문항에서8 Skill을 고르게 선택하는 **종합20문항**이다. recent5 exact 제외를 유지하고 실제 native 저장소 full window2240문항 반복0%를 확인했다. 유형별 집중20은 별도의 반복 연습으로 명시한다. 새 콘텐츠의 승인/학년/Release Gate와 아래 KPI 임계값을 바꾸지 않는다. [실행·검증·종료 범위](../Implementation_Phases/F16E_TECHNICAL_FIRST_STAGE_CLOSE_2026-10-14.md).
 
 수량 외에 다음 KPI를 Release Gate로 사용한다.
 
