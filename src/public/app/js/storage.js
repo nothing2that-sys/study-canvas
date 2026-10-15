@@ -916,16 +916,20 @@ export async function getDraftSession(options = {}) {
     try {
       const tx = db.transaction("draftSessions", "readonly");
       const req = tx.objectStore("draftSessions").get(draftKey);
+      let strictResult;
       req.onsuccess = () => {
         try {
-          resolve(req.result ? normalizeDraft(req.result) : null);
+          const result = req.result ? normalizeDraft(req.result) : null;
+          if (options.strict) strictResult = result; else resolve(result);
         } catch (error) {
           reject(error);
         }
       };
-      req.onerror = () => resolve(null);
-    } catch (_) {
-      resolve(null);
+      req.onerror = () => options.strict ? reject(req.error || new Error('Draft 조회 실패')) : resolve(null);
+      tx.oncomplete = () => { if (options.strict) resolve(strictResult); };
+      tx.onabort = () => options.strict ? reject(tx.error || new Error('Draft 조회 중단')) : resolve(null);
+    } catch (error) {
+      if (options.strict) reject(error); else resolve(null);
     }
   });
 }
