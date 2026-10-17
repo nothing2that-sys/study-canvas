@@ -111,7 +111,7 @@ import { getReleasedEnglishCoreV2Paths, getPreviewEnglishCoreV2Paths,
   getPreviousEnglishCoreV2CandidateIds, createEnglishCoreV2SessionTraceDraft } from "./englishCoreV2Runtime.js";
 import { initEnglishVocabularyStudy } from "./englishVocabularyView.js";
 
-const APP_BUILD_ID = "20261017T065808914Z-fd1f1c5";
+const APP_BUILD_ID = "20261017T101639763Z-12aaa0c";
 const MATH_F16D_PREVIEW = new URLSearchParams(globalThis.location?.search || "").get("mathF16dPreview") === "1";
 //+_+// Preserve the F16C hash-bound shared surface. Only math activity presentation is extended here.
 const renderChoiceActivityStage = (q, options) => renderMathF16dRepresentation(q) + renderBaseChoiceActivityStage(q, options);
@@ -365,6 +365,11 @@ const questionResponseRecordsMap = new Map();
 const gradingStrokesMap = new Map();
 const gradingResultsMap = new Map();
 let activeCanvasInstances = new Map(); // questionId -> canvas instance
+// Read-only, bounded counters; no handwriting coordinates or learner content.
+if (typeof window !== "undefined") {
+  window.getMathCanvasInputDiagnostics = () => ({ buildId: APP_BUILD_ID,
+    canvases: [...activeCanvasInstances.values()].map(instance => instance.getInputDiagnostics()) });
+}
 let gradingCanvasInstances = new Map();
 let gradingCanvasObserver = null;
 let gradingRenderRevision = 0;
@@ -3767,6 +3772,16 @@ async function checkDraftResumeOnStartup() {
           console.warn("Stale practice draft cleanup on startup failed:", cleanupErr);
         }
       }
+      return;
+    }
+
+    const practiceDraft = (!draft.sessionState || draft.sessionState === SessionState.PRACTICE_ACTIVE) && draft.sessionType !== "grading";
+    const resumableGrading = (draft.sessionType === "grading" || draft.sessionState === SessionState.GRADING_ACTIVE) &&
+      submission && ["PARENT_GRADING_PENDING", "GRADING_ACTIVE"].includes(submission.status);
+    if (!practiceDraft && !resumableGrading) {
+      // Orphan grading and completed Drafts need export/recovery, not an editable
+      // session backed by a nonexistent Submission. Preserve their stored bytes.
+      navigate(ROUTES.HOME);
       return;
     }
 

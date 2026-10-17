@@ -139,6 +139,24 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   let lastPenEndTime = 0;
   let cooldownTimer = null;
   let destroyed = false;
+  let recoverySuspended = false;
+  const penTerminals = new Map();
+  const inputDiagnostics = { downReceived: 0, startsAccepted: 0, recoveredStarts: 0,
+    rejectedDown: 0, orphanMoves: 0, blockedRecovery: 0, captureLosses: 0, cancels: 0 };
+
+  function rememberPenTerminal(e) {
+    if (e?.pointerType !== "pen") return;
+    const previous = penTerminals.get(e.pointerId);
+    if (previous && Number.isFinite(e.timeStamp) && e.timeStamp < previous.timeStamp) return;
+    penTerminals.delete(e.pointerId);
+    penTerminals.set(e.pointerId, { timeStamp: Number.isFinite(e.timeStamp) ? e.timeStamp : 0, blocked: true });
+    if (penTerminals.size > 16) penTerminals.delete(penTerminals.keys().next().value);
+  }
+
+  function suspendRecovery() {
+    recoverySuspended = true;
+    resetActivePointers();
+  }
 
   function cloneStrokes(value) {
     return JSON.parse(JSON.stringify(Array.isArray(value) ? value : []));
@@ -580,8 +598,17 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   // ----------------------------------------------------
   // Pointer Event Handlers
   // ----------------------------------------------------
-  function onPointerDown(e) {
+  function onPointerDown(e, recovered = false) {
     if (destroyed || settings.readOnly) return;
+    if (!recovered) {
+      inputDiagnostics.downReceived++;
+      const terminal = penTerminals.get(e.pointerId);
+      if (e.pointerType === "pen" && terminal && Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp < terminal.timeStamp) {
+        inputDiagnostics.rejectedDown++;
+        return;
+      }
+      if (e.pointerType === "pen") penTerminals.delete(e.pointerId);
+    }
     //+_+// [고속 필기 획 씹힘 방지 SSOT]
     // 직전 획이 아직 완전히 종료되지 않은 상태(isDrawing이거나 활성 포인터가 남아있는 상태)에서
     // 빠른 새 pointerdown이 들어오면, 진행 중이던 이전 획을 즉시 정상 commit하고 포인터 상태를 정리한다.
@@ -600,8 +627,10 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
     // 단일 입력 수락 판정
     if (!shouldAcceptPointer(e, settings.profile, currentState)) {
+      inputDiagnostics.rejectedDown++;
       return;
     }
+    if (!recovered && e.pointerType === "pen") recoverySuspended = false;
 
     // Pen 입력인 경우 이전 터치 드로잉 즉시 취소 및 Pen Active Lock 획득
     if (e.pointerType === "pen") {
@@ -632,6 +661,8 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     }
 
     isDrawing = true;
+    inputDiagnostics.startsAccepted++;
+    if (recovered) inputDiagnostics.recoveredStarts++;
     activePointerStartTime = Number.isFinite(e.timeStamp) ? e.timeStamp : null;
 
     try {
@@ -700,7 +731,31 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   function onPointerMove(e) {
-    if (destroyed || !isDrawing || !matchesActivePointer(e)) return;
+    if (destroyed) return;
+    if (!isDrawing) {
+      if (e.pointerType !== "pen") return;
+      inputDiagnostics.orphanMoves++;
+      const terminal = penTerminals.get(e.pointerId);
+      const stale = terminal && Number.isFinite(e.timeStamp) && e.timeStamp > 0 && e.timeStamp < terminal.timeStamp;
+      // A hover/release is evidence that a cancelled contact really ended. Pressure
+      // alone can transiently be zero during contact, so require both signals.
+      if (!stale && (e.buttons & 1) === 0 && e.pressure === 0) {
+        if (terminal) terminal.blocked = false;
+        return;
+      }
+      const rect = canvasElement.getBoundingClientRect();
+      const canRecover = !settings.readOnly && !settings.isEraser && !recoverySuspended &&
+        !(typeof document !== "undefined" && document.hidden) && !stale && !terminal?.blocked &&
+        shouldAcceptPointer(e, settings.profile, currentState) && (e.buttons & 1) === 1 &&
+        Number.isFinite(e.pressure) && e.pressure > 0 &&
+        Number.isFinite(e.clientX) && Number.isFinite(e.clientY) && rect.width > 0 && rect.height > 0 &&
+        e.clientX >= rect.left && e.clientX <= rect.left + rect.width &&
+        e.clientY >= rect.top && e.clientY <= rect.top + rect.height;
+      if (canRecover) onPointerDown(e, true);
+      else inputDiagnostics.blockedRecovery++;
+      return;
+    }
+    if (!matchesActivePointer(e)) return;
 
     if (e.cancelable) e.preventDefault();
 
@@ -718,6 +773,8 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   function onPointerUp(e, captureCoordinates = true) {
+    // Capture loss is not a physical end: a subsequent contact move may recover.
+    if (captureCoordinates && (!isDrawing || matchesActivePointer(e))) rememberPenTerminal(e);
     if (destroyed || !isDrawing || !matchesActivePointer(e)) return;
 
     const isPen = e.pointerType === "pen";
@@ -770,6 +827,10 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   function onPointerCancel(e) {
+    if (!isDrawing || matchesActivePointer(e)) {
+      rememberPenTerminal(e);
+      inputDiagnostics.cancels++;
+    }
     if (destroyed || !isDrawing || !matchesActivePointer(e)) return;
 
     const isPen = e.pointerType === "pen";
@@ -828,6 +889,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       if (canvasElement.hasPointerCapture?.(e.pointerId)) return;
     } catch (_) {}
     if (!destroyed && isDrawing && matchesActivePointer(e)) {
+      inputDiagnostics.captureLosses++;
       onPointerUp(e, false);
     }
   }
@@ -870,7 +932,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
   function handleVisibilityChange() {
     if (typeof document !== "undefined" && document.hidden) {
-      resetActivePointers();
+      suspendRecovery();
     }
   }
 
@@ -892,16 +954,16 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   addManagedListener(canvasElement, "lostpointercapture", onLostPointerCapture, { passive: false });
 
   if (typeof window !== "undefined") {
-    addManagedListener(window, "blur", resetActivePointers);
-    addManagedListener(window, "pagehide", resetActivePointers);
+    addManagedListener(window, "blur", suspendRecovery);
+    addManagedListener(window, "pagehide", suspendRecovery);
     //+_+// [캔버스 경계 이탈 획 씹힘 방지] 캔버스 밖으로 나가서 포인터를 떼거나 취소되었을 때도 획을 안전하게 확정/종료
     addManagedListener(window, "pointerup", (e) => {
-      if (!destroyed && isDrawing && matchesActivePointer(e)) {
+      if (!destroyed && (!isDrawing || matchesActivePointer(e))) {
         onPointerUp(e);
       }
     }, { passive: false });
     addManagedListener(window, "pointercancel", (e) => {
-      if (!destroyed && isDrawing && matchesActivePointer(e)) {
+      if (!destroyed && (!isDrawing || matchesActivePointer(e))) {
         onPointerCancel(e);
       }
     }, { passive: false });
@@ -942,6 +1004,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       settings.eraserRadius = radius;
     },
     setPencilOnly(pencilOnly) {
+      suspendRecovery();
       settings.pencilOnly = Boolean(pencilOnly);
       if (pencilOnly) {
         settings.profile = InputProfile.IPAD_PEN_ONLY;
@@ -954,6 +1017,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     },
     setInputProfile(profile) {
       if (Object.values(InputProfile).includes(profile)) {
+        if (profile !== settings.profile) suspendRecovery();
         settings.profile = profile;
         settings.pencilOnly = (profile === InputProfile.IPAD_PEN_ONLY);
         updateTouchAction();
@@ -962,7 +1026,11 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     getInputProfile() {
       return settings.profile;
     },
+    getInputDiagnostics() {
+      return { ...inputDiagnostics, profile: settings.profile, isDrawing, recoverySuspended };
+    },
     setReadOnly(readOnly) {
+      suspendRecovery();
       settings.readOnly = Boolean(readOnly);
       if (settings.readOnly) {
         settings.profile = InputProfile.READ_ONLY;

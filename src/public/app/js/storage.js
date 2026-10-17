@@ -906,10 +906,13 @@ export async function getDraftSession(options = {}) {
   const db = await getDB();
   const targetLearnerId = options.learnerId !== undefined ? options.learnerId : getCurrentLearnerId();
   const draftKey = !targetLearnerId || targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
+  const readRecord = record => !record ? null : options.withRecoveryToken
+    ? { draft: normalizeDraft(record), recoveryToken: JSON.stringify(record) }
+    : normalizeDraft(record);
 
   if (db.isMemory) {
     const record = db.draftSessions.get(draftKey) || (targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? db.draftSessions.get("current_draft") : null);
-    return record ? normalizeDraft(record) : null;
+    return readRecord(record);
   }
 
   return new Promise((resolve, reject) => {
@@ -919,7 +922,7 @@ export async function getDraftSession(options = {}) {
       let strictResult;
       req.onsuccess = () => {
         try {
-          const result = req.result ? normalizeDraft(req.result) : null;
+          const result = readRecord(req.result);
           if (options.strict) strictResult = result; else resolve(result);
         } catch (error) {
           reject(error);
@@ -961,7 +964,9 @@ export async function clearDraftSession(options = {}) {
   const draftKey = !targetLearnerId || targetLearnerId === DEFAULT_LEGACY_LEARNER_ID ? "current_draft" : `current_draft_${targetLearnerId}`;
 
   // Optional compare-and-delete for failed new starts; legacy unguarded cleanup is unchanged.
-  const matches = record => options.expectedSessionId === undefined ||
+  const matches = record => options.expectedRecoveryToken !== undefined
+    ? Boolean(record) && JSON.stringify(record) === options.expectedRecoveryToken
+    : options.expectedSessionId === undefined ||
     (record?.sessionId === options.expectedSessionId && record.updatedAt === options.expectedUpdatedAt &&
        record.revision === options.expectedRevision &&
        (options.expectedWriteId === undefined || (record.writeId || null) === options.expectedWriteId));

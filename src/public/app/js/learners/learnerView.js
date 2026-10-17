@@ -28,6 +28,8 @@ import { getAllSubjects, getSubject } from "../platform/subjectRegistry.js";
 import { navigate, ROUTES } from "../platform/appRouter.js";
 import { formatTime } from "../timer.js";
 import { resolvePracticeRoute, resolveLandingRoute } from "../learningRouteResolver.js";
+import { clearDraft } from "../data/learningCommands.js";
+import { getDraftVersion } from "../draftEngine.js";
 
 let dom = {};
 let isSessionActiveFn = null;
@@ -330,14 +332,14 @@ export async function renderLearnerHomeView() {
 
   // Phase F8 단일 Read Model 쿼리
   const dashboard = await getLearnerDashboard(learner.id);
-  if (!dashboard) return;
+  if (!dashboard || getActiveLearnerId() !== learner.id) return;
 
   // 1. Action Cards 렌더링 (#homeActionCardsSection)
   // 우선순위: 1) 채점 대기/진행 중, 2) 복습 필요, 3) 이어서 풀기
   const actionSection = dom.homeActionCardsSection || dom.learnerHomeView?.querySelector("#homeActionCardsSection");
   if (actionSection) {
     actionSection.innerHTML = "";
-    const { pendingGrading = [], reviewRequired = [], inProgress = [] } = dashboard.actionCards;
+    const { pendingGrading = [], reviewRequired = [], inProgress = [], recoveryDrafts = [] } = dashboard.actionCards;
 
     // 1) 보호자 채점 대기/진행 중
     if (pendingGrading.length > 0) {
@@ -427,7 +429,55 @@ export async function renderLearnerHomeView() {
       actionSection.appendChild(entry);
     }
 
-    actionSection.hidden = (pendingGrading.length === 0 && reviewRequired.length === 0 && inProgress.length === 0);
+    for (const recovery of recoveryDrafts) {
+      const draft = recovery.rawDraft;
+      const entry = document.createElement("section");
+      entry.className = "in-progress-home-entry action-card";
+      entry.id = "draftRecoveryEntry";
+      entry.setAttribute("role", "region");
+      entry.setAttribute("aria-label", "저장된 풀이 복구");
+      entry.innerHTML = `
+        <div class="action-card-copy">
+          <p class="eyebrow">저장된 풀이 확인 필요</p>
+          <h2>새 학습을 시작하기 전에 저장본을 확인해 주세요</h2>
+          <p>${recovery.hasSubmission
+            ? "제출된 학습의 임시 저장본이 남아 있습니다. 제출 기록은 그대로 유지됩니다."
+            : "이 저장본은 바로 이어풀 수 없는 상태입니다. 문제와 필기를 내려받아 보관할 수 있습니다."}</p>
+        </div>
+        <button type="button" class="secondary-action" id="downloadRecoveryDraftBtn">저장본 내려받기</button>
+        <button type="button" class="secondary-action" id="discardRecoveryDraftBtn">이 임시 저장본 삭제</button>`;
+      entry.querySelector("#downloadRecoveryDraftBtn").addEventListener("click", () => {
+        if (getActiveLearnerId() !== learner.id) return;
+        const url = URL.createObjectURL(new Blob([JSON.stringify({ format: "math-canvas-draft-recovery-v1", draft }, null, 2)], { type: "application/json" }));
+        const anchor = document.createElement("a");
+        anchor.href = url; anchor.download = "math-canvas-saved-practice.json";
+        anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+      const discardButton = entry.querySelector("#discardRecoveryDraftBtn");
+      discardButton.addEventListener("click", async () => {
+        if (getActiveLearnerId() !== learner.id) return;
+        if (isSessionActiveFn?.()) {
+          window.alert("열려 있는 학습을 먼저 종료한 뒤 다시 확인해 주세요.");
+          return;
+        }
+        if (!window.confirm("이 임시 저장본의 문제와 필기를 삭제할까요? 되돌릴 수 없으므로 필요한 내용은 먼저 내려받아 주세요. 제출된 학습 기록은 삭제하지 않습니다.")) return;
+        if (getActiveLearnerId() !== learner.id) return;
+        discardButton.disabled = true;
+        try {
+          const version = getDraftVersion(draft);
+          const removed = await clearDraft({ learnerId: learner.id, expectedSessionId: version.sessionId,
+            expectedUpdatedAt: version.updatedAt, expectedRevision: version.revision, expectedWriteId: version.writeId,
+            expectedRecoveryToken: recovery.recoveryToken });
+          if (!removed) window.alert("다른 화면에서 저장본이 변경되어 삭제하지 않았습니다. 최신 저장본을 다시 확인해 주세요.");
+          if (getActiveLearnerId() === learner.id) await renderLearnerHomeView();
+        } catch (error) {
+          window.alert("저장본을 삭제하지 못했습니다. 내용은 유지됩니다. 다시 시도해 주세요.");
+        } finally { discardButton.disabled = false; }
+      });
+      actionSection.appendChild(entry);
+    }
+
+    actionSection.hidden = (pendingGrading.length === 0 && reviewRequired.length === 0 && inProgress.length === 0 && recoveryDrafts.length === 0);
   }
 
   //+_+// Phase F9: 오늘의 추천 렌더링 (#homeRecommendationSection)

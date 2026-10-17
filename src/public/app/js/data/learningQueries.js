@@ -200,20 +200,21 @@ export async function getLearnerDashboard(learnerId, options = {}) {
 
   // 병렬로 기존 Read Query 호출 (DB Write 없는 순수 읽기)
   const [
-    draft,
+    draftRead,
     allSubmissions,
     activeReviewItems,
     aggregates,
     recentSessions,
     curriculumProgressData
   ] = await Promise.all([
-    getDraft({ learnerId: targetLearnerId }).catch(() => null),
+    getDraft({ learnerId: targetLearnerId, withRecoveryToken: true }).catch(() => null),
     getAllSubmissions({ learnerId: targetLearnerId }).catch(() => []),
     getActiveReviewItems({ learnerId: targetLearnerId }).catch(() => []),
     getProgressAggregates({ learnerId: targetLearnerId }).catch(() => []),
     getRecentSessions(options.recentLimit || 5, { learnerId: targetLearnerId }).catch(() => []),
     getCurriculumProgress({ learnerId: targetLearnerId }).catch(() => ({ mul: [], div: [] }))
   ]);
+  const draft = draftRead?.draft || null;
 
   // 1. Action Card: 풀이 중 (inProgress)
   const inProgressCards = [];
@@ -577,7 +578,13 @@ export async function getLearnerDashboard(learnerId, options = {}) {
     actionCards: {
       inProgress: inProgressCards,
       pendingGrading: pendingGradingCards,
-      reviewRequired: activeReviews
+      reviewRequired: activeReviews,
+      // Every Draft which blocks a new start must have a visible way out.
+      // Do not turn orphan grading Drafts into editable Submission placeholders.
+      recoveryDrafts: draft && (draft.learnerId || DEFAULT_LEGACY_LEARNER_ID) === targetLearnerId && !inProgressCards.length
+        ? [{ rawDraft: draft, recoveryToken: draftRead.recoveryToken, hasSubmission: allSubmissions.some(s => s.sessionId === draft.sessionId),
+          reason: draft.sessionState === "SESSION_COMPLETE" ? "COMPLETE_DRAFT" : "UNRESUMABLE_DRAFT" }]
+        : []
     },
     overall,
     subjects,
