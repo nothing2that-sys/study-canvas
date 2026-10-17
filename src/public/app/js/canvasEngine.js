@@ -134,6 +134,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   let activePenPointerId = null;
   let activeTouchPointerId = null;
   let activeTouchPointerType = null;
+  let activePointerStartTime = null;
   let currentState = InputState.IDLE;
   let lastPenEndTime = 0;
   let cooldownTimer = null;
@@ -178,6 +179,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   let rafId = null;
   let lastDrawnPointIndex = 0;
   let eraserGestureChanged = false;
+  let lastEraserPoint = null;
 
   // 동적 touch-action 업데이트
   function updateTouchAction() {
@@ -435,20 +437,66 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     }
   }
 
-  // 획 지우개 처리
-  function eraseStrokesAtPoints(points) {
-    if (strokes.length === 0 || !Array.isArray(points) || points.length === 0) return false;
-    const radius = settings.eraserRadius;
-    const initialLen = strokes.length;
+  function pointSegmentDistanceSquared(p, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const length = dx * dx + dy * dy;
+    const t = length ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length)) : 0;
+    return (p.x - a.x - t * dx) ** 2 + (p.y - a.y - t * dy) ** 2;
+  }
 
-    strokes = strokes.filter((stroke) => {
-      return !stroke.points.some((p) => {
-        const mapped = mapPointToCanvas(p, stroke);
-        return points.some((pt) => Math.hypot(mapped.x - pt.x, mapped.y - pt.y) <= radius);
-      });
+  function segmentsWithinRadius(a, b, c, d, radius) {
+    if (Math.max(a.x, b.x) + radius < Math.min(c.x, d.x) || Math.max(c.x, d.x) + radius < Math.min(a.x, b.x)
+      || Math.max(a.y, b.y) + radius < Math.min(c.y, d.y) || Math.max(c.y, d.y) + radius < Math.min(a.y, b.y)) return false;
+    const cross = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    if (Math.max(a.x, b.x) >= Math.min(c.x, d.x) && Math.max(c.x, d.x) >= Math.min(a.x, b.x)
+      && Math.max(a.y, b.y) >= Math.min(c.y, d.y) && Math.max(c.y, d.y) >= Math.min(a.y, b.y)
+      && cross(a, b, c) * cross(a, b, d) <= 0 && cross(c, d, a) * cross(c, d, b) <= 0) return true;
+    return Math.min(pointSegmentDistanceSquared(a, c, d), pointSegmentDistanceSquared(b, c, d),
+      pointSegmentDistanceSquared(c, a, b), pointSegmentDistanceSquared(d, a, b)) <= radius * radius;
+  }
+
+  function renderedInkPath(mapped) {
+    if (mapped.length < 3 || typeof ctx.quadraticCurveTo !== "function") return mapped;
+    const path = [mapped[0]];
+    const midpoint = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    function flatten(a, control, b, depth = 0) {
+      // Follow the same quadratic segments as drawFullStroke to within half a CSS pixel.
+      if (depth >= 10 || pointSegmentDistanceSquared(control, a, b) <= 0.25) {
+        path.push(b);
+        return;
+      }
+      const left = midpoint(a, control), right = midpoint(control, b), split = midpoint(left, right);
+      flatten(a, left, split, depth + 1);
+      flatten(split, right, b, depth + 1);
+    }
+    for (let i = 1; i < mapped.length; i++) {
+      if (i === mapped.length - 1) path.push(mapped[i]);
+      else flatten(path[path.length - 1], mapped[i], midpoint(mapped[i], mapped[i + 1]));
+    }
+    return path;
+  }
+
+  // Test the swept eraser against ink segments, including sparsely sampled fast strokes.
+  function eraseStrokesAtPoints(points) {
+    if (!Array.isArray(points) || points.length === 0) return false;
+    const path = lastEraserPoint ? [lastEraserPoint, ...points] : points;
+    lastEraserPoint = points[points.length - 1];
+    if (strokes.length === 0) return false;
+    const remaining = strokes.filter((stroke) => {
+      const mapped = stroke.points.map(p => mapPointToCanvas(p, stroke));
+      const ink = renderedInkPath(mapped);
+      const radius = settings.eraserRadius + (stroke.width || 2.5) * (mapped[0]?.scale || 1) / 2;
+      for (let i = 0; i < ink.length; i++) {
+        for (let j = 0; j < path.length; j++) {
+          if (segmentsWithinRadius(ink[Math.max(0, i - 1)], ink[i], path[Math.max(0, j - 1)], path[j], radius)) return false;
+        }
+      }
+      return true;
     });
 
-    if (strokes.length !== initialLen) {
+    if (remaining.length !== strokes.length) {
+      if (!eraserGestureChanged) saveToUndoStack();
+      strokes = remaining;
       redraw();
       eraserGestureChanged = true;
       return true;
@@ -584,6 +632,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     }
 
     isDrawing = true;
+    activePointerStartTime = Number.isFinite(e.timeStamp) ? e.timeStamp : null;
 
     try {
       if (typeof canvasElement.setPointerCapture === "function" && e.pointerId !== undefined) {
@@ -600,13 +649,15 @@ export function createDrawingCanvas(canvasElement, options = {}) {
       return;
     }
 
-    saveToUndoStack();
     eraserGestureChanged = false;
+    lastEraserPoint = null;
 
     if (settings.isEraser) {
       eraseStrokesAtPoints(pts);
       return;
     }
+
+    saveToUndoStack();
 
     currentStroke = {
       id: `stroke_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -636,6 +687,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
 
   function matchesActivePointer(e) {
     if (!e) return false;
+    // ID reuse must not let an older contact's queued event mutate the new stroke.
+    if (activePointerStartTime !== null && Number.isFinite(e.timeStamp) && e.timeStamp > 0
+      && e.timeStamp < activePointerStartTime) return false;
     if (activePenPointerId !== null) {
       return e.pointerType === "pen" && e.pointerId === activePenPointerId;
     }
@@ -663,7 +717,7 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     }
   }
 
-  function onPointerUp(e) {
+  function onPointerUp(e, captureCoordinates = true) {
     if (destroyed || !isDrawing || !matchesActivePointer(e)) return;
 
     const isPen = e.pointerType === "pen";
@@ -671,13 +725,14 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     if (e.cancelable) e.preventDefault();
 
     //+_+// 빠른 짧은 획은 마지막 pointermove 없이 pointerup될 수 있으므로 종료 좌표를 확정 전에 반영한다.
-    captureTerminalEvent(e);
+    if (captureCoordinates) captureTerminalEvent(e);
     cancelScheduledRender();
 
     if (currentStroke && currentStroke.points.length > 0) {
-      renderIncremental();
       strokes.push(currentStroke);
       currentStroke = null;
+      // Remove provisional incremental tails; committed ink must match reload/hit testing.
+      redraw();
       notifyChange();
     } else if (settings.isEraser && eraserGestureChanged) {
       notifyChange();
@@ -688,6 +743,8 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     activePenPointerId = null;
     activeTouchPointerId = null;
     activeTouchPointerType = null;
+    activePointerStartTime = null;
+    lastEraserPoint = null;
     cachedCanvasRect = null;
     cachedGridInfo = null;
 
@@ -724,9 +781,9 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     cancelScheduledRender();
 
     if (currentStroke && currentStroke.points.length > 0) {
-      renderIncremental();
       strokes.push(currentStroke);
       currentStroke = null;
+      redraw();
       notifyChange();
     } else if (settings.isEraser && eraserGestureChanged) {
       notifyChange();
@@ -737,6 +794,8 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     activePenPointerId = null;
     activeTouchPointerId = null;
     activeTouchPointerType = null;
+    activePointerStartTime = null;
+    lastEraserPoint = null;
     cachedCanvasRect = null;
     cachedGridInfo = null;
 
@@ -763,7 +822,14 @@ export function createDrawingCanvas(canvasElement, options = {}) {
   }
 
   function onLostPointerCapture(e) {
-    if (!destroyed && isDrawing && matchesActivePointer(e)) onPointerUp(e);
+    // A prior contact's queued loss can arrive after this ID has been recaptured.
+    // Capture events have no drawing coordinates and must not append (0, 0).
+    try {
+      if (canvasElement.hasPointerCapture?.(e.pointerId)) return;
+    } catch (_) {}
+    if (!destroyed && isDrawing && matchesActivePointer(e)) {
+      onPointerUp(e, false);
+    }
   }
 
   function resetActivePointers(options = {}) {
@@ -783,18 +849,20 @@ export function createDrawingCanvas(canvasElement, options = {}) {
     if (isDrawing) {
       let strokeCommitted = false;
       if (currentStroke && currentStroke.points.length > 0) {
-        renderIncremental();
         strokes.push(currentStroke);
         strokeCommitted = true;
       }
       currentStroke = null;
       isDrawing = false;
+      if (strokeCommitted) redraw();
       if (strokeCommitted || eraserGestureChanged) notifyChange();
     }
     eraserGestureChanged = false;
     activePenPointerId = null;
     activeTouchPointerId = null;
     activeTouchPointerType = null;
+    activePointerStartTime = null;
+    lastEraserPoint = null;
     currentState = InputState.IDLE;
     cachedCanvasRect = null;
     cachedGridInfo = null;
