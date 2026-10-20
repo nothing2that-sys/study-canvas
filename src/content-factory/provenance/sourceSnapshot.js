@@ -55,7 +55,11 @@ export function validateLicense(licenseId) {
     return { valid: true, category: LicenseType.OPEN_LICENSE };
   }
 
-  if (upper === "KOGL_TYPE_2" || upper === "CC_BY_SA_2_0_KR" || upper === "CC_BY_SA_4_0") {
+  if (upper === "KOGL_TYPE_2") return { valid: true, category: LicenseType.NON_COMMERCIAL };
+  if (upper === "KOGL_TYPE_3") return { valid: true, category: LicenseType.NO_DERIVATIVES };
+  if (upper === "KOGL_TYPE_4") return { valid: true, category: LicenseType.NON_COMMERCIAL_NO_DERIVATIVES };
+
+  if (upper === "CC_BY_SA_2_0_KR" || upper === "CC_BY_SA_4_0") {
     return { valid: true, category: LicenseType.SHARE_ALIKE };
   }
 
@@ -97,7 +101,8 @@ export function createSourceSnapshot({ sourceId, sourceVersion, sourceUri, retri
     sourceVersion,
     sourceUri,
     retrievedAt,
-    licenseId: licenseResult.category,
+    licenseId: licenseId.trim().toUpperCase(),
+    ...(licenseId.trim().toUpperCase() !== licenseResult.category ? { licenseCategory: licenseResult.category } : {}),
     contentHash
   };
 

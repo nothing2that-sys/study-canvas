@@ -45,14 +45,21 @@ export function validateLicenseForMaterialization(licenseId, provenance = null) 
     }
   }
 
-  // SHARE_ALIKE must retain license identity
-  if (res.category === LicenseType.SHARE_ALIKE) {
-    if (!licenseId || !licenseId.trim()) {
-      return {
-        valid: false,
-        category: res.category,
-        error: `License SHARE_ALIKE requires preserved license propagation metadata`
-      };
+  // General public materialization cannot establish NC/ND use compatibility.
+  if ([LicenseType.NON_COMMERCIAL, LicenseType.NO_DERIVATIVES,
+    LicenseType.NON_COMMERCIAL_NO_DERIVATIVES].includes(res.category)) {
+    return { valid: false, category: res.category,
+      error: `License "${licenseId}" requires separate use/permission review; public materialization is blocked` };
+  }
+
+  // These are evidence requirements, not an automated legal clearance.
+  if ([LicenseType.SHARE_ALIKE, LicenseType.OPEN_LICENSE].includes(res.category)) {
+    const fields = ["attribution", "sourceUri", "sourceTitle", "licenseUrl", "noticePath", "changeDescription"];
+    const missing = fields.filter(key => typeof provenance?.[key] !== "string" || !provenance[key].trim());
+    if (provenance?.licenseReview !== "HUMAN_APPROVED" || missing.length
+      || (res.category === LicenseType.SHARE_ALIKE && provenance?.appliedLicense !== licenseId.trim().toUpperCase())) {
+      return { valid: false, category: res.category,
+        error: `License "${licenseId}" requires HUMAN_APPROVED license review, attribution/source/title/license/notice/change metadata and applicable license propagation` };
     }
   }
 

@@ -8,6 +8,7 @@
 //+_+// - windowRef 주입 지원을 통한 Node 및 브라우저 환경 완벽 대응
 
 import { getActiveLearnerId } from "../learners/learnerQueries.js";
+import { isReleaseSubjectAllowed } from "../publicReleasePolicy.js";
 
 export const ROUTES = Object.freeze({
   ROOT: "/",
@@ -97,6 +98,8 @@ export function normalizePath(pathStr) {
 export function resolveGuardedPath(targetPath) {
   const normalized = normalizePath(targetPath);
   const activeLearnerId = getActiveLearnerId();
+  const subjectId = normalized.split("/")[1];
+  if (["math", "english", "korean"].includes(subjectId) && !isReleaseSubjectAllowed(subjectId)) return ROUTES.HOME;
 
   //+_+// 0. 활성 세션(Practice / Grading) 중 외부 라우트 이탈 방어
   if (sessionCheckCallback) {

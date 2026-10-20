@@ -3,6 +3,7 @@
 //+_+// - 단일 Registry로 과목(수학, 국어, 영어) 및 하위 모듈 계약 관리
 //+_+// - UI 하드코딩 방지 및 다과목 확장성 확보
 //+_+// Phase F12: Korean Core 모듈 상시 활성화 (SSOT)
+import { isReleaseSubjectAllowed } from "../publicReleasePolicy.js";
 const KOREAN_MODULES = Object.freeze([
   {
     id: "korean-core",
@@ -151,17 +152,17 @@ export const SUBJECTS = Object.freeze([
 
 //+_+// 모든 등록 과목 목록 반환
 export function getAllSubjects() {
-  return SUBJECTS;
+  return SUBJECTS.filter(subject => isReleaseSubjectAllowed(subject.id));
 }
 
 //+_+// 활성(active & enabled) 상태인 과목 목록 반환
 export function getActiveSubjects() {
-  return SUBJECTS.filter((subject) => subject.status === "active" && subject.enabled);
+  return SUBJECTS.filter((subject) => subject.status === "active" && subject.enabled && isReleaseSubjectAllowed(subject.id));
 }
 
 //+_+// 과목 ID로 과목 정보 조회
 export function getSubject(subjectId) {
-  if (!subjectId) return null;
+  if (!subjectId || !isReleaseSubjectAllowed(subjectId)) return null;
   return SUBJECTS.find((s) => s.id === subjectId) || null;
 }
 
@@ -178,6 +179,7 @@ export function resolveSubjectByRoute(routePath) {
   const path = String(routePath).trim();
 
   for (const subject of SUBJECTS) {
+    if (!isReleaseSubjectAllowed(subject.id)) continue;
     if (subject.entryRoute === path) {
       return { subject, module: null };
     }

@@ -1,6 +1,7 @@
 //+_+// Phase F13-R3 기존 콘텐츠를 자동 학년 승인하지 않는 문제집 카탈로그
 
 import { normalizeWorkbookDefinition, normalizeWorkbookEdition } from "./workbookEngine.js";
+import { isReleaseSubjectAllowed } from "./publicReleasePolicy.js";
 
 const rawCatalog = [
   {
@@ -428,9 +429,9 @@ const catalog = rawCatalog.map((item) => ({
 }));
 
 export function getWorkbookCatalog() {
-  return catalog.slice();
+  return catalog.filter(item => isReleaseSubjectAllowed(item.definition.subjectId));
 }
 
 export function getWorkbookCatalogItem(workbookId) {
-  return catalog.find((item) => item.definition.workbookId === String(workbookId || "")) || null;
+  return catalog.find((item) => item.definition.workbookId === String(workbookId || "") && isReleaseSubjectAllowed(item.definition.subjectId)) || null;
 }
