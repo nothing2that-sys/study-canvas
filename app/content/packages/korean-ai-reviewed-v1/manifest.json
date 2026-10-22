@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "packageId": "korean-ai-reviewed-v1",
+  "packageVersion": "1.6.0",
+  "status": "VERIFIED",
+  "subjects": [
+    "korean"
+  ],
+  "curriculumVersion": "2022-revised",
+  "files": {
+    "activities": "./activities.json",
+    "curriculum": "./curriculum.json"
+  },
+  "sourcePolicy": {
+    "defaultSourceType": "PROJECT_OWNED",
+    "defaultLicense": "PER_ITEM_NOTICES",
+    "defaultReviewStatus": "VERIFIED"
+  },
+  "reviewKind": "AI_EVIDENCE_REVIEW_V1",
+  "humanApprovalGranted": false
+}

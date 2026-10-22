@@ -1,0 +1,6 @@
+app/** -text
+content-snapshot.json -text
+LICENSES/** -text
+*.mjs text eol=lf
+*.md text eol=lf
+*.yml text eol=lf

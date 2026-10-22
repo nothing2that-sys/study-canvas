@@ -1,0 +1,16 @@
+{
+  "name": "study-canvas",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm test && npm run privacy:check && npm run build",
+    "privacy:check": "node scripts/privacy-check.mjs",
+    "bank:export": "node scripts/export-bank.mjs"
+  }
+}

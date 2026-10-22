@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "packageId": "korean-ai-reviewed-v1",
+  "subjectId": "korean",
+  "courseId": "korean-core",
+  "curriculumVersion": "2022-revised",
+  "skills": [
+    {
+      "skillId": "KO_SPACING_PARTICLE_REBUILD",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "spacing",
+      "title": "조사 붙여 쓰기",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_BANK_A_NOUN_SPACING",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "spacing",
+      "title": "의존명사·명사 띄어쓰기",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_BANK_A_UNIT_SPACING",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "spacing",
+      "title": "단위 띄어쓰기",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_BANK_A_PUNCTUATION",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "sentence",
+      "title": "문장 부호",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_REVIEW_READING_COMPREHENSION",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "reading",
+      "title": "글의 정보·구조와 근거 이해",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED",
+      "name": "글의 정보·구조와 근거 이해"
+    },
+    {
+      "skillId": "KO_REVIEW_VOCAB_CONTEXT",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "vocabulary",
+      "title": "문맥 속 낱말 뜻",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_SOURCE_LITERAL_DICTIONARY",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "vocabulary",
+      "title": "사전 읽고 낱말 뜻 설명",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_HELD_MEANING_CONTRAST",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "vocabulary",
+      "title": "같은 표기의 다른 뜻 비교",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_HELD_IDIOM_CONTEXT",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "vocabulary",
+      "title": "관용구 사용 장면",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_HELD_PROVERB_CONTEXT",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "vocabulary",
+      "title": "속담 사용 장면",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_REMAINING_TOPIC_CONTEXT",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "vocabulary",
+      "title": "생활·학습 낱말 문맥",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_DICT_NOUN_INFO",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "vocabulary",
+      "title": "사전 속 이름의 뜻",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_DICT_ADVERB_INFO",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "vocabulary",
+      "title": "사전 속 꾸미는 말의 뜻",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_DICT_ADJECTIVE_INFO",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "vocabulary",
+      "title": "사전 속 성질·상태의 뜻",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "KO_DICT_VERB_INFO",
+      "subjectId": "korean",
+      "courseId": "korean-core",
+      "unitId": "vocabulary",
+      "title": "사전 속 움직임의 뜻",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    }
+  ],
+  "packageVersion": "1.6.0"
+}

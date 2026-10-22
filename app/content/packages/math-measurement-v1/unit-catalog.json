@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "packageId": "math-measurement-v1",
+  "packageVersion": "1.0.1",
+  "catalogVersion": 2,
+  "dimensions": [
+    {
+      "dimensionId": "length",
+      "name": "길이",
+      "units": [
+        { "unitId": "mm", "symbol": "mm", "name": "밀리미터", "baseFactor": 1 },
+        { "unitId": "cm", "symbol": "cm", "name": "센티미터", "baseFactor": 10 },
+        { "unitId": "m", "symbol": "m", "name": "미터", "baseFactor": 1000 },
+        { "unitId": "km", "symbol": "km", "name": "킬로미터", "baseFactor": 1000000 }
+      ]
+    },
+    {
+      "dimensionId": "mass",
+      "name": "무게",
+      "units": [
+        { "unitId": "g", "symbol": "g", "name": "그램", "baseFactor": 1 },
+        { "unitId": "kg", "symbol": "kg", "name": "킬로그램", "baseFactor": 1000 }
+      ]
+    },
+    {
+      "dimensionId": "capacity",
+      "name": "들이",
+      "units": [
+        { "unitId": "ml", "symbol": "mL", "name": "밀리리터", "baseFactor": 1 },
+        { "unitId": "l", "symbol": "L", "name": "리터", "baseFactor": 1000 }
+      ]
+    }
+  ],
+  "generatorProfiles": [
+    {
+      "skillId": "MATH_UNIT_M_CM_TO_SMALLER",
+      "dimensionId": "length",
+      "direction": "to_smaller",
+      "achievementStandardIds": ["2수03-11"],
+      "allowedPairs": [
+        { "sourceUnitId": "m", "targetUnitId": "cm" }
+      ],
+      "sourceRange": { "min": 1, "max": 50 }
+    },
+    {
+      "skillId": "MATH_UNIT_M_CM_TO_LARGER",
+      "dimensionId": "length",
+      "direction": "to_larger",
+      "achievementStandardIds": ["2수03-11"],
+      "allowedPairs": [
+        { "sourceUnitId": "cm", "targetUnitId": "m" }
+      ],
+      "multiplierRange": { "min": 1, "max": 50 }
+    },
+    {
+      "skillId": "MATH_UNIT_CM_MM_TO_SMALLER",
+      "dimensionId": "length",
+      "direction": "to_smaller",
+      "achievementStandardIds": ["4수03-16"],
+      "allowedPairs": [
+        { "sourceUnitId": "cm", "targetUnitId": "mm" }
+      ],
+      "sourceRange": { "min": 1, "max": 50 }
+    },
+    {
+      "skillId": "MATH_UNIT_CM_MM_TO_LARGER",
+      "dimensionId": "length",
+      "direction": "to_larger",
+      "achievementStandardIds": ["4수03-16"],
+      "allowedPairs": [
+        { "sourceUnitId": "mm", "targetUnitId": "cm" }
+      ],
+      "multiplierRange": { "min": 1, "max": 50 }
+    },
+    {
+      "skillId": "MATH_UNIT_KM_M_TO_SMALLER",
+      "dimensionId": "length",
+      "direction": "to_smaller",
+      "achievementStandardIds": ["4수03-16"],
+      "allowedPairs": [
+        { "sourceUnitId": "km", "targetUnitId": "m" }
+      ],
+      "sourceRange": { "min": 1, "max": 50 }
+    },
+    {
+      "skillId": "MATH_UNIT_KM_M_TO_LARGER",
+      "dimensionId": "length",
+      "direction": "to_larger",
+      "achievementStandardIds": ["4수03-16"],
+      "allowedPairs": [
+        { "sourceUnitId": "m", "targetUnitId": "km" }
+      ],
+      "multiplierRange": { "min": 1, "max": 50 }
+    },
+    {
+      "skillId": "MATH_UNIT_MASS_TO_SMALLER",
+      "dimensionId": "mass",
+      "direction": "to_smaller",
+      "achievementStandardIds": ["4수03-21"],
+      "allowedPairs": [
+        { "sourceUnitId": "kg", "targetUnitId": "g" }
+      ],
+      "sourceRange": { "min": 1, "max": 50 }
+    },
+    {
+      "skillId": "MATH_UNIT_MASS_TO_LARGER",
+      "dimensionId": "mass",
+      "direction": "to_larger",
+      "achievementStandardIds": ["4수03-21"],
+      "allowedPairs": [
+        { "sourceUnitId": "g", "targetUnitId": "kg" }
+      ],
+      "multiplierRange": { "min": 1, "max": 50 }
+    },
+    {
+      "skillId": "MATH_UNIT_CAPACITY_TO_SMALLER",
+      "dimensionId": "capacity",
+      "direction": "to_smaller",
+      "achievementStandardIds": ["4수03-18"],
+      "allowedPairs": [
+        { "sourceUnitId": "l", "targetUnitId": "ml" }
+      ],
+      "sourceRange": { "min": 1, "max": 50 }
+    },
+    {
+      "skillId": "MATH_UNIT_CAPACITY_TO_LARGER",
+      "dimensionId": "capacity",
+      "direction": "to_larger",
+      "achievementStandardIds": ["4수03-18"],
+      "allowedPairs": [
+        { "sourceUnitId": "ml", "targetUnitId": "l" }
+      ],
+      "multiplierRange": { "min": 1, "max": 50 }
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "packageId": "math-measurement-v1",
+  "packageVersion": "1.0.1",
+  "curriculumVersion": "2022-revised",
+  "status": "VERIFIED",
+  "subjects": [
+    "math"
+  ],
+  "files": {
+    "curriculum": "./curriculum.json",
+    "activities": "./activities.json",
+    "unitCatalog": "./unit-catalog.json"
+  },
+  "sourcePolicy": {
+    "defaultSourceType": "PROJECT_OWNED",
+    "defaultLicense": "PROJECT_OWNED",
+    "defaultReviewStatus": "VERIFIED"
+  },
+  "createdAt": "2026-09-08T00:00:00.000Z"
+}

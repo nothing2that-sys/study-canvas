@@ -1,0 +1,476 @@
+{
+  "schemaVersion": 1,
+  "packageId": "math-fraction-concepts-v1",
+  "packageVersion": "1.0.1",
+  "activities": [
+    {
+      "id": "frac_part_whole_bar_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-fraction-concepts-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "frac_part_whole_bar_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "concepts",
+      "skillId": "MATH_FRACTION_PART_WHOLE",
+      "activityType": "MULTIPLE_CHOICE",
+      "responseType": "CHOICE",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "색칠된 부분은 전체의 얼마인가요?",
+      "expectedAnswer": "choice_3",
+      "choices": [
+        { "id": "choice_1", "label": "1/4" },
+        { "id": "choice_2", "label": "2/4" },
+        { "id": "choice_3", "label": "3/4" },
+        { "id": "choice_4", "label": "4/4" }
+      ],
+      "explanation": "전체 4부분 중 3부분이 색칠되어 있으므로 3/4(4분의 3)입니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-09"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "frac_part_whole_bar_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro 자체 작성 및 사람 검수",
+        "retrievedAt": "2026-09-15",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro content review"
+      },
+      "metadata": {
+        "fractionRepresentation": {
+          "type": "PART_WHOLE_BAR",
+          "totalParts": 4,
+          "filledParts": 3,
+          "denominator": 4,
+          "numerator": 3
+        }
+      }
+    },
+    {
+      "id": "frac_part_whole_grid_002",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-fraction-concepts-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "frac_part_whole_grid_002",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "concepts",
+      "skillId": "MATH_FRACTION_PART_WHOLE",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "그림을 보고 색칠된 부분을 분수로 쓰세요. (예: 5/6)",
+      "expectedAnswer": "5/6",
+      "explanation": "전체 6칸 중 5칸이 색칠되어 있으므로 5/6입니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-09"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "frac_part_whole_grid_002",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro 자체 작성 및 사람 검수",
+        "retrievedAt": "2026-09-15",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro content review"
+      },
+      "metadata": {
+        "fractionRepresentation": {
+          "type": "PART_WHOLE_GRID",
+          "rows": 2,
+          "cols": 3,
+          "denominator": 6,
+          "numerator": 5
+        }
+      }
+    },
+    {
+      "id": "frac_symbolic_parts_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-fraction-concepts-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "frac_symbolic_parts_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "concepts",
+      "skillId": "MATH_FRACTION_SYMBOLIC_NOTATION",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "분수 5/8에서 분자는 얼마인가요?",
+      "expectedAnswer": "5",
+      "explanation": "가로선 위의 수가 분자이므로 분자는 5입니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-09"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "frac_symbolic_parts_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro 자체 작성 및 사람 검수",
+        "retrievedAt": "2026-09-15",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro content review"
+      },
+      "metadata": {
+        "fractionRepresentation": {
+          "type": "SYMBOLIC_FRACTION",
+          "numerator": 5,
+          "denominator": 8
+        }
+      }
+    },
+    {
+      "id": "frac_symbolic_reading_002",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-fraction-concepts-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "frac_symbolic_reading_002",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "concepts",
+      "skillId": "MATH_FRACTION_SYMBOLIC_NOTATION",
+      "activityType": "MULTIPLE_CHOICE",
+      "responseType": "CHOICE",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "분수 3/7을 올바르게 읽은 것을 고르세요.",
+      "expectedAnswer": "choice_b",
+      "choices": [
+        { "id": "choice_a", "label": "3분의 7" },
+        { "id": "choice_b", "label": "7분의 3" },
+        { "id": "choice_c", "label": "7과 3" }
+      ],
+      "explanation": "분모를 먼저 읽고 분자를 나중에 읽으므로 '7분의 3'입니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-09"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "frac_symbolic_reading_002",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro 자체 작성 및 사람 검수",
+        "retrievedAt": "2026-09-15",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro content review"
+      },
+      "metadata": {
+        "fractionRepresentation": {
+          "type": "SYMBOLIC_FRACTION",
+          "numerator": 3,
+          "denominator": 7
+        }
+      }
+    },
+    {
+      "id": "frac_number_line_pos_001",
+      "version": 2,
+      "contentRef": {
+        "packageId": "math-fraction-concepts-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "frac_number_line_pos_001",
+        "contentVersion": 2
+      },
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "number_line",
+      "skillId": "MATH_FRACTION_NUMBER_LINE_COMPARE",
+      "activityType": "MULTIPLE_CHOICE",
+      "responseType": "CHOICE",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "수직선에서 화살표(▼)가 가리키는 분수는 무엇인가요?",
+      "expectedAnswer": "choice_2",
+      "choices": [
+        { "id": "choice_1", "label": "1/5" },
+        { "id": "choice_2", "label": "2/5" },
+        { "id": "choice_3", "label": "3/5" },
+        { "id": "choice_4", "label": "4/5" }
+      ],
+      "explanation": "0부터 1까지를 5등분한 눈금 중 두 번째 위치이므로 2/5입니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-09"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "frac_number_line_pos_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro 자체 작성 및 사람 검수",
+        "retrievedAt": "2026-09-15",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro content review"
+      },
+      "metadata": {
+        "fractionRepresentation": {
+          "type": "NUMBER_LINE",
+          "maxVal": 1,
+          "denominator": 5,
+          "numerator": 2
+        }
+      }
+    },
+    {
+      "id": "frac_number_line_compare_002",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-fraction-concepts-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "frac_number_line_compare_002",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "number_line",
+      "skillId": "MATH_FRACTION_NUMBER_LINE_COMPARE",
+      "activityType": "MULTIPLE_CHOICE",
+      "responseType": "CHOICE",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "수직선에 표시된 분수와 비교할 때, 둘 중 더 큰 분수를 고르세요.",
+      "expectedAnswer": "choice_b",
+      "choices": [
+        { "id": "choice_a", "label": "2/6" },
+        { "id": "choice_b", "label": "4/6" }
+      ],
+      "explanation": "분모가 6으로 같으므로 수직선에서 더 오른쪽에 있는 4/6가 더 큽니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-11"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "frac_number_line_compare_002",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro 자체 작성 및 사람 검수",
+        "retrievedAt": "2026-09-15",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro content review"
+      },
+      "metadata": {
+        "fractionRepresentation": {
+          "type": "NUMBER_LINE",
+          "maxVal": 1,
+          "denominator": 6,
+          "numerator": 4
+        }
+      }
+    },
+    {
+      "id": "frac_types_identify_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-fraction-concepts-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "frac_types_identify_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "fraction_types",
+      "skillId": "MATH_FRACTION_PROPER_IMPROPER_MIXED",
+      "activityType": "MULTIPLE_CHOICE",
+      "responseType": "CHOICE",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "다음 중 분자가 분모보다 크거나 같은 '가분수'를 고르세요.",
+      "expectedAnswer": "choice_c",
+      "choices": [
+        { "id": "choice_a", "label": "2/5" },
+        { "id": "choice_b", "label": "3/4" },
+        { "id": "choice_c", "label": "7/4" },
+        { "id": "choice_d", "label": "1/6" }
+      ],
+      "explanation": "분자(7)가 분모(4)보다 크므로 7/4는 가분수입니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-10"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "frac_types_identify_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro 자체 작성 및 사람 검수",
+        "retrievedAt": "2026-09-15",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro content review"
+      },
+      "metadata": {
+        "fractionRepresentation": {
+          "type": "SYMBOLIC_FRACTION",
+          "numerator": 7,
+          "denominator": 4
+        }
+      }
+    },
+    {
+      "id": "frac_mixed_to_improper_002",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-fraction-concepts-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "frac_mixed_to_improper_002",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "fraction_types",
+      "skillId": "MATH_FRACTION_PROPER_IMPROPER_MIXED",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "대분수 1과 2/3를 가분수로 나타내세요. (예: 5/3)",
+      "expectedAnswer": "5/3",
+      "explanation": "자연수 1은 3/3이므로, 3/3과 2/3를 더하면 5/3가 됩니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-10"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "frac_mixed_to_improper_002",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro 자체 작성 및 사람 검수",
+        "retrievedAt": "2026-09-15",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro content review"
+      },
+      "metadata": {
+        "fractionRepresentation": {
+          "type": "SYMBOLIC_FRACTION",
+          "wholeNumber": 1,
+          "numerator": 2,
+          "denominator": 3
+        }
+      }
+    },
+    {
+      "id": "frac_equiv_pair_choice_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-fraction-concepts-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "frac_equiv_pair_choice_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "equivalent",
+      "skillId": "MATH_FRACTION_EQUIVALENT_VISUAL",
+      "activityType": "MULTIPLE_CHOICE",
+      "responseType": "CHOICE",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "위아래 막대 그림을 비교하여, 1/2과 크기가 같은 분수를 고르세요.",
+      "expectedAnswer": "choice_2",
+      "choices": [
+        { "id": "choice_1", "label": "1/4" },
+        { "id": "choice_2", "label": "2/4" },
+        { "id": "choice_3", "label": "3/4" }
+      ],
+      "explanation": "그림에서 색칠된 막대의 전체 길이가 같으므로 1/2과 2/4는 크기가 같습니다.",
+      "gradeLevel": 5,
+      "semester": "ALL",
+      "difficulty": "STANDARD",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "6수01-06"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "frac_equiv_pair_choice_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro 자체 작성 및 사람 검수",
+        "retrievedAt": "2026-09-15",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro content review"
+      },
+      "metadata": {
+        "fractionRepresentation": {
+          "type": "EQUIVALENT_PAIR",
+          "pair1": { "type": "PART_WHOLE_BAR", "denominator": 2, "numerator": 1 },
+          "pair2": { "type": "PART_WHOLE_BAR", "denominator": 4, "numerator": 2 }
+        }
+      }
+    },
+    {
+      "id": "frac_equiv_text_002",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-fraction-concepts-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "frac_equiv_text_002",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "fraction",
+      "unitId": "equivalent",
+      "skillId": "MATH_FRACTION_EQUIVALENT_VISUAL",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "그림의 두 수직선은 같은 위치를 나타냅니다. 2/3와 크기가 같은 6을 분모로 하는 분수를 쓰세요. (예: 4/6)",
+      "expectedAnswer": "4/6",
+      "explanation": "수직선에서 같은 위치를 나타내므로 2/3와 크기가 같은 분수는 4/6입니다.",
+      "gradeLevel": 5,
+      "semester": "ALL",
+      "difficulty": "STANDARD",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "6수01-06"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "frac_equiv_text_002",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro 자체 작성 및 사람 검수",
+        "retrievedAt": "2026-09-15",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro content review"
+      },
+      "metadata": {
+        "fractionRepresentation": {
+          "type": "EQUIVALENT_PAIR",
+          "pair1": { "type": "NUMBER_LINE", "maxVal": 1, "denominator": 3, "numerator": 2 },
+          "pair2": { "type": "NUMBER_LINE", "maxVal": 1, "denominator": 6, "numerator": 4 }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,444 @@
+{
+  "schemaVersion": 1,
+  "packageId": "math-decimal-v1",
+  "packageVersion": "1.0.1",
+  "activities": [
+    {
+      "id": "dec_tenths_bar_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-decimal-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "dec_tenths_bar_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "concepts",
+      "skillId": "MATH_DECIMAL_TENTHS",
+      "activityType": "MULTIPLE_CHOICE",
+      "responseType": "CHOICE",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "10등분한 바에서 색칠된 부분은 소수로 얼마인가요?",
+      "expectedAnswer": "choice_3",
+      "choices": [
+        { "id": "choice_1", "label": "0.1" },
+        { "id": "choice_2", "label": "0.3" },
+        { "id": "choice_3", "label": "0.4" },
+        { "id": "choice_4", "label": "0.6" }
+      ],
+      "explanation": "10칸 중 4칸이 색칠되어 있으므로 0.4입니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-12"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "dec_tenths_bar_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "retrievedAt": "2026-09-18",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro Review"
+      },
+      "metadata": {
+        "decimalRepresentation": {
+          "type": "DECIMAL_GRID",
+          "value": "0.4",
+          "gridType": "bar"
+        }
+      }
+    },
+    {
+      "id": "dec_tenths_text_002",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-decimal-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "dec_tenths_text_002",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "concepts",
+      "skillId": "MATH_DECIMAL_TENTHS",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "분수 7/10을 소수로 나타내세요.",
+      "expectedAnswer": "0.7",
+      "explanation": "10분의 7은 소수로 0.7입니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-12"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "dec_tenths_text_002",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "retrievedAt": "2026-09-18",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro Review"
+      }
+    },
+    {
+      "id": "dec_hundredths_grid_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-decimal-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "dec_hundredths_grid_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "concepts",
+      "skillId": "MATH_DECIMAL_HUNDREDTHS",
+      "activityType": "MULTIPLE_CHOICE",
+      "responseType": "CHOICE",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "100칸 모눈에서 색칠된 부분은 소수로 얼마인가요?",
+      "expectedAnswer": "choice_2",
+      "choices": [
+        { "id": "choice_1", "label": "0.25" },
+        { "id": "choice_2", "label": "0.37" },
+        { "id": "choice_3", "label": "0.47" },
+        { "id": "choice_4", "label": "0.73" }
+      ],
+      "explanation": "100칸 중 37칸이 색칠되어 있으므로 0.37입니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-13"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "dec_hundredths_grid_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "retrievedAt": "2026-09-18",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro Review"
+      },
+      "metadata": {
+        "decimalRepresentation": {
+          "type": "DECIMAL_GRID",
+          "value": "0.37",
+          "gridType": "10x10"
+        }
+      }
+    },
+    {
+      "id": "dec_thousandths_text_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-decimal-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "dec_thousandths_text_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "concepts",
+      "skillId": "MATH_DECIMAL_THOUSANDTHS",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "분수 125/1000를 소수로 나타내세요.",
+      "expectedAnswer": "0.125",
+      "explanation": "1000분의 125는 소수로 0.125입니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": "STANDARD",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-13"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "dec_thousandths_text_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "retrievedAt": "2026-09-18",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro Review"
+      }
+    },
+    {
+      "id": "dec_place_value_text_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-decimal-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "dec_place_value_text_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "concepts",
+      "skillId": "MATH_DECIMAL_PLACE_VALUE",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "3.47에서 소수 첫째 자리의 숫자가 나타내는 값은 얼마인가요?",
+      "expectedAnswer": "0.4",
+      "explanation": "3.47에서 4는 소수 첫째 자리의 숫자이며 0.4를 나타냅니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-13"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "dec_place_value_text_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "retrievedAt": "2026-09-18",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro Review"
+      },
+      "metadata": {
+        "decimalRepresentation": {
+          "type": "DECIMAL_PLACE_VALUE",
+          "value": "3.47",
+          "highlightPlace": "TENTHS"
+        }
+      }
+    },
+    {
+      "id": "dec_compare_choice_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-decimal-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "dec_compare_choice_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "compare",
+      "skillId": "MATH_DECIMAL_COMPARE",
+      "activityType": "MULTIPLE_CHOICE",
+      "responseType": "CHOICE",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "두 소수의 크기를 비교하여 빈칸에 들어갈 알맞은 부호를 고르세요: 0.7 [ ? ] 0.65",
+      "expectedAnswer": "choice_1",
+      "choices": [
+        { "id": "choice_1", "label": ">" },
+        { "id": "choice_2", "label": "<" },
+        { "id": "choice_3", "label": "=" }
+      ],
+      "explanation": "0.7은 0.70과 같으므로 0.65보다 큽니다 (0.7 > 0.65).",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": "FOUNDATION",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-14"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "dec_compare_choice_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "retrievedAt": "2026-09-18",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro Review"
+      },
+      "metadata": {
+        "decimalRepresentation": {
+          "type": "DECIMAL_COMPARE",
+          "value1": "0.7",
+          "value2": "0.65"
+        }
+      }
+    },
+    {
+      "id": "dec_add_text_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-decimal-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "dec_add_text_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "operations",
+      "skillId": "MATH_DECIMAL_ADD",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "소수의 덧셈을 계산하세요: 1.2 + 0.35",
+      "expectedAnswer": "1.55",
+      "explanation": "1.20 + 0.35 = 1.55입니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": "STANDARD",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-16"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "dec_add_text_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "retrievedAt": "2026-09-18",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro Review"
+      },
+      "metadata": {
+        "decimalOperation": {
+          "type": "DECIMAL_OPERATION",
+          "operation": "+",
+          "value1": "1.20",
+          "value2": "0.35"
+        }
+      }
+    },
+    {
+      "id": "dec_sub_text_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-decimal-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "dec_sub_text_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "operations",
+      "skillId": "MATH_DECIMAL_SUB",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "소수의 뺄셈을 계산하세요: 1.0 - 0.25",
+      "expectedAnswer": "0.75",
+      "explanation": "1.00 - 0.25 = 0.75입니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": "STANDARD",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "4수01-16"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "dec_sub_text_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "retrievedAt": "2026-09-18",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro Review"
+      },
+      "metadata": {
+        "decimalOperation": {
+          "type": "DECIMAL_OPERATION",
+          "operation": "-",
+          "value1": "1.00",
+          "value2": "0.25"
+        }
+      }
+    },
+    {
+      "id": "dec_mul_text_001",
+      "version": 1,
+      "contentRef": {
+        "packageId": "math-decimal-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "dec_mul_text_001",
+        "contentVersion": 1
+      },
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "operations",
+      "skillId": "MATH_DECIMAL_MUL",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "소수의 곱셈을 계산하세요: 1.2 × 0.3",
+      "expectedAnswer": "0.36",
+      "explanation": "12 × 3 = 36이고, 소수 자릿수가 각각 1자리씩이므로 결과는 소수 2자리인 0.36입니다.",
+      "gradeLevel": 5,
+      "semester": "ALL",
+      "difficulty": "STANDARD",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "6수01-13"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "dec_mul_text_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "retrievedAt": "2026-09-18",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro Review"
+      },
+      "metadata": {
+        "decimalOperation": {
+          "type": "DECIMAL_OPERATION",
+          "operation": "×",
+          "value1": "1.2",
+          "value2": "0.3"
+        }
+      }
+    },
+    {
+      "id": "dec_div_text_001",
+      "version": 2,
+      "contentRef": {
+        "packageId": "math-decimal-v1",
+        "packageVersion": "1.0.1",
+        "contentId": "dec_div_text_001",
+        "contentVersion": 2
+      },
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "operations",
+      "skillId": "MATH_DECIMAL_DIV",
+      "activityType": "SHORT_ANSWER",
+      "responseType": "TEXT",
+      "gradingMode": "GUARDIAN_MANUAL",
+      "prompt": "소수의 나눗셈을 계산하세요: 2.4 ÷ 0.6",
+      "expectedAnswer": "4",
+      "explanation": "2.4 ÷ 0.6 = 24 ÷ 6 = 4입니다.",
+      "gradeLevel": 6,
+      "semester": "ALL",
+      "difficulty": "ADVANCED",
+      "curriculumVersion": "2022-revised",
+      "achievementStandardIds": [
+        "6수01-15"
+      ],
+      "sourceMetadata": {
+        "sourceType": "PROJECT_OWNED",
+        "sourceId": "dec_div_text_001",
+        "license": "PROJECT_OWNED",
+        "attribution": "Math Canvas Pro",
+        "retrievedAt": "2026-09-18",
+        "reviewStatus": "APPROVED",
+        "reviewer": "Math Canvas Pro Review"
+      },
+      "metadata": {
+        "decimalOperation": {
+          "type": "DECIMAL_OPERATION",
+          "operation": "÷",
+          "value1": "2.4",
+          "value2": "0.6"
+        }
+      }
+    }
+  ]
+}

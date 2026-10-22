@@ -1,0 +1,169 @@
+{
+  "schemaVersion": 1,
+  "packageId": "math-decimal-v1",
+  "curriculumVersion": "2022-revised",
+  "subjectId": "math",
+  "courseId": "decimal",
+  "skills": [
+    {
+      "skillId": "MATH_DECIMAL_TENTHS",
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "concepts",
+      "name": "0.1 단위의 소수 개념",
+      "description": "분모가 10인 진분수와 연결하여 소수 한 자리 수를 이해하고 읽고 씁니다.",
+      "gradeLevel": 3,
+      "semester": "ALL",
+      "difficulty": 1,
+      "status": "ACTIVE",
+      "prerequisites": [],
+      "achievementStandardIds": [
+        "4수01-12"
+      ]
+    },
+    {
+      "skillId": "MATH_DECIMAL_HUNDREDTHS",
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "concepts",
+      "name": "0.01 단위의 소수 개념",
+      "description": "1을 100등분한 것 중의 하나를 0.01이라 하고 소수 두 자리 수를 이해합니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": 1,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_DECIMAL_TENTHS"
+      ],
+      "achievementStandardIds": [
+        "4수01-13"
+      ]
+    },
+    {
+      "skillId": "MATH_DECIMAL_THOUSANDTHS",
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "concepts",
+      "name": "0.001 단위의 소수 개념",
+      "description": "1을 1000등분한 것 중의 하나를 0.001이라 하고 소수 세 자리 수를 이해합니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": 1,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_DECIMAL_HUNDREDTHS"
+      ],
+      "achievementStandardIds": [
+        "4수01-13"
+      ]
+    },
+    {
+      "skillId": "MATH_DECIMAL_PLACE_VALUE",
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "concepts",
+      "name": "소수의 자릿값과 읽기/쓰기",
+      "description": "소수 각 자리 숫자가 나타내는 자릿값을 이해하고 바르게 읽고 씁니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": 1,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_DECIMAL_THOUSANDTHS"
+      ],
+      "achievementStandardIds": [
+        "4수01-13"
+      ]
+    },
+    {
+      "skillId": "MATH_DECIMAL_COMPARE",
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "compare",
+      "name": "소수의 크기 비교",
+      "description": "수직선과 자릿값을 바탕으로 소수의 크기를 비교합니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": 1,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_DECIMAL_PLACE_VALUE"
+      ],
+      "achievementStandardIds": [
+        "4수01-14"
+      ]
+    },
+    {
+      "skillId": "MATH_DECIMAL_ADD",
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "operations",
+      "name": "소수의 덧셈",
+      "description": "소수점 위치를 맞추어 소수의 덧셈 원리를 이해하고 계산합니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": 2,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_DECIMAL_COMPARE"
+      ],
+      "achievementStandardIds": [
+        "4수01-16"
+      ]
+    },
+    {
+      "skillId": "MATH_DECIMAL_SUB",
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "operations",
+      "name": "소수의 뺄셈",
+      "description": "소수점 위치를 맞추어 소수의 뺄셈 원리를 이해하고 계산합니다.",
+      "gradeLevel": 4,
+      "semester": "ALL",
+      "difficulty": 2,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_DECIMAL_COMPARE"
+      ],
+      "achievementStandardIds": [
+        "4수01-16"
+      ]
+    },
+    {
+      "skillId": "MATH_DECIMAL_MUL",
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "operations",
+      "name": "소수의 곱셈",
+      "description": "자연수의 곱셈을 이용하여 소수의 곱셈 원리를 이해하고 계산합니다.",
+      "gradeLevel": 5,
+      "semester": "ALL",
+      "difficulty": 2,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_DECIMAL_ADD"
+      ],
+      "achievementStandardIds": [
+        "6수01-13"
+      ]
+    },
+    {
+      "skillId": "MATH_DECIMAL_DIV",
+      "subjectId": "math",
+      "courseId": "decimal",
+      "unitId": "operations",
+      "name": "소수의 나눗셈",
+      "description": "나누는 수와 나뉠 수의 소수점을 이동하여 소수의 나눗셈을 계산합니다.",
+      "gradeLevel": 6,
+      "semester": "ALL",
+      "difficulty": 3,
+      "status": "ACTIVE",
+      "prerequisites": [
+        "MATH_DECIMAL_MUL"
+      ],
+      "achievementStandardIds": [
+        "6수01-15"
+      ]
+    }
+  ]
+}

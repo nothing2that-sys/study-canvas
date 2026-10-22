@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.build-*/
+exports/
+backups/
+.vercel/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
