@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "packageId": "math-measurement-v1",
+      "packageVersion": "1.0.1",
+      "manifestPath": "./packages/math-measurement-v1/manifest.json",
+      "enabled": true,
+      "status": "VERIFIED"
+    },
+    {
+      "packageId": "math-fraction-concepts-v1",
+      "packageVersion": "1.0.1",
+      "manifestPath": "./packages/math-fraction-concepts-v1/manifest.json",
+      "enabled": true,
+      "status": "APPROVED"
+    },
+    {
+      "packageId": "math-fraction-operations-v1",
+      "packageVersion": "1.0.1",
+      "manifestPath": "./packages/math-fraction-operations-v1/manifest.json",
+      "enabled": true,
+      "status": "APPROVED"
+    },
+    {
+      "packageId": "math-decimal-v1",
+      "packageVersion": "1.0.1",
+      "manifestPath": "./packages/math-decimal-v1/manifest.json",
+      "enabled": true,
+      "status": "APPROVED"
+    },
+    {
+      "packageId": "korean-ai-reviewed-v1",
+      "packageVersion": "1.6.0",
+      "manifestPath": "./packages/korean-ai-reviewed-v1/manifest.json",
+      "enabled": true,
+      "status": "VERIFIED",
+      "reviewKind": "AI_EVIDENCE_REVIEW_V1"
+    },
+    {
+      "packageId": "english-ai-reviewed-v1",
+      "packageVersion": "1.6.0",
+      "manifestPath": "./packages/english-ai-reviewed-v1/manifest.json",
+      "enabled": true,
+      "status": "VERIFIED",
+      "reviewKind": "AI_EVIDENCE_REVIEW_V1"
+    }
+  ]
+}

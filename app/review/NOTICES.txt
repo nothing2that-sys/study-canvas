@@ -1,0 +1,20 @@
+Study Canvas — final public dataset notices
+
+Korean dictionary content and adaptations: National Institute of Korean Language,
+Korean Basic Dictionary. CC BY-SA 2.0 KR.
+https://krdict.korean.go.kr/kor/kboardPolicy/copyRightTermsInfo
+https://creativecommons.org/licenses/by-sa/2.0/kr/
+Exact source URLs, supplied meanings, changes and attribution are retained per item.
+Dictionary reading tasks are distinguished from newly authored context tasks.
+No multimedia is included.
+
+English WordNet content: Princeton University, WordNet 3.0.
+The complete original copyright, permission and disclaimer text is in WORDNET-LICENSE.txt.
+https://wordnet.princeton.edu/license-and-commercial-use
+No endorsement by Princeton University is implied.
+
+Other content retains its per-item provenance. PROJECT_OWNED describes authorship;
+it is not a blanket license grant for the entire question bank.
+Application code licensing does not replace the above content licenses.
+Content review actor: CODEX_AI; no human approval or learner validation is asserted.
+Grade and difficulty placements are project proposals, not official certifications.

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "packageId": "english-ai-reviewed-v1",
+  "subjectId": "english",
+  "courseId": "english-core",
+  "curriculumVersion": "2022-revised",
+  "skills": [
+    {
+      "skillId": "EN_VOCAB_CONTEXT",
+      "subjectId": "english",
+      "courseId": "english-core",
+      "unitId": "vocabulary",
+      "title": "짧은 글에서 정보 찾기",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "EN_WORD_CORRECT_FORM",
+      "subjectId": "english",
+      "courseId": "english-core",
+      "unitId": "word_form",
+      "title": "영어 어형 선택",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "EN_WORDNET_MEANING",
+      "subjectId": "english",
+      "courseId": "english-core",
+      "unitId": "vocabulary",
+      "title": "영영 뜻풀이로 단어 찾기",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED",
+      "name": "영영 뜻풀이로 단어 찾기",
+      "gradeLevel": 6,
+      "semester": "ALL",
+      "achievementStandardIds": [],
+      "prerequisites": []
+    },
+    {
+      "skillId": "EN_SOURCE_ELEMENTARY_DICTIONARY",
+      "subjectId": "english",
+      "courseId": "english-core",
+      "unitId": "vocabulary",
+      "title": "초등 기본 어휘 사전 읽기",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "EN_HELD_WORD_CONTEXT",
+      "subjectId": "english",
+      "courseId": "english-core",
+      "unitId": "vocabulary",
+      "title": "기본 어휘 사용 문맥",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "EN_HELD_PHRASE_CONTEXT",
+      "subjectId": "english",
+      "courseId": "english-core",
+      "unitId": "vocabulary",
+      "title": "일상 어구 사용 문맥",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "EN_DICT_WORD_INFO",
+      "subjectId": "english",
+      "courseId": "english-core",
+      "unitId": "vocabulary",
+      "title": "영어 낱말 사전 읽기",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    },
+    {
+      "skillId": "EN_DICT_PHRASE_INFO",
+      "subjectId": "english",
+      "courseId": "english-core",
+      "unitId": "vocabulary",
+      "title": "영어 어구 사전 읽기",
+      "difficulty": 1,
+      "status": "VERIFIED",
+      "reviewStatus": "VERIFIED"
+    }
+  ],
+  "packageVersion": "1.6.0"
+}

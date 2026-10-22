@@ -1,0 +1,536 @@
+{
+  "schemaVersion": 1,
+  "edition": "study-canvas-public-v1",
+  "counts": {
+    "korean": 5247,
+    "english": 1287,
+    "mathStatic": 33
+  },
+  "humanApprovalGranted": false,
+  "files": [
+    {
+      "path": "app/build-manifest.json",
+      "sha256": "82e2efd9506c364da1dc1fd40c514430abaf111191aad87406900a261f95bf96"
+    },
+    {
+      "path": "app/content/packages/english-ai-reviewed-v1/activities.json",
+      "sha256": "651ccf26486638a94ef6998641bf945c7b4324350ad51ee4595561eb3f6cf576"
+    },
+    {
+      "path": "app/content/packages/english-ai-reviewed-v1/curriculum.json",
+      "sha256": "1459b7d15c3eefb8f9223b20c9160d82c039cd7470952ef0ac7d9e9bd4145beb"
+    },
+    {
+      "path": "app/content/packages/english-ai-reviewed-v1/manifest.json",
+      "sha256": "0cc1665f798138d048517b91b1e60dd2f695fb0154c1b30a155786335e89788d"
+    },
+    {
+      "path": "app/content/packages/korean-ai-reviewed-v1/activities.json",
+      "sha256": "bd8bbe0cb255f5a6f76b98c5beb570fd72165b6cdb463e7d4c271fbf870b3dd7"
+    },
+    {
+      "path": "app/content/packages/korean-ai-reviewed-v1/curriculum.json",
+      "sha256": "7f55aa323eaabc2d639a23f670dbc1f563729b645e8dbaa8865678fac27c771a"
+    },
+    {
+      "path": "app/content/packages/korean-ai-reviewed-v1/manifest.json",
+      "sha256": "232461c20e3d6de49fdd20ea097c9d800fc084859c64aecd6752e8d88be3a22c"
+    },
+    {
+      "path": "app/content/packages/math-decimal-v1/activities.json",
+      "sha256": "296cff6720709bde2fd2fd8873308f4f48c7bfb6096ec3fbdcbafffc37daa6d4"
+    },
+    {
+      "path": "app/content/packages/math-decimal-v1/curriculum.json",
+      "sha256": "9b9213d7863af6070feadff9ddae838c37421c0c4cc60bb194b7103ea942d84a"
+    },
+    {
+      "path": "app/content/packages/math-decimal-v1/manifest.json",
+      "sha256": "7d69583c877d1c77bdd382fdfe0dd2456957c8287c299c9d525fdf3220b412d2"
+    },
+    {
+      "path": "app/content/packages/math-fraction-concepts-v1/activities.json",
+      "sha256": "340e348fe0c771d4a77eb06dd2ae212c7b2bd9ba978ca63ac4d0b2c95cef6da2"
+    },
+    {
+      "path": "app/content/packages/math-fraction-concepts-v1/curriculum.json",
+      "sha256": "1216338061fd95ed35e47761bc0bf0dd27b8c0908a2be5307551a41ab904203b"
+    },
+    {
+      "path": "app/content/packages/math-fraction-concepts-v1/manifest.json",
+      "sha256": "8f29c4f57dc7e70466f03265793a839100fb2c2f1ec1dc9fa5316866e8514c4b"
+    },
+    {
+      "path": "app/content/packages/math-fraction-operations-v1/activities.json",
+      "sha256": "2d4c2197677b21658a1060f5a6fabea26d6004bb0f4eb537e3346d6ab93edc74"
+    },
+    {
+      "path": "app/content/packages/math-fraction-operations-v1/curriculum.json",
+      "sha256": "cb96bcc8863b90aa509b0a210254d74945151326c9ad80c7e61d8c91b3af0d29"
+    },
+    {
+      "path": "app/content/packages/math-fraction-operations-v1/manifest.json",
+      "sha256": "e3690530cb2cc8a0eaf5ecae04087f4b474d0f3e95148904bd882c2098a6a7a2"
+    },
+    {
+      "path": "app/content/packages/math-measurement-v1/activities.json",
+      "sha256": "b1f59f0cf8483bcda2f87a416cabc3ca4a66a918100e1eb81a3610f2419db1e3"
+    },
+    {
+      "path": "app/content/packages/math-measurement-v1/curriculum.json",
+      "sha256": "c24256753eca8fbaca384c60a946e9451a152f3c504590f8475c5c8337d0ccaf"
+    },
+    {
+      "path": "app/content/packages/math-measurement-v1/manifest.json",
+      "sha256": "b56a568c34d59291621e93bc28db29147118ec84732a47430f27057c2fa7197d"
+    },
+    {
+      "path": "app/content/packages/math-measurement-v1/unit-catalog.json",
+      "sha256": "3a5c4ff5a5675cd85608644d2e328d6755c30ea375694162c9a883a1e8d2cf5a"
+    },
+    {
+      "path": "app/content/registry.json",
+      "sha256": "31328624bf0aebd6dd9a585a7aafb9c125f25bf76c31f608d630c02c17c5c634"
+    },
+    {
+      "path": "app/content-scope.json",
+      "sha256": "4c1c46b3aada290714cf0c324a843a205d833c9f58959851c6bac590d8b0e26a"
+    },
+    {
+      "path": "app/css/app.css",
+      "sha256": "a1c4bb0f1ef5fcd237412686322f14181e7fb0f3cadd9306c2b26c45e48e52d0"
+    },
+    {
+      "path": "app/icon-180.png",
+      "sha256": "6f17776c44a7dc9ba12aae6df075907a8553e666e9a891f26a301895fa20ff18"
+    },
+    {
+      "path": "app/icon-192.png",
+      "sha256": "133c3b40bfdbff400726ec665af191f8b95c53c4dfd3dc5941fa413eb2c950d8"
+    },
+    {
+      "path": "app/icon-512.png",
+      "sha256": "53c28f89e498d1f3d7772fd0816c12500fbdf1508d81d979e0fce9c61fb6ac0d"
+    },
+    {
+      "path": "app/icon-maskable-512.png",
+      "sha256": "53c28f89e498d1f3d7772fd0816c12500fbdf1508d81d979e0fce9c61fb6ac0d"
+    },
+    {
+      "path": "app/icon.svg",
+      "sha256": "0f85986bc58687e51b8aaf212ea723755191ec594245f52ffb237b0d381ef84f"
+    },
+    {
+      "path": "app/index.html",
+      "sha256": "a62bf23d0daeab3f90778cff385bbc66c30bf42f4a99fb7389101d9778350449"
+    },
+    {
+      "path": "app/js/adaptiveEngine.js",
+      "sha256": "8fae1bcef5c71f5d174c11b4905b43eb6a7dd23226df2d79c28dc45da5905758"
+    },
+    {
+      "path": "app/js/aiReviewAttribution.js",
+      "sha256": "7ac71da1b1331550ee1d3fccf30c1576cc084af7b493afaee4240220c3c56b0e"
+    },
+    {
+      "path": "app/js/aiReviewPolicy.js",
+      "sha256": "f07e2c9c5f03ea7074419a9b022736f3bf5f961f9a70e0663fffc15f821049e5"
+    },
+    {
+      "path": "app/js/aiReviewResources.js",
+      "sha256": "b4e59d04e473aa60e8c59d6288ffe82404c00d94d876d4eb298d8ffb7d560d56"
+    },
+    {
+      "path": "app/js/app.js",
+      "sha256": "2e17abe8f9f53e4e5fc2741cf86e7bb86a3c0d1fd28d1f32a656da6c42cccf28"
+    },
+    {
+      "path": "app/js/backupEngine.js",
+      "sha256": "a66f3054210758903167cade8cb4171ac485843cc2a936a206a41cc7328a537d"
+    },
+    {
+      "path": "app/js/canvasEngine.js",
+      "sha256": "72d8fbfe270d047072bff58aea21d572ea1b6b87df73e72af8876dd8ea7c0687"
+    },
+    {
+      "path": "app/js/canvasSceneGeometry.js",
+      "sha256": "0336af8f156689664461aecf77df4e6a4595b58e660d1aa47e46200860f3551d"
+    },
+    {
+      "path": "app/js/compactExactAiReviewPolicy.js",
+      "sha256": "b34e371d46d70f070355be058d6ce9e79223808f41b4b6f30355c087d599289e"
+    },
+    {
+      "path": "app/js/confetti.js",
+      "sha256": "b0563af989c61807c97bd97f44f5bd1e73ff80c646d97ed831b8b9a95f3b8a1c"
+    },
+    {
+      "path": "app/js/contentEligibility.js",
+      "sha256": "5d72f646e0682384b1a0ff60129fa44c198971ae35e2e9d9f1c1df8dd366d85b"
+    },
+    {
+      "path": "app/js/contentPackageLoader.js",
+      "sha256": "64ea33136be1efb3af10097aed47352ba7a9cf87537608d7d3662ee4e61cbc6c"
+    },
+    {
+      "path": "app/js/contentRotationAdapters.js",
+      "sha256": "29210052ee506fc3481bc689a11d157d956847efcaab617124f6e3df7bfdf143"
+    },
+    {
+      "path": "app/js/contentRotationRuntime.js",
+      "sha256": "6156d85cfbeafa64af8e52296e750ef8728c134c8f524f41cade268386039d8c"
+    },
+    {
+      "path": "app/js/curriculumRegistry.js",
+      "sha256": "e80e3fe84c849a4e3cfc8fabe41bbe4fdc8027c843d5b70f490e3b6f5485b9cd"
+    },
+    {
+      "path": "app/js/data/learningCommands.js",
+      "sha256": "4c792ecf909ba8294fe89a3556b9b9dbc241ba9231662f9dae2521704074848a"
+    },
+    {
+      "path": "app/js/data/learningQueries.js",
+      "sha256": "65da01599bd9cb5703246c881158314a6c9a8a63c06ff6e9eef14aab81fe9a8e"
+    },
+    {
+      "path": "app/js/decimalDomain.js",
+      "sha256": "5c3162b6b722198d09acc8fafaeee9d491798d8c28409f21f70cea20ac9ab3e9"
+    },
+    {
+      "path": "app/js/decimalGenerator.js",
+      "sha256": "fdbe40bf1ae4e19f3cc9d5fb44db6a505f7872c5cd5e88aa0dd5a7e85b51272b"
+    },
+    {
+      "path": "app/js/decimalRepresentationView.js",
+      "sha256": "602ae8eb4bc8e8cf006cc6dacb2a36c5fb9698388bed724d8fa37898ac22d0cf"
+    },
+    {
+      "path": "app/js/displayLabels.js",
+      "sha256": "f84b12096ba5ab36757311e1ad1703c4552ece54b730cd1633e46d6c9391882b"
+    },
+    {
+      "path": "app/js/draftEngine.js",
+      "sha256": "c25b20323b9d5e959eb388b3836d863626e7998eb0092461824f4eb790a88af1"
+    },
+    {
+      "path": "app/js/englishActivitySelector.js",
+      "sha256": "ea61802a131471a1763be19fb9dc44586b84530b5fb4194cca60322693e29f98"
+    },
+    {
+      "path": "app/js/englishCoreV2Loader.js",
+      "sha256": "460b8d74b5a7610b824dcee350b31976592b3764d41d60feb60d7e228087e561"
+    },
+    {
+      "path": "app/js/englishCoreV2Runtime.js",
+      "sha256": "a77238d3ad7cb29087f0eeafe4a3b048f7d8d873ce49b4344db666f17561b2fd"
+    },
+    {
+      "path": "app/js/englishCoreV2Session.js",
+      "sha256": "162c595670f0c1c528bb1f4dc464eb41bb679cea3a8fa8f5778124ce016f337a"
+    },
+    {
+      "path": "app/js/englishVocabularyStudy.js",
+      "sha256": "032a440cabd0cf2022b5fe2b05bae1fcfa76e3beab78cdbc084d0fd56c209ce2"
+    },
+    {
+      "path": "app/js/englishVocabularyView.js",
+      "sha256": "0771270bae9c02f5526b4c1d5f9af1391196abbf690adfa4dfe2ed4cb7e00963"
+    },
+    {
+      "path": "app/js/exactAiReviewPolicy.js",
+      "sha256": "2d6deb5d4af9c58bfc15572dfec9349c64910e085686f2d1931fe69d7d006a00"
+    },
+    {
+      "path": "app/js/explainer.js",
+      "sha256": "fb75f128726a1c0eec00d7e75b4706678677c301aaf3c130bb40828ce212712b"
+    },
+    {
+      "path": "app/js/exposureSelector.js",
+      "sha256": "4616e1301c1685bb820f31a0c90fa525f5ad9e7d8df5362d3cb1b4bc0a304a44"
+    },
+    {
+      "path": "app/js/f16dReviewEvidence.js",
+      "sha256": "c5d15df75f3bb9a454124e91eba90163e5b91e32195800f2d2143de86b144f6d"
+    },
+    {
+      "path": "app/js/fractionConcepts.js",
+      "sha256": "caff6e45856f4096dc86ca460ba6b91fc6401176f53380afa6d55a8687f45e3b"
+    },
+    {
+      "path": "app/js/fractionOperationGenerator.js",
+      "sha256": "ea63c2e983582279453ced588e4c3a34186ad57a37357041470eec7c210a5974"
+    },
+    {
+      "path": "app/js/fractionOperations.js",
+      "sha256": "330aae660b125eaad19de9c543fc67c7b35522f6a021758ea747bafc4030fd5f"
+    },
+    {
+      "path": "app/js/fractionRepresentationView.js",
+      "sha256": "e33a7f7301e3c391b371b36756d8e53cbf20887173678af2c3274a916018433b"
+    },
+    {
+      "path": "app/js/guardianFeedbackPresets.js",
+      "sha256": "c125632cf0e21e50750f105230fc09f5a3365f2f379f7f1b5e9352d5ae21c0e7"
+    },
+    {
+      "path": "app/js/historicalGradingReference.js",
+      "sha256": "3971d21592ad21ecfe0843b1c3b179e1e7bd81767c00a0085143f5315b281928"
+    },
+    {
+      "path": "app/js/interactionGuard.js",
+      "sha256": "91199cff29c396b0980d865818d9dde91862b462c017fa10a9d228398e924f38"
+    },
+    {
+      "path": "app/js/koreanActivitySelector.js",
+      "sha256": "d28938734586a667bbbb614085124c0aa8cbc9007f55ca576fe3225f403fc7da"
+    },
+    {
+      "path": "app/js/languageCandidateProgress.js",
+      "sha256": "998f410e8b188b743baaf1bbab4867ee5ee7fca0525dae0c2420dc341de28ff5"
+    },
+    {
+      "path": "app/js/languageCandidateVisibility.js",
+      "sha256": "ad72080c61b40ab9dd07a682b30d1a2af45bbfb85926ab294503c3110c209efd"
+    },
+    {
+      "path": "app/js/learners/learnerCommands.js",
+      "sha256": "edcbf5f783efa32e8e222b82e932a260f17adcb8b583c1fbac9a5d75438e5c0c"
+    },
+    {
+      "path": "app/js/learners/learnerQueries.js",
+      "sha256": "fa917d3027359a367974f064e4eedda2f54851bdafc88d6dfe17c2ffc7efa360"
+    },
+    {
+      "path": "app/js/learners/learnerView.js",
+      "sha256": "6223e173ce4bfcee4d8f5fea0ca53635632e575202097412075874678516b1e6"
+    },
+    {
+      "path": "app/js/learningActivity.js",
+      "sha256": "b1fa28ca26d1033f6fac2a81b55caf4f6bf938c3a17e162147f1acd3b9ddf88b"
+    },
+    {
+      "path": "app/js/learningRouteResolver.js",
+      "sha256": "a7348e1a9c2999b792d1b077fca175cae292d5c163f4b10864478f0060323948"
+    },
+    {
+      "path": "app/js/masteryEngine.js",
+      "sha256": "ebf0a01fefacb9f9ea2e2f0d07f660bc58242aecb5df590f55e0c8d77b5298b7"
+    },
+    {
+      "path": "app/js/mathArithmeticAdapter.js",
+      "sha256": "fd2eebd6856f3b5accbe3f80ff4969f1f6a3e24be756771e58147718e6f34838"
+    },
+    {
+      "path": "app/js/mathF16dCoverage.js",
+      "sha256": "c7d83d758b715348dbb94ede6ff5cbee01f0520ad14c6f4b413826fac53b123b"
+    },
+    {
+      "path": "app/js/mathF16dGenerator.js",
+      "sha256": "9accd739a2f555e8a389406d7791d2be7f52f302a1584f115fa2e345767b0fda"
+    },
+    {
+      "path": "app/js/mathF16dRepresentation.js",
+      "sha256": "b8790502594bd19158e979fa5c5063a3537cfcc91971c7be60e58e951cf11ef1"
+    },
+    {
+      "path": "app/js/mathF16dRuntime.js",
+      "sha256": "856d9921887f4f11a39e27b00e227d253de88d5b83a9fab58ca2e670b1231e16"
+    },
+    {
+      "path": "app/js/mathF16dSelection.js",
+      "sha256": "d391e480e6c859f245b891c17c155001fffb3c75f6bc3f4ac326deedcb5e821e"
+    },
+    {
+      "path": "app/js/mathF16dSpec.js",
+      "sha256": "47865114ffb3de811bb3da66d978f6d217788bd90149db971b60ce1cfb14a9fa"
+    },
+    {
+      "path": "app/js/mathGen.js",
+      "sha256": "9c08ecce98dfc1927c8c0edf9d6291658468c567349084d7fbf712f8202464ca"
+    },
+    {
+      "path": "app/js/measurementUnitCatalog.js",
+      "sha256": "0530324d4518fde18416d728ec526e0ebce6660c1277c65253aead1bec019e33"
+    },
+    {
+      "path": "app/js/measurementUnitGenerator.js",
+      "sha256": "c0e30c03bc7d2b9152d6ffab54f3252051cc1ca501a6eddc8f68b1e47347b183"
+    },
+    {
+      "path": "app/js/migrationEngine.js",
+      "sha256": "7ac0b3358798fe0c66d7a8bd2546ffcbe00961b4f83a17be38d4ddffd4a908ab"
+    },
+    {
+      "path": "app/js/modalEngine.js",
+      "sha256": "384c0c925bfbcd1017d74a6bcadb57bb58bb81881b1a8f030fc1116f7c7e5b75"
+    },
+    {
+      "path": "app/js/navigationHierarchy.js",
+      "sha256": "2e316c73efed6568f37c8849669657d533946c2b611371c915239f098c7e044a"
+    },
+    {
+      "path": "app/js/parentGrading.js",
+      "sha256": "bd08967ca9b491a2c74537c842e644f45f7835d20963e46bc8ebe377bdc2046f"
+    },
+    {
+      "path": "app/js/platform/appBootstrap.js",
+      "sha256": "7e97873f0d47c86a9d6b8efc22002ff783280ce1bd0fa0aede6b64399cc2810b"
+    },
+    {
+      "path": "app/js/platform/appRouter.js",
+      "sha256": "ccfc41ccd9fce75726cc790bc1ea4ce2a8b5333ab21a4129af30c64f810c5792"
+    },
+    {
+      "path": "app/js/platform/appShell.js",
+      "sha256": "00d6d13809c477c7e73a27dd275d5bf780d9ea9be53d3fc3d74ddd3572287c2b"
+    },
+    {
+      "path": "app/js/platform/subjectRegistry.js",
+      "sha256": "306fd5d1b3427c6e73a5df9822b9d3590f2abb1a95cb94d62525f735099b3672"
+    },
+    {
+      "path": "app/js/practiceInteractionGuard.js",
+      "sha256": "67ae8499ab24fcf8b117430b5f05b4d71f9f2fdd0b3a4f70d6a998b551cf9ceb"
+    },
+    {
+      "path": "app/js/publicReleasePolicy.js",
+      "sha256": "2c4afc5faa0ad63da3834bd9915a11bfaecc5ae122592177cd06a4fa251367c0"
+    },
+    {
+      "path": "app/js/questionAnswerDisplay.js",
+      "sha256": "57bc126a6e174c4eb3fc028bece127769191cff33d27ed010f0aa39fbd05eb31"
+    },
+    {
+      "path": "app/js/questionIdentity.js",
+      "sha256": "3542818e72ef8513264e6e1d38141e45fd6fa2eeea524459046770744abf1047"
+    },
+    {
+      "path": "app/js/recommendations/recommendationEngine.js",
+      "sha256": "4d8865204c230e825126408b743f7de0a15ae6abea46d96240ad9fffe9abf43e"
+    },
+    {
+      "path": "app/js/responseEngine.js",
+      "sha256": "923b55e2e8ab188db0e09e54751592fff847afc93a824e61634b941405db9a76"
+    },
+    {
+      "path": "app/js/reviewRetryPresentation.js",
+      "sha256": "e82e4ef1e04723d60dedd47dacfc6e25b56e17970434ddc99ec6d1c9459ad45f"
+    },
+    {
+      "path": "app/js/sessionEngine.js",
+      "sha256": "afb0b7b54493d7699e231aa09be8e27813647561cbedac2515d0c74ba3131ffa"
+    },
+    {
+      "path": "app/js/sessionHistoryLabel.js",
+      "sha256": "b0ee84ec6e713859772cfcb13bf48d226f84150ee43fa74273b75f510a1bbc75"
+    },
+    {
+      "path": "app/js/shortcuts.js",
+      "sha256": "c29356a33fbc1c2ad55a89987af2314ef818176b891c7c75f974fc7bd9fcd3de"
+    },
+    {
+      "path": "app/js/sound.js",
+      "sha256": "e92d5ac802d32f32ea13f642e59373d890e4fd5b099dbe733e5d96798bab9774"
+    },
+    {
+      "path": "app/js/storage.js",
+      "sha256": "cfbd9b6ee0f78b01297df988aa9d93aedfdf4c932ee248c26b54e3d6153b4d59"
+    },
+    {
+      "path": "app/js/submissionLifecycle.js",
+      "sha256": "068067aa94c4bb89b55e40312e7d0e3f71a17b18862b88e2eba27fcdb948ad4d"
+    },
+    {
+      "path": "app/js/theme.js",
+      "sha256": "f4578727ebc67045bbef0b01f906096628c9be43e9b85c5f9cabe38d112836eb"
+    },
+    {
+      "path": "app/js/timer.js",
+      "sha256": "5d4df62e441c4b67e718383516d81b6e68c8eedb05e1e998803b9fe71ae78415"
+    },
+    {
+      "path": "app/js/typedInteractionSurface.js",
+      "sha256": "96c69d3c34c12d1fec116137d85ee8b08e802d7b779dd3945c9ed21c599aaf7c"
+    },
+    {
+      "path": "app/js/unifiedCurriculumRegistry.js",
+      "sha256": "6165c7f71b558b2ee41a670651bbe3f1afcf1e3e83b7d67444f9eeeb85c5458f"
+    },
+    {
+      "path": "app/js/updateEngine.js",
+      "sha256": "a8f20a8f53dbb5d5ff21eee564ecdfe22f5e05ca9218cce8a63b8943db93a5b7"
+    },
+    {
+      "path": "app/js/viewportEngine.js",
+      "sha256": "6fb734ae2a198336c4b424a9faf426986591479c177c8f7db7098b5be0eef66b"
+    },
+    {
+      "path": "app/js/workbookCatalog.js",
+      "sha256": "0250c5c7b28183d17ec30f69205e0293cdc945f41b972c3f1a8612e8a72b3933"
+    },
+    {
+      "path": "app/js/workbookEngine.js",
+      "sha256": "f22d8a2538cbce2f8e0b52c9c3fa8ef0cbb13e4b37e0829d6a260f140ce528e5"
+    },
+    {
+      "path": "app/js/workbookView.js",
+      "sha256": "e21b932cd8d4366315a9788301f0fb017c787d4ba7a387827cca40492b033c7a"
+    },
+    {
+      "path": "app/manifest.webmanifest",
+      "sha256": "37bac0c001723dca6a8be4997396de6609295e3dd5678f59a7a46551c33b2129"
+    },
+    {
+      "path": "app/notices.html",
+      "sha256": "47c7679d497ba4543a726148acf7bd57da357a5d28f3b8469556535a3622f7e0"
+    },
+    {
+      "path": "app/review/ai-review-evidence.json",
+      "sha256": "7bef054e92b72852abdd857f570964f545615e43516166c3280971176fdfd409"
+    },
+    {
+      "path": "app/review/index.html",
+      "sha256": "b9bd80f55d1202b6a2b1fd0b7851aaf7ad56d97c3b2210a158d33ca45efab2f2"
+    },
+    {
+      "path": "app/review/items.json",
+      "sha256": "6b98511561175b5012e28e42c5b65643cab0d2070386f647923d329215c48ba8"
+    },
+    {
+      "path": "app/review/NOTICES.txt",
+      "sha256": "932943ecdb2cf50b7276c7c8110dda2c75ab3fdae4c709fd8bdbb9ce1954a6e3"
+    },
+    {
+      "path": "app/review/placement-review.json",
+      "sha256": "535f6a6e72a9303325496346ba333952e1a37f527c2e6c62ecc2607ceb8b06b6"
+    },
+    {
+      "path": "app/review/readiness.json",
+      "sha256": "9c64e724dbcdcca6c5735447624b5225cee13fbc2e902a8cce7c008d249c2e29"
+    },
+    {
+      "path": "app/review/source-bank-curriculum.json",
+      "sha256": "f1225bd2b9504ac731cca0578d34209dab1b4e1e26b4d22d22f0c91567b91e53"
+    },
+    {
+      "path": "app/review/source-bank-evidence.json",
+      "sha256": "7402579f56ba59261aacb2367f9a2aa212f3acb3adc8bc7d6d09f7053cf7b028"
+    },
+    {
+      "path": "app/review/source-evidence.json",
+      "sha256": "b5727a38db26cb8231bc71d45ef9ac5456474b416fcb43f09ec3fa8295bf3e14"
+    },
+    {
+      "path": "app/review/WORDNET-LICENSE.txt",
+      "sha256": "a1d9f9278816e5d55c7d35f356f5a86974408858f1d9cf4b7160ff827f93fc85"
+    },
+    {
+      "path": "app/robots.txt",
+      "sha256": "331ea9090db0c9f6f597bd9840fd5b171830f6e0b3ba1cb24dfa91f0c95aedc1"
+    },
+    {
+      "path": "app/service-worker.js",
+      "sha256": "d41a1843bd375af4cd8575ce3531b7744bd06b202416142550844388e968cd66"
+    }
+  ]
+}

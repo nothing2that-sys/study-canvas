@@ -1,0 +1,9 @@
+{
+  "status": "SUPPLIED_REFERENCE_TASK_RULES_CHECKED_AND_PREVIOUS_CONTENT_RETAINED",
+  "counts": {
+    "korean": 5247,
+    "english": 1287
+  },
+  "humanApprovalGranted": false,
+  "independentWholeBankSemanticCertification": false
+}

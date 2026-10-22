@@ -1,0 +1,13 @@
+{
+  "kind": "SCOPED_SOURCE_BANK_APP_EDITION",
+  "counts": {
+    "korean": 5247,
+    "english": 1287
+  },
+  "added": {
+    "korean": 2522,
+    "english": 230
+  },
+  "humanApprovalGranted": false,
+  "publicActivation": false
+}

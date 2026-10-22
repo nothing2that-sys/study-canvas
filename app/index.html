@@ -1,0 +1,1055 @@
+<!doctype html>
+<html lang="ko">
+  <head><base href="/">
+    <base href="/">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#173f35">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Study Canvas">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="수학 · 영어를 함께 배우는 디지털 학습 공간">
+    <meta property="og:title" content="Study Canvas">
+    <meta property="og:description" content="수학 · 영어 학습">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <title>Study Canvas</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="./icon-180.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
+    <link rel="stylesheet" href="./css/app.css?v=study-canvas-public-v1">
+  </head>
+  <body><aside style="padding:16px;background:#fff0c2;color:#342a10">문항별로 출처·이용 조건과 확인 범위가 표시됩니다. 사전 정보 읽기와 새 문맥 과제를 구분합니다. 사람 검토나 학습 효과 검증을 뜻하지 않습니다. <a href="/review/">문항·출처 검토</a></aside>
+    <div class="app-shell">
+      <!-- 상단 네비게이션 바 -->
+      <header class="topbar">
+        <a class="brand" href="./" id="homeBrandLink" aria-label="Study Canvas 홈">
+          <span class="brand-mark" aria-hidden="true">S</span>
+          <span><strong>Study Canvas</strong><small>수학 · 영어 학습</small></span>
+        </a>
+        <!-- 🌟 Compact Topbar Navigation (Compact Global Navigation SSOT) -->
+        <div class="topbar-nav-actions" id="topbarNavActions" hidden>
+          <button type="button" id="globalNavHomeBtn" class="topbar-nav-btn topbar-nav-home-btn" aria-label="홈으로 이동">
+            <span class="topbar-nav-icon" aria-hidden="true">🏠</span>
+            <span class="topbar-nav-label">홈</span>
+          </button>
+          <button type="button" id="globalNavUpBtn" class="topbar-nav-btn topbar-nav-up-btn" aria-label="상위 단계로 이동">
+            <span class="topbar-nav-icon" aria-hidden="true">↑</span>
+            <span class="topbar-nav-label">위로</span>
+          </button>
+        </div>
+        <div class="active-learner-pill" id="activeLearnerBadge" hidden>
+          <span class="active-learner-avatar" id="activeLearnerAvatar">🌱</span>
+          <strong class="active-learner-name" id="activeLearnerName">학습자</strong>
+          <button type="button" class="btn-switch-learner" id="switchLearnerBtn" title="학습자 변경">변경</button>
+        </div>
+        <div class="top-actions">
+          <button class="icon-button theme-btn" id="themeToggleBtn" type="button" aria-label="테마 변경" title="테마 변경 (종이/칠판/미드나잇)">
+            <span id="themeIcon">📜</span>
+            <span id="themeLabel">종이 테마</span>
+          </button>
+          <button class="icon-button sound-btn" id="soundToggleBtn" type="button" aria-label="소리 켜기/끄기" title="소리 켜기/끄기">
+            <span class="sound-icon" id="soundIcon">🔊</span>
+            <span class="sound-label" id="soundLabel">소리 켬</span>
+          </button>
+          <button class="icon-button" id="shortcutsHelpBtn" type="button" aria-label="단축키 안내" title="단축키 안내 (?)">⌨️</button>
+          <span class="offline-badge" id="networkStatus"><i></i><span>오프라인 준비됨</span></span>
+          <button class="icon-button" id="abortSessionBtn" type="button" aria-label="세션 중단" title="세션 중단" hidden>나가기</button>
+        </div>
+      </header>
+
+
+      <!-- 🌟 PWA 새 버전 업데이트 안내 배너 -->
+      <aside class="update-banner" id="updateBanner" hidden aria-live="polite">
+        <span>✨ 새 버전의 Study Canvas가 준비되었습니다.</span>
+        <div class="update-banner-actions">
+          <button type="button" class="btn-update-apply" id="applyUpdateBtn">지금 업데이트</button>
+          <button type="button" class="btn-update-dismiss" id="dismissUpdateBtn" aria-label="닫기">✕</button>
+        </div>
+      </aside>
+
+      <main class="main-container">
+        <!-- 플랫폼 공통 뷰 루트 -->
+        <div id="platformRoot" class="platform-root">
+          <!-- 마이그레이션 실패 시 안전 에러 화면 -->
+          <div id="migrationErrorView" class="view platform-view migration-error-view" hidden>
+            <div class="platform-hero error-hero">
+              <span class="platform-hero-icon">⚠️</span>
+              <h1>기존 학습 기록을 준비하지 못했습니다</h1>
+              <p id="migrationErrorMessage" class="platform-hero-sub">데이터 전환 중 문제가 발생했습니다. 다시 시도해 주세요.</p>
+              <div class="platform-actions">
+                <button type="button" id="migrationRetryBtn" class="primary-action">
+                  <span>다시 시도</span><b>↻</b>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 1. 학습자 선택 뷰 -->
+          <div id="learnerSelectView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="learnerSelectTitle">
+              <span class="platform-hero-tag">학습자 선택</span>
+              <h1 id="learnerSelectTitle">누가 공부할까요?</h1>
+              <p class="platform-hero-sub">오늘 학습할 학습자를 선택하거나 새로 등록하세요.</p>
+            </section>
+
+            <div class="learner-list-wrap" id="learnerListContainer">
+              <!-- 학습자 카드들이 렌더링됩니다 -->
+            </div>
+
+            <div class="learner-select-actions">
+              <button type="button" class="primary-action btn-add-learner-cta" id="addLearnerBtn">
+                <span>+ 학습자 추가</span>
+              </button>
+              <button type="button" class="btn-toggle-archived-text" id="showArchivedBtn">
+                보관된 학습자 보기
+              </button>
+            </div>
+
+            <div id="archivedLearnersSection" class="archived-learners-section" hidden>
+              <h3>📦 보관된 학습자</h3>
+              <div id="archivedLearnersList" class="archived-learners-list">
+                <!-- 보관된 학습자 목록 -->
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. 통합 학습자 홈 뷰 -->
+          <div id="learnerHomeView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="homeGreetingTitle">
+              <p class="eyebrow">오늘의 맞춤 학습</p>
+              <h1 id="homeGreetingTitle">안녕, <em id="learnerGreetingName">학습자</em>!</h1>
+              <p class="platform-hero-sub">오늘도 조금씩 차근차근 시작해 볼까요?</p>
+              <button type="button" class="workbook-shelf-cta" id="openBookshelfBtn">내 문제집 책장 열기</button>
+            </section>
+
+            <!-- F8: 1. 확인할 일 (Action Cards: 채점 대기, 복습 필요, 이어서 풀기) -->
+            <section class="action-cards-section" id="homeActionCardsSection" aria-label="확인할 일">
+              <!-- Action Cards들이 우선순위에 따라 동적으로 렌더링됩니다 -->
+            </section>
+
+            <!-- F9: 오늘의 추천 (Recommendation Engine) -->
+            <section class="recommendation-section" id="homeRecommendationSection" aria-label="오늘의 추천">
+              <!-- 추천 카드 및 대안 후보들이 동적으로 렌더링됩니다 -->
+            </section>
+
+            <!-- F8: 2. 학습 현황 전체 요약 (누적 문제 수, 확정 정답률, 진도/세션) -->
+            <section class="overall-stats-section" id="homeOverallStatsSection" aria-label="학습 현황 요약">
+              <!-- 전체 요약 통계가 렌더링됩니다 -->
+            </section>
+
+            <!-- F8: 3. 과목별 진도 -->
+            <section class="subject-section" id="homeSubjectSection" aria-labelledby="subjectListTitle">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">학습 과목</p>
+                  <h2 id="subjectListTitle">공부할 과목을 선택하세요</h2>
+                </div>
+              </div>
+
+              <div class="subject-grid" id="homeSubjectGrid">
+                <!-- 과목 카드들이 렌더링됩니다 -->
+              </div>
+            </section>
+
+            <!-- F8: 4. 최근 학습 세션 -->
+            <section class="recent-sessions-section" id="homeRecentSessionsSection" aria-labelledby="recentSessionsTitle">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">최근 기록</p>
+                  <h2 id="recentSessionsTitle">최근 완료한 학습</h2>
+                </div>
+              </div>
+              <div class="recent-sessions-list" id="homeRecentSessionsList">
+                <!-- 최근 완료 세션 카드들이 렌더링됩니다 -->
+              </div>
+            </section>
+          </div>
+
+          <!-- 3. 수학 과목 홈 뷰 (/math) -->
+          <div id="subjectHomeView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="mathSubjectTitle">
+              <span class="platform-hero-tag">📐 수학</span>
+              <h1 id="mathSubjectTitle">수학 학습</h1>
+              <p class="platform-hero-sub">개념을 직접 쓰고 손으로 풀며 정확하게 익힙니다.</p>
+            </section>
+
+            <section class="module-section" aria-labelledby="mathModuleTitle">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">학습 과정</p>
+                  <h2 id="mathModuleTitle">연산 과정 선택</h2>
+                </div>
+              </div>
+
+              <div class="module-grid" id="mathModuleGrid">
+                <!-- 수학 모듈 카드들이 렌더링됩니다 -->
+              </div>
+            </section>
+          </div>
+
+          <!-- 4. 단위 변환 랜딩 뷰 (/math/measurement) -->
+          <div id="measurementLandingView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="measurementLandingTitle">
+              <span class="platform-hero-tag">📏 단위 변환</span>
+              <h1 id="measurementLandingTitle">단위 변환 학습</h1>
+              <p class="platform-hero-sub">길이, 무게, 들이 단위를 이해하고 정수 단위 변환을 연습합니다.</p>
+            </section>
+
+            <section class="measurement-category-section" aria-label="단위 변환 영역 선택">
+              <div class="measurement-tabs" id="measurementDimensionTabs" role="tablist" aria-label="측정 단위 영역">
+                <button type="button" class="measurement-tab-btn active" role="tab" id="tabLength" aria-selected="true" data-dimension="length">길이 (mm, cm, m, km)</button>
+                <button type="button" class="measurement-tab-btn" role="tab" id="tabMass" aria-selected="false" data-dimension="mass">무게 (g, kg)</button>
+                <button type="button" class="measurement-tab-btn" role="tab" id="tabCapacity" aria-selected="false" data-dimension="capacity">들이 (mL, L)</button>
+              </div>
+
+              <div class="measurement-skills-container" id="measurementSkillsContainer">
+                <!-- 스킬 카드 목록이 동적으로 렌더링됩니다 -->
+              </div>
+            </section>
+          </div>
+
+          <!-- 5. 국어 핵심 학습 랜딩 뷰 (/korean, /korean/core) -->
+          <div id="koreanLandingView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="koreanLandingTitle">
+              <span class="platform-hero-tag">📖 국어 핵심</span>
+              <h1 id="koreanLandingTitle">국어 핵심 학습</h1>
+              <p class="platform-hero-sub">어휘, 맞춤법, 띄어쓰기, 문장까지 바르고 자연스러운 한국어 실력을 기릅니다.</p>
+            </section>
+
+            <section class="korean-category-section" aria-label="국어 기본 종합 학습">
+              <h2>기본 종합 학습 · 20문항</h2>
+              <p>최근에 풀었던 문제를 피해서 어휘, 맞춤법, 띄어쓰기, 문장을 골고루 연습해요.</p>
+              <button type="button" class="korean-start-btn" id="startDefaultMixed_korean" disabled>기본 종합 20문항 시작 →</button>
+            </section>
+            <section class="korean-category-section" aria-label="국어 학습 영역 선택">
+              <h2>유형별 집중 학습</h2>
+              <p>선택한 유형만 반복해서 연습해요.</p>
+              <div class="korean-tabs" id="koreanDomainTabs" role="tablist" aria-label="국어 학습 영역">
+                <button type="button" class="korean-tab-btn active" role="tab" id="tabVocab" aria-selected="true" data-domain="vocabulary">어휘</button>
+                <button type="button" class="korean-tab-btn" role="tab" id="tabSpelling" aria-selected="false" data-domain="spelling">맞춤법</button>
+                <button type="button" class="korean-tab-btn" role="tab" id="tabSpacing" aria-selected="false" data-domain="spacing">띄어쓰기</button>
+                <button type="button" class="korean-tab-btn" role="tab" id="tabSentence" aria-selected="false" data-domain="sentence">문장</button><button type="button" class="korean-tab-btn" role="tab" aria-selected="false" data-domain="reading">독해</button>
+              </div>
+
+              <div class="korean-skills-container" id="koreanSkillsContainer">
+                <!-- 국어 스킬 카드 목록이 동적으로 렌더링됩니다 -->
+              </div>
+            </section>
+          </div>
+
+          <!-- 6. 영어 핵심 학습 랜딩 뷰 (/english, /english/core) -->
+          <div id="englishLandingView" class="view platform-view" hidden>
+            <section class="platform-hero" aria-labelledby="englishLandingTitle">
+              <span class="platform-hero-tag">🔤 영어 핵심</span>
+              <h1 id="englishLandingTitle">영어 핵심 학습</h1>
+              <p class="platform-hero-sub">어휘, 단어형, 표현, 문장까지 정확하고 자연스러운 영어 실력을 기릅니다.</p>
+            </section>
+
+            <section class="english-category-section" aria-label="영어 기본 종합 학습">
+              <h2>기본 종합 학습 · 20문항</h2>
+              <p>최근에 풀었던 문제를 피해서 단어, 단어형, 표현, 문장을 골고루 연습해요.</p>
+              <button type="button" class="english-start-btn" id="startDefaultMixed_english" disabled>기본 종합 20문항 시작 →</button>
+            </section>
+            <section class="vocabulary-study-section" aria-labelledby="vocabularyStudyTitle">
+              <div class="vocabulary-study-heading">
+                <div>
+                  <p class="eyebrow">영단어 반복 학습</p>
+                  <h2 id="vocabularyStudyTitle">카드로 익히고 예정일에 복습해요</h2>
+                </div>
+                <p>연습 결과는 공식 정답률에 포함되지 않으며 확인 학습은 보호자가 채점합니다.</p>
+              </div>
+              <div id="englishVocabularyStudyPanel"></div>
+            </section>
+
+            <section class="english-category-section" aria-label="영어 학습 영역 선택">
+              <h2>유형별 집중 학습</h2>
+              <p>선택한 유형만 반복해서 연습해요.</p>
+              <div class="english-tabs" id="englishDomainTabs" role="tablist" aria-label="영어 학습 영역">
+                <button type="button" class="english-tab-btn active" role="tab" id="tabEnVocab" aria-selected="true" data-domain="vocabulary">어휘</button>
+                <button type="button" class="english-tab-btn" role="tab" id="tabEnWordForm" aria-selected="false" data-domain="word_form">단어형</button>
+                <button type="button" class="english-tab-btn" role="tab" id="tabEnExpression" aria-selected="false" data-domain="expression">표현</button>
+                <button type="button" class="english-tab-btn" role="tab" id="tabEnSentence" aria-selected="false" data-domain="sentence">문장</button>
+              </div>
+
+              <div class="english-skills-container" id="englishSkillsContainer">
+                <!-- 영어 스킬 카드 목록이 동적으로 렌더링됩니다 -->
+              </div>
+              <div class="english-skills-container" id="englishF16BPathsContainer" aria-live="polite"></div>
+            </section>
+          </div>
+
+          <div id="bookshelfView" class="view platform-view" hidden>
+            <section class="platform-hero workbook-hero" aria-labelledby="bookshelfTitle">
+              <p class="eyebrow">내 문제집</p>
+              <h1 id="bookshelfTitle">책장에서 문제집을 꺼내 보세요</h1>
+              <p class="platform-hero-sub">과목별 문제집과 학습 진도를 한눈에 확인합니다.</p>
+            </section>
+            <section id="bookshelfGrid" class="workbook-shelf-grid" aria-live="polite"></section>
+          </div>
+
+          <div id="workbookDetailView" class="view platform-view" hidden>
+            <div id="workbookDetailContent" class="workbook-detail-content" aria-live="polite"></div>
+          </div>
+
+          <div id="workbookReaderView" class="view platform-view workbook-reader-view" hidden>
+            <nav id="workbookPageNavigator" class="workbook-page-navigator" aria-label="문제집 페이지 탐색"></nav>
+            <main id="workbookReaderContent" class="workbook-reader-content" aria-live="polite"></main>
+          </div>
+        </div>
+
+        <!-- 기존 수학 앱 루트 -->
+        <div id="mathAppRoot" class="math-app-root">
+          <!-- 1. 세션 설정 뷰 (Setup View) -->
+          <div id="setupView" class="view active-view">
+          <!-- 🌟 오늘의 맞춤 추천 학습 우선 카드 (최상단 CTA) -->
+          <section class="adaptive-recommend-card" id="adaptiveRecommendCard" aria-labelledby="adaptiveCardTitle">
+            <div class="adaptive-card-badge">🎯 오늘의 맞춤 추천</div>
+            <div class="adaptive-card-body">
+              <div class="adaptive-card-info">
+                <h2 id="adaptiveCardTitle">2자리 × 1자리 연속 올림 마스터</h2>
+                <p class="adaptive-reason-text" id="adaptiveReasonText">
+                  최근 받아올림 연산에서 오답이 2회 발생하여 취약 기술 보강 및 복습을 추천합니다.
+                </p>
+                <div class="adaptive-tags" id="adaptiveTags">
+                  <span class="tag-chip">📝 10문제</span>
+                  <span class="tag-chip">⏱ 약 4분 소요</span>
+                  <span class="tag-chip">💡 60/20/10/10 적응형</span>
+                </div>
+              </div>
+              <button type="button" class="primary-action btn-start-adaptive" id="startAdaptiveSessionBtn">
+                <span>추천 학습 시작하기</span><b>➔</b>
+              </button>
+            </div>
+          </section>
+
+          <section class="hero" aria-labelledby="heroTitle">
+            <div class="hero-copy">
+              <p class="eyebrow">오늘의 연산</p>
+              <h1 id="heroTitle">천천히 정확하게,<br><em>손으로 익혀요.</em></h1>
+              <p class="hero-description">수준에 맞는 문제를 워크시트로 만들고, 풀이 완료 후 채점 평가를 진행합니다.</p>
+              <div class="hero-summary" aria-label="학습 준비 상태">
+                <div><strong id="summaryLevel">M2</strong><span>선택 단계</span></div>
+                <div><strong id="summaryCount">20</strong><span>문제 수</span></div>
+                <div><strong id="summaryPageSize">4</strong><span>페이지당</span></div>
+              </div>
+            </div>
+            <div class="problem-card" aria-hidden="true">
+              <span class="paper-label">연습 미리보기</span>
+              <div class="vertical-math"><span>47</span><span><b>×</b> 6</span><i></i><strong>?</strong></div>
+              <div class="pencil-stroke stroke-one"></div>
+              <div class="pencil-stroke stroke-two"></div>
+              <div class="card-note">직접 계산해 보세요</div>
+            </div>
+          </section>
+
+          <section class="setup-section" aria-labelledby="setupTitle">
+            <div class="section-heading">
+              <div><p class="eyebrow">학습 로드맵 & 세부 설정</p><h2 id="setupTitle">학습 조건 선택</h2></div>
+              <span class="engine-state" id="engineState">수학 엔진 준비 완료</span>
+            </div>
+
+            <!-- 🌟 6단계 연산 로드맵 마스터리 트래커 -->
+            <div class="curriculum-roadmap-section" id="curriculumRoadmapSection">
+              <div class="roadmap-header">
+                <div>
+                  <span class="roadmap-tag">단계별 연산 로드맵</span>
+                  <h3>6단계 마스터리 로드맵</h3>
+                </div>
+                <div class="roadmap-op-tabs" role="tablist">
+                  <button type="button" class="roadmap-tab-btn active" id="roadmapMulTab" data-op="mul">✖ 곱셈 6단계</button>
+                  <button type="button" class="roadmap-tab-btn" id="roadmapDivTab" data-op="div">➗ 나눗셈 6단계</button>
+                </div>
+              </div>
+              <div class="roadmap-grid" id="roadmapGrid">
+                <!-- app.js에서 동적으로 6단계 카드 렌더링 -->
+              </div>
+            </div>
+
+            <form id="practiceForm" class="setup-grid">
+              <!-- 연산 종류 -->
+              <fieldset class="setting-card operation-card">
+                <legend>어떤 연산을 연습할까요?</legend>
+                <div class="segmented-control" role="radiogroup" aria-label="연산 종류">
+                  <label><input type="radio" name="operation" value="mul" checked><span><b>×</b> 곱셈</span></label>
+                  <label><input type="radio" name="operation" value="div"><span><b>÷</b> 나눗셈</span></label>
+                </div>
+              </fieldset>
+
+              <!-- 표준 레퍼런스 6단계 & 커스텀 난이도 -->
+              <fieldset class="setting-card full-width-card">
+                <legend>학습 단계 선택</legend>
+                <div class="choice-row seven-col" role="radiogroup" aria-label="표준 레퍼런스 단계">
+                  <label><input type="radio" name="difficulty" value="ref_1"><span><b>Lv.1</b><small id="refLabel1">1자리 기초</small></span></label>
+                  <label><input type="radio" name="difficulty" value="ref_2" checked><span><b>Lv.2</b><small id="refLabel2">2자리 입문</small></span></label>
+                  <label><input type="radio" name="difficulty" value="ref_3"><span><b>Lv.3</b><small id="refLabel3">3자리 기본</small></span></label>
+                  <label><input type="radio" name="difficulty" value="ref_4"><span><b>Lv.4</b><small id="refLabel4">2자리 표준</small></span></label>
+                  <label><input type="radio" name="difficulty" value="ref_5"><span><b>Lv.5</b><small id="refLabel5">3자리 심화</small></span></label>
+                  <label><input type="radio" name="difficulty" value="ref_6"><span><b>Lv.6</b><small id="refLabel6">마스터</small></span></label>
+                  <label><input type="radio" name="difficulty" value="custom"><span><b>⚙️</b><small>직접 설정</small></span></label>
+                </div>
+
+                <!-- 전체 6단계 로드맵 중 현재 수준 실시간 안내 게이지 카드 -->
+                <div class="curriculum-level-card" id="curriculumLevelCard">
+                  <div class="level-card-header">
+                    <span class="level-indicator-badge" id="levelIndicatorBadge">🌟 Lv.2 · 27 × 4</span>
+                    <span class="level-name-text" id="levelNameText">2자리 입문 세로셈</span>
+                  </div>
+                  <div class="roadmap-gauge-wrap">
+                    <div class="roadmap-gauge-bar">
+                      <div class="gauge-step" data-step="1"><span>1</span></div>
+                      <div class="gauge-step" data-step="2"><span>2</span></div>
+                      <div class="gauge-step" data-step="3"><span>3</span></div>
+                      <div class="gauge-step" data-step="4"><span>4</span></div>
+                      <div class="gauge-step" data-step="5"><span>5</span></div>
+                      <div class="gauge-step" data-step="6"><span>6</span></div>
+                      <div class="gauge-fill" id="gaugeFill" style="width: 33.33%;"></div>
+                    </div>
+                  </div>
+                  <p class="level-desc-text" id="levelDescText">두자리 × 한자리 세로셈과 올림수 1회 연습 단계입니다.</p>
+                </div>
+              </fieldset>
+
+              <!-- 자릿수 직접 선택 (custom일 때 활성화) -->
+              <fieldset class="setting-card full-width-card" id="customDigitsCard" hidden>
+                <legend id="customDigitsLegend">자릿수 직접 선택 (커스텀)</legend>
+                <div class="custom-digits-wrapper">
+                  <!-- 곱셈 자릿수 선택 -->
+                  <div class="digits-pair" id="mulDigitsPair">
+                    <div class="digit-selector-group">
+                      <span class="selector-label">곱해지는 수 (피승수)</span>
+                      <div class="choice-chips" role="radiogroup" aria-label="곱해지는 수 자릿수">
+                        <label><input type="radio" name="aDigits" value="1"><span>1자리</span></label>
+                        <label><input type="radio" name="aDigits" value="2" checked><span>2자리</span></label>
+                        <label><input type="radio" name="aDigits" value="3"><span>3자리</span></label>
+                      </div>
+                    </div>
+                    <span class="operator-symbol" aria-hidden="true">×</span>
+                    <div class="digit-selector-group">
+                      <span class="selector-label">곱하는 수 (승수)</span>
+                      <div class="choice-chips" role="radiogroup" aria-label="곱하는 수 자릿수">
+                        <label><input type="radio" name="bDigits" value="1" checked><span>1자리</span></label>
+                        <label><input type="radio" name="bDigits" value="2"><span>2자리</span></label>
+                        <label><input type="radio" name="bDigits" value="3"><span>3자리</span></label>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 나눗셈 자릿수 선택 -->
+                  <div class="digits-pair" id="divDigitsPair" hidden>
+                    <div class="digit-selector-group">
+                      <span class="selector-label">나누어지는 수 (피제수)</span>
+                      <div class="choice-chips" role="radiogroup" aria-label="나누어지는 수 자릿수">
+                        <label><input type="radio" name="dividendDigits" value="2"><span>2자리</span></label>
+                        <label><input type="radio" name="dividendDigits" value="3" checked><span>3자리</span></label>
+                      </div>
+                    </div>
+                    <span class="operator-symbol" aria-hidden="true">÷</span>
+                    <div class="digit-selector-group">
+                      <span class="selector-label">나누는 수 (제수)</span>
+                      <div class="choice-chips" role="radiogroup" aria-label="나누는 수 자릿수">
+                        <label><input type="radio" name="divisorDigits" value="1" checked><span>1자리</span></label>
+                        <label><input type="radio" name="divisorDigits" value="2"><span>2자리</span></label>
+                        <label><input type="radio" name="divisorDigits" value="3"><span>3자리</span></label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </fieldset>
+
+              <!-- 수식 표기 방식 (세로셈 / 가로셈) -->
+              <fieldset class="setting-card">
+                <legend>수식 표기 방식 (세로셈 / 가로셈)</legend>
+                <div class="choice-chips two-col" role="radiogroup" aria-label="수식 표기 방식">
+                  <label><input type="radio" name="mathFormat" value="vertical" checked><span>📊 세로셈 (풀이 모눈 포함)</span></label>
+                  <label><input type="radio" name="mathFormat" value="horizontal"><span>🧮 가로셈 (암산 바로 쓰기)</span></label>
+                </div>
+              </fieldset>
+
+              <!-- 전체 문제 수 (기본 프리셋 + 직접 입력) -->
+              <fieldset class="setting-card">
+                <legend>몇 문제를 풀까요? (총 문제 수)</legend>
+                <div class="count-row five-col" role="radiogroup" aria-label="전체 문제 수">
+                  <label><input type="radio" name="countPreset" value="10"><span>10문제</span></label>
+                  <label><input type="radio" name="countPreset" value="20" checked><span>20문제</span></label>
+                  <label><input type="radio" name="countPreset" value="30"><span>30문제</span></label>
+                  <label><input type="radio" name="countPreset" value="50"><span>50문제</span></label>
+                  <label><input type="radio" name="countPreset" value="custom"><span>직접 입력</span></label>
+                </div>
+                <div class="custom-input-wrap" id="customCountWrap" hidden>
+                  <label for="customCountInput">문제 수 직접 지정 (1 ~ 100문제)</label>
+                  <div class="input-with-unit">
+                    <input type="number" id="customCountInput" name="customCount" min="1" max="100" value="15" inputmode="numeric">
+                    <span class="unit-text">문제</span>
+                  </div>
+                </div>
+              </fieldset>
+
+              <!-- 한 화면/페이지당 문제 수 (기본 프리셋 + 행×열 커스텀) -->
+              <fieldset class="setting-card">
+                <legend>한 화면(페이지)에 표시할 문제 수 및 배치</legend>
+                <div class="choice-row eight-col" role="radiogroup" aria-label="한 화면 문제 수 및 배치">
+                  <label><input type="radio" name="layoutPreset" value="1x1"><span><b>1×1</b><small>1개(1열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="1x2"><span><b>1×2</b><small>2개(1열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="2x1"><span><b>2×1</b><small>2개(2열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="2x2" checked><span><b>2×2</b><small>4개(2열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="3x1"><span><b>3×1</b><small>3개(3열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="3x2"><span><b>3×2</b><small>6개(3열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="4x2"><span><b>4×2</b><small>8개(4열)</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="2x5"><span><b>2×5</b><small>10개</small></span></label>
+                  <label><input type="radio" name="layoutPreset" value="custom"><span><b>직접</b><small>행×열</small></span></label>
+                </div>
+                <div class="custom-layout-wrap" id="customLayoutWrap" hidden>
+                  <div class="custom-grid-selectors">
+                    <label>
+                      <span>가로 칸 (열)</span>
+                      <select id="customColsSelect" name="customCols">
+                        <option value="1">1열 (1칸)</option>
+                        <option value="2" selected>2열 (2칸)</option>
+                        <option value="3">3열 (3칸)</option>
+                        <option value="4">4열 (4칸)</option>
+                      </select>
+                    </label>
+                    <span class="grid-cross">×</span>
+                    <label>
+                      <span>세로 줄 (행)</span>
+                      <select id="customRowsSelect" name="customRows">
+                        <option value="1">1행 (1줄)</option>
+                        <option value="2">2행 (2줄)</option>
+                        <option value="3" selected>3행 (3줄)</option>
+                        <option value="4">4행 (4줄)</option>
+                        <option value="5">5행 (5줄)</option>
+                        <option value="6">6행 (6줄)</option>
+                      </select>
+                    </label>
+                    <div class="custom-grid-result">
+                      <strong id="customGridResultText">한 화면 6문제</strong>
+                      <small>(2열 × 3행)</small>
+                    </div>
+                  </div>
+                </div>
+              </fieldset>
+
+              <!-- 곱셈 전용 상세 옵션 -->
+              <fieldset class="setting-card advanced-card full-width-card" id="multiplyOptions">
+                <legend>곱하는 수 특별 조건</legend>
+                <div class="select-pair">
+                  <label>출제 방식
+                    <select id="multiplierMode" name="multiplierMode">
+                      <option value="random">무작위</option>
+                      <option value="fixed">특정 숫자 집중</option>
+                      <option value="multiple">특정 수의 배수</option>
+                    </select>
+                  </label>
+                  <label id="modeValueLabel" hidden><span id="modeValueText">숫자</span>
+                    <input id="modeValue" name="modeValue" type="number" min="2" max="99" value="7" inputmode="numeric">
+                  </label>
+                </div>
+              </fieldset>
+
+              <button class="primary-action" type="submit">
+                <span>워크시트 연습 시작</span><b aria-hidden="true">→</b>
+              </button>
+            </form>
+          </section>
+
+          <!-- 3. 내 학습 기록 및 오답 복습 대시보드 (Phase 4) -->
+          <section class="dashboard-section" id="dashboardSection">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">학습 기록 & 오답 복습</p>
+                <h2>나의 연산 성장 대시보드</h2>
+              </div>
+            </div>
+
+            <!-- 학습 요약 통계 그리드 -->
+            <div class="dashboard-stats-grid">
+              <div class="dash-stat-card">
+                <span class="dash-stat-label">총 푼 문제</span>
+                <strong class="dash-stat-val" id="dashTotalQuestions">0개</strong>
+                <small class="dash-stat-sub">누적 학습량</small>
+              </div>
+              <div class="dash-stat-card highlight">
+                <span class="dash-stat-label">평균 정답률</span>
+                <strong class="dash-stat-val" id="dashAvgAccuracy">0%</strong>
+                <small class="dash-stat-sub">정확도</small>
+              </div>
+              <div class="dash-stat-card">
+                <span class="dash-stat-label">누적 훈련 시간</span>
+                <strong class="dash-stat-val" id="dashTotalTime">0초</strong>
+                <small class="dash-stat-sub">집중 시간</small>
+              </div>
+              <div class="dash-stat-card warning">
+                <span class="dash-stat-label">복습할 오답</span>
+                <strong class="dash-stat-val" id="dashMistakeCount">0개</strong>
+                <small class="dash-stat-sub">취약 유형</small>
+              </div>
+            </div>
+
+            <!-- 📅 월간 학습 달력 & 연속 학습 스트릭 -->
+            <div class="study-calendar-card" id="studyCalendarCard">
+              <div class="calendar-header-row">
+                <div class="calendar-title-wrap">
+                  <span class="calendar-badge">📅 학습 달력</span>
+                  <h3 id="calendarMonthTitle">2026년 8월</h3>
+                </div>
+                <div class="streak-pill" id="streakPill">
+                  <span class="streak-icon">🔥</span>
+                  <strong id="currentStreakText">0일 연속 열공 중!</strong>
+                </div>
+                <div class="calendar-nav-group">
+                  <button type="button" class="cal-nav-btn" id="calPrevMonthBtn" title="이전 달">◀</button>
+                  <button type="button" class="cal-nav-btn" id="calTodayBtn" title="오늘">오늘</button>
+                  <button type="button" class="cal-nav-btn" id="calNextMonthBtn" title="다음 달">▶</button>
+                </div>
+              </div>
+              <div class="calendar-weekdays-row">
+                <span class="sun">일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span class="sat">토</span>
+              </div>
+              <div class="calendar-days-grid" id="calendarDaysGrid">
+                <!-- 자바스크립트로 날짜들이 렌더링됩니다 -->
+              </div>
+              <div class="calendar-selected-details" id="calendarSelectedDetails" hidden>
+                <div class="selected-day-header">
+                  <h4 id="selectedDayTitle">8월 22일 학습 기록</h4>
+                  <button type="button" class="close-day-btn" id="closeDayDetailsBtn">닫기 ✕</button>
+                </div>
+                <div class="selected-day-sessions" id="selectedDaySessionsList"></div>
+              </div>
+            </div>
+
+            <!-- 오답 집중 다시 풀기 배너 -->
+            <div class="mistake-banner" id="mistakeBanner" hidden>
+              <div class="mistake-banner-content">
+                <span class="mistake-icon">🔥</span>
+                <div>
+                  <h3>틀렸던 오답 문제가 <span id="mistakeBadgeCount">0</span>개 모였어요!</h3>
+                  <p>완벽히 이해할 때까지 다시 풀며 연산 실수를 극복하세요.</p>
+                </div>
+              </div>
+              <button type="button" class="mistake-action-btn" id="startMistakeSessionBtn">
+                <span>오답 집중 다시 풀기</span><b>→</b>
+              </button>
+            </div>
+
+            <!-- 최근 학습 세션 목록 -->
+            <div class="recent-sessions-container">
+              <div class="recent-header">
+                <h3>최근 연습 기록</h3>
+                <button type="button" class="clear-history-btn" id="clearHistoryBtn">기록 초기화</button>
+              </div>
+              <div class="recent-sessions-list" id="recentSessionsList">
+                <div class="empty-recent-msg">아직 완료된 연습 기록이 없습니다. 새로운 연습을 시작해 보세요!</div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- 2. 워크시트 문제 풀이 뷰 (Worksheet Practice View) -->
+        <div id="practiceView" class="view" hidden>
+          <!-- A4 인쇄 전용 시험지 헤더 (@media print 전용) -->
+          <div class="print-only print-sheet-header" id="printSheetHeader">
+            <div class="print-header-top">
+              <h1 class="print-title" id="printTitleText">수학 연산 워크시트</h1>
+              <span class="print-level-tag" id="printLevelTag">단계: M2</span>
+            </div>
+            <div class="print-meta-grid">
+              <div class="print-meta-item"><span>이름:</span> <b>__________________</b></div>
+              <div class="print-meta-item"><span>날짜:</span> <b>2026. ____. ____</b></div>
+              <div class="print-meta-item"><span>걸린 시간:</span> <b>____분 ____초</b></div>
+              <div class="print-meta-item"><span>점수:</span> <b>______ / 100점</b></div>
+            </div>
+          </div>
+
+          <div class="practice-header">
+            <div class="progress-info">
+              <span class="level-badge" id="practiceLevelBadge">M2</span>
+              <span class="page-badge" id="practicePageBadge">페이지 1 / 5</span>
+              <span class="question-range" id="practiceQuestionRange">문제 1 ~ 4 / 20</span>
+            </div>
+            <div class="timer-display" id="timerDisplay" aria-label="풀이 시간">
+              <span class="timer-icon" aria-hidden="true">⏱</span>
+              <strong id="timerText">00:00.0</strong>
+            </div>
+            <div class="draft-save-status" id="draftSaveStatus" data-status="idle" role="status" aria-live="polite" hidden>
+              <span id="draftSaveStatusText">저장 대기</span>
+              <button type="button" id="retryDraftSaveBtn" hidden>다시 시도</button>
+            </div>
+          </div>
+
+          <!-- 워크시트 다중 문제 그리드 -->
+          <div class="worksheet-container">
+            <div class="worksheet-grid" id="worksheetGrid">
+              <!-- 문제 카드들이 자바스크립트로 렌더링됩니다 -->
+            </div>
+          </div>
+
+          <nav class="adaptive-bottom-dock" id="practiceDock" aria-label="문제풀이 도구">
+            <div class="dock-progress" id="dockProgress" role="progressbar" aria-label="문제풀이 진행률" aria-valuemin="0" aria-valuemax="100" aria-valuenow="20">
+              <div class="dock-progress-fill" id="sessionProgressBar" style="width: 20%;"></div>
+              <span class="page-indicator" id="pageIndicatorText">1 / 5 페이지</span>
+            </div>
+            <div class="dock-controls">
+              <div class="dock-primary-actions" aria-label="페이지 이동 및 풀이 완료">
+                <div class="dock-navigation-group">
+                  <button class="dock-btn dock-btn-primary" id="prevPageBtn" type="button" disabled aria-label="이전 페이지">←<span>이전 페이지</span></button>
+                  <button class="dock-btn dock-btn-primary" id="nextPageBtn" type="button" aria-label="다음 페이지"><span>다음 페이지</span>→</button>
+                </div>
+                <div class="dock-session-group">
+                  <button class="dock-btn pause" id="pausePracticeBtn" type="button"><span>다음에 풀기</span></button>
+                  <button class="dock-btn submit" id="submitPracticeBtn" type="button" style="display: none;"><span>풀이 제출하기</span>✓</button>
+                </div>
+              </div>
+              <div class="dock-tool-row" aria-label="필기 도구">
+                <button class="dock-btn" id="undoBtn" type="button" aria-label="되돌리기">↶<span>취소</span></button>
+                <button class="dock-btn" id="redoBtn" type="button" aria-label="다시하기">↷<span>다시</span></button>
+                <button class="dock-btn active" id="penModeBtn" type="button" aria-label="펜 도구">✏️<span>펜</span></button>
+                <button class="dock-btn" id="eraserToggleBtn" type="button" aria-label="지우개 도구">⌫<span>지우개</span></button>
+                <button class="dock-btn danger" id="clearAllCanvasBtn" type="button" aria-label="현재 페이지 필기 비우기">🗑<span>비우기</span></button>
+                <button class="dock-btn" id="pencilOnlyToggleBtn" type="button" aria-label="입력 방식 전환"><span id="pencilModeText">손+펜</span></button>
+                <details class="dock-more" data-interactive="true">
+                  <summary class="dock-btn" aria-label="추가 도구">⋯<span>더보기</span></summary>
+                  <div class="dock-more-panel">
+                    <div class="color-chips" role="radiogroup" aria-label="펜 색상">
+                      <button type="button" class="color-chip-btn active" data-color="#173f35" style="--chip-color: #173f35;" title="포레스트 그린"></button>
+                      <button type="button" class="color-chip-btn" data-color="#1b4d89" style="--chip-color: #1b4d89;" title="오션 블루"></button>
+                      <button type="button" class="color-chip-btn" data-color="#2c302e" style="--chip-color: #2c302e;" title="클래식 흑색"></button>
+                      <button type="button" class="color-chip-btn" data-color="#c62828" style="--chip-color: #c62828;" title="레드 잉크"></button>
+                    </div>
+                    <div class="width-chips" role="radiogroup" aria-label="펜 굵기">
+                      <button type="button" class="width-chip-btn" data-width="1.5">얇게</button>
+                      <button type="button" class="width-chip-btn active" data-width="2.5">보통</button>
+                      <button type="button" class="width-chip-btn" data-width="4.0">굵게</button>
+                    </div>
+                    <button type="button" id="largeProblemToggleBtn">큰 문제 보기</button>
+                    <button type="button" id="printWorksheetBtn">시험지 인쇄</button>
+                    <button type="button" id="printAnswerKeyBtn">정답지 인쇄</button>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </nav>
+        </div>
+
+        <!-- 3. 채점자 평가 뷰 (Grading / Review View) [NEW] -->
+        <div id="gradingView" class="view" hidden>
+          <section class="parent-grading-start" id="parentGradingStartPanel" hidden>
+            <span class="grading-icon" aria-hidden="true">🛡️</span>
+            <div>
+              <p class="eyebrow">보호자 확인</p>
+              <h2>제출된 풀이를 채점할까요?</h2>
+              <p>학생 답안과 필기는 잠겨 있으며, 보호자 판정과 빨간 펜만 별도로 저장됩니다.</p>
+            </div>
+            <button class="primary-action" id="startParentGradingBtn" type="button">보호자 채점 시작</button>
+          </section>
+          <section class="grading-hero">
+            <div class="grading-banner">
+              <span class="grading-icon" aria-hidden="true">📝</span>
+              <div>
+                <h2>풀이가 완료되었습니다! 채점을 진행해 주세요</h2>
+                <p>각 문제의 정답을 확인하고 [맞음] 또는 [틀림]을 선택하세요.</p>
+              </div>
+              <button class="chip-action-btn grading-exit-btn" id="gradingExitBtn" type="button">채점 나가기</button>
+            </div>
+            <div class="grading-toolbar">
+              <div class="grading-status-badge" role="status" aria-live="polite">
+                채점 완료: <strong id="gradedCountText">0 / 0</strong>
+                (<span id="gradedCorrectText">정답 0</span>, <span id="gradedWrongText">오답 0</span>)
+                · <span id="gradedRetryText">다시 풀기 0</span>
+                · <strong id="gradingRemainingText">미채점 0</strong>
+              </div>
+              <div class="draft-save-status" id="gradingDraftSaveStatus" data-status="idle" role="status" aria-live="polite" hidden>
+                <span id="gradingDraftSaveStatusText">저장 대기</span>
+                <button type="button" id="retryGradingDraftSaveBtn" hidden>다시 시도</button>
+              </div>
+              <div class="grading-quick-actions">
+                <button class="chip-action-btn" id="toggleAnswersBtn" type="button">
+                  <span id="toggleAnswersText">정답 전체 숨기기</span>
+                </button>
+                <button class="chip-action-btn primary" id="gradeAllCorrectBtn" type="button" disabled aria-disabled="true">
+                  <span>모두 정답 처리</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <nav class="grading-question-navigator" id="gradingQuestionNavigator" aria-label="채점 문제 이동" hidden>
+            <button class="chip-action-btn" id="gradingPrevQuestionBtn" type="button">← 이전 문제</button>
+            <div class="grading-question-chips" id="gradingQuestionChips" aria-label="문제 번호"></div>
+            <span class="grading-question-position" id="gradingQuestionPosition"></span>
+            <button class="chip-action-btn" id="gradingNextQuestionBtn" type="button">다음 문제 →</button>
+          </nav>
+
+          <!-- 채점 문제 카드 그리드 -->
+          <div class="grading-container">
+            <div class="grading-grid" id="gradingGrid">
+              <!-- 채점 카드들이 자바스크립트로 렌더링됩니다 -->
+            </div>
+          </div>
+
+          <!-- 채점 완료 제출 버튼 -->
+          <div class="grading-footer">
+            <p id="gradingFinishHint" class="grading-finish-hint" role="status" aria-live="polite">모든 문제를 채점하면 결과를 볼 수 있습니다.</p>
+            <button class="primary-action finish-grading-btn" id="finishGradingBtn" type="button" aria-describedby="gradingFinishHint">
+              <span>채점 완료 및 결과 보기</span><b>→</b>
+            </button>
+          </div>
+        </div>
+
+        <!-- 4. 세션 결과 요약 뷰 (Session Result View) -->
+        <div id="resultView" class="view" hidden>
+          <canvas id="confettiCanvas" class="confetti-canvas" aria-hidden="true"></canvas>
+          <section class="result-hero">
+            <div class="result-badge-wrap">
+              <span class="result-trophy">🎉</span>
+            </div>
+            <p class="eyebrow">평가 완료</p>
+            <h1 id="resultTitle">채점 결과가 나왔어요!</h1>
+            <p class="result-subtitle" id="resultSubtitle">이번 학습의 풀이 및 채점 결과입니다.</p>
+          </section>
+
+          <div class="stats-grid">
+            <div class="stat-card highlight">
+              <span class="stat-label">정답률</span>
+              <strong class="stat-value" id="statAccuracy">90%</strong>
+              <small class="stat-sub" id="statAccuracyDetail">18 / 20 문제 정답</small>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">총 풀이 시간</span>
+              <strong class="stat-value" id="statTotalTime">2분 36초</strong>
+              <small class="stat-sub" id="statAvgTime">문제당 평균 7.8초</small>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">정답 개수</span>
+              <strong class="stat-value" id="statCorrectCount">18개</strong>
+              <small class="stat-sub">실수 없이 해결</small>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">오답 개수</span>
+              <strong class="stat-value" id="statWrongCount">2개</strong>
+              <small class="stat-sub">오답 복습 필요</small>
+            </div>
+          </div>
+
+          <!-- 채점 상세 및 빨간 펜 코멘트 리스트 -->
+          <section class="results-detail-section" id="resultsDetailSection">
+            <div class="results-section-header">
+              <h3>문제별 채점 및 피드백 내역</h3>
+              <div class="view-mode-tabs" role="tablist">
+                <button type="button" class="view-mode-tab-btn" id="resultViewCompactBtn" data-mode="compact">📋 간략히 보기</button>
+                <button type="button" class="view-mode-tab-btn active" id="resultViewDetailBtn" data-mode="detail">🔍 상세 필기/첨삭</button>
+              </div>
+            </div>
+            <div class="results-detail-list" id="resultsDetailList">
+              <!-- 채점 상세 내역이 자바스크립트로 렌더링됩니다 -->
+            </div>
+          </section>
+
+          <div class="result-actions">
+            <button class="primary-action" id="restartSessionBtn" type="button">
+              <span>같은 조건으로 다시 풀기</span><b>↻</b>
+            </button>
+            <button class="secondary-action" id="goHomeBtn" type="button">
+              <span>홈으로 돌아가기</span>
+            </button>
+          </div>
+        </div>
+        </div>
+      </main>
+
+      <footer>
+<a href="./notices.html">출처·라이선스 및 체험판 범위</a>
+        <span>Study Canvas</span>
+        <span>워크시트 모드 & 채점자 평가 시스템 가동 중</span>
+      </footer>
+    </div>
+
+    <!-- 🌟 미완료 학습 이어하기 (Draft Resume) 모달 -->
+    <dialog id="draftResumeModal" class="confirm-dialog draft-resume-dialog">
+      <div class="dialog-card">
+        <h3>📝 이어서 풀 문제가 있습니다!</h3>
+        <p id="draftResumeMessage">이전에 풀던 학습 세션이 보관되어 있습니다. 이어서 풀기를 진행하시겠습니까?</p>
+        <div class="dialog-actions">
+          <button type="button" class="btn-cancel" id="draftDiscardBtn">처음부터 시작</button>
+          <button type="button" class="btn-confirm" id="draftResumeBtn">이어서 풀기</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 확인 모달 (세션 중단 등) -->
+    <dialog id="confirmModal" class="confirm-dialog">
+      <div class="dialog-card">
+        <h3 id="modalTitle">세션을 중단할까요?</h3>
+        <p id="modalMessage">작성 중인 답안과 필기를 임시 저장한 뒤 홈으로 이동합니다. 이어풀기로 계속할 수 있습니다.</p>
+        <div class="dialog-actions">
+          <button type="button" class="btn-cancel" id="modalCancelBtn">계속 풀기</button>
+          <button type="button" class="btn-confirm" id="modalConfirmBtn">나가기</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 과거 학습 기록 상세 다시보기 모달 -->
+    <dialog id="sessionDetailModal" class="confirm-dialog session-detail-dialog">
+      <div class="dialog-card session-detail-card">
+        <div class="detail-modal-header">
+          <div>
+            <span class="detail-modal-tag" id="detailModalTag">2026. 08. 22 기록</span>
+            <h3 id="detailModalTitle">곱셈 20문제 풀이 결과</h3>
+          </div>
+          <button type="button" class="detail-modal-close" id="sessionDetailCloseBtn" aria-label="닫기">✕</button>
+        </div>
+        <div class="detail-modal-summary" id="detailModalSummary">
+          <!-- 정답률, 시간 등 요약 -->
+        </div>
+        <!-- 보기 모드 전환 탭 (간략히 보기 vs 상세 필기/첨삭) -->
+        <div class="modal-view-mode-row">
+          <div class="view-mode-tabs" role="tablist">
+            <button type="button" class="view-mode-tab-btn" id="modalViewCompactBtn" data-mode="compact">📋 간략히 보기</button>
+            <button type="button" class="view-mode-tab-btn active" id="modalViewDetailBtn" data-mode="detail">🔍 상세 필기/첨삭</button>
+          </div>
+        </div>
+        <div class="detail-modal-list" id="detailModalList">
+          <!-- 문제별 채점 내역 및 코멘트 렌더링 -->
+        </div>
+        <div class="dialog-actions single-action">
+          <button type="button" class="btn-cancel" id="sessionDetailCloseBtnBottom">닫기</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 단축키 안내 모달 -->
+    <dialog id="shortcutsModal" class="confirm-dialog shortcuts-dialog">
+      <div class="dialog-card shortcuts-card">
+        <h3>⌨️ 키보드 단축키 안내</h3>
+        <div class="shortcuts-table">
+          <div class="shortcut-row"><kbd>?</kbd><span>단축키 안내 창 열기/닫기</span></div>
+          <div class="shortcut-row"><kbd>[</kbd> / <kbd>]</kbd><span>이전 / 다음 페이지 이동</span></div>
+          <div class="shortcut-row"><kbd>1</kbd> ~ <kbd>4</kbd><span>펜 색상 변경 (초록/파랑/흑색/빨강)</span></div>
+          <div class="shortcut-row"><kbd>E</kbd><span>지우개 모드 켜기/끄기</span></div>
+          <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Y</kbd><span>되돌리기 / 다시실행</span></div>
+          <div class="shortcut-row"><kbd>A</kbd><span>(채점) 전체 문제 정답 처리</span></div>
+          <div class="shortcut-row"><kbd>H</kbd><span>(채점) 정답 보이기/숨기기</span></div>
+        </div>
+        <div class="dialog-actions single-action">
+          <button type="button" class="btn-cancel" id="shortcutsCloseBtn">닫기 (Esc)</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 🌟 학습자 추가/수정 모달 -->
+    <dialog id="learnerModal" class="confirm-dialog learner-modal">
+      <div class="dialog-card learner-dialog-card">
+        <div class="dialog-header-row">
+          <h3 id="learnerModalTitle">새 학습자 추가</h3>
+          <button type="button" class="icon-close-btn" id="learnerModalCloseBtn" aria-label="닫기">✕</button>
+        </div>
+        <form id="learnerForm" class="learner-form">
+          <div class="form-group">
+            <label for="learnerNameInput">학습자 이름</label>
+            <input type="text" id="learnerNameInput" class="text-input" required maxlength="20" placeholder="이름을 입력하세요 (예: 민준)" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="learnerSchoolGradeInput">현재 초등학교 학년</label>
+            <select id="learnerSchoolGradeInput" class="text-input" required>
+              <option value="">학년을 선택하세요</option>
+              <option value="1">1학년</option>
+              <option value="2">2학년</option>
+              <option value="3">3학년</option>
+              <option value="4">4학년</option>
+              <option value="5">5학년</option>
+              <option value="6">6학년</option>
+            </select>
+            <p class="form-help">선택한 학년을 기준으로 복습·현재 학년·예습 콘텐츠를 구분합니다.</p>
+          </div>
+          <fieldset class="learner-policy-fieldset">
+            <legend>보호자 학습 범위</legend>
+            <label class="learner-policy-option">
+              <input type="checkbox" id="learnerAllowPreviewInput">
+              <span>한 학년 위 예습 허용</span>
+            </label>
+            <label class="learner-policy-option">
+              <input type="checkbox" id="learnerAllowAdvancedInput">
+              <span>심화 난이도 허용</span>
+            </label>
+          </fieldset>
+          <div class="form-group">
+            <label>대표 아바타 선택</label>
+            <div class="avatar-grid" id="learnerAvatarList">
+              <!-- 아바타 라디오 목록이 렌더링됩니다 -->
+            </div>
+          </div>
+          <p id="learnerModalError" class="form-error" role="alert" hidden></p>
+          <div class="dialog-actions">
+            <button type="button" id="archiveLearnerBtn" class="btn-danger-outline" hidden>학습자 보관</button>
+            <div class="dialog-actions-right">
+              <button type="button" class="btn-cancel" id="learnerCancelBtn">취소</button>
+              <button type="submit" class="btn-confirm">저장하기</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <!-- 🌟 Phase F7: 오답 함께 보기 및 재풀이 모달 -->
+    <dialog id="reviewDetailModal" class="confirm-dialog review-detail-dialog">
+      <div class="dialog-card review-detail-card">
+        <div class="detail-modal-header">
+          <div>
+            <span class="detail-modal-tag" id="reviewModalTag">오답 함께 보기</span>
+            <h3 id="reviewModalTitle">오답 함께 보기</h3>
+          </div>
+          <button type="button" class="detail-modal-close" id="reviewModalCloseBtn" aria-label="닫기">✕</button>
+        </div>
+        <div class="review-status-bar" id="reviewModalStatusBar">
+          <span class="status-badge" id="reviewModalStateBadge">복습 필요</span>
+          <span class="reason-badge" id="reviewModalReasonBadge">오답</span>
+          <span class="retry-count-badge" id="reviewModalRetryCountBadge" hidden>재풀이 1회 시도</span>
+        </div>
+        <div class="review-problem-body" id="reviewModalProblemBody">
+          <!-- 문제, 원본 답안, 원본 필기 캔버스, 정답, 단계별 해설이 동적으로 렌더링됩니다 -->
+        </div>
+        <div class="dialog-actions review-dialog-actions" id="reviewModalActions">
+          <!-- 상태별 동적 버튼 -->
+        </div>
+      </div>
+    </dialog>
+
+    <script>
+      (() => {
+        const recoveryKey = "math_canvas_sw_module_recovery";
+        window.__mathCanvasModuleStarted = false;
+        if (!("serviceWorker" in navigator)) return;
+        let recoveryScheduled = false;
+        let recoveryReloading = false;
+        const scheduleRecovery = (worker) => {
+          if (!worker || recoveryScheduled) return;
+          recoveryScheduled = true;
+          setTimeout(() => {
+            recoveryScheduled = false;
+            if (window.__mathCanvasModuleStarted || !navigator.serviceWorker.controller) return;
+            worker.postMessage({ type: "SKIP_WAITING" });
+          }, 2500);
+        };
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          if (window.__mathCanvasModuleStarted || recoveryReloading || sessionStorage.getItem(recoveryKey)) return;
+          recoveryReloading = true;
+          sessionStorage.setItem(recoveryKey, "1");
+          location.reload();
+        });
+        navigator.serviceWorker.register("./service-worker.js").then((registration) => {
+          scheduleRecovery(registration.waiting);
+          registration.addEventListener("updatefound", () => {
+            const worker = registration.installing;
+            worker?.addEventListener("statechange", () => {
+              if (worker.state === "installed") scheduleRecovery(registration.waiting || worker);
+            });
+          });
+        }).catch(() => {});
+      })();
+    </script>
+    <script type="importmap">{"imports":{"./js/adaptiveEngine.js":"./js/adaptiveEngine.js?v=study-canvas-public-v1","./js/aiReviewAttribution.js":"./js/aiReviewAttribution.js?v=study-canvas-public-v1","./js/aiReviewPolicy.js":"./js/aiReviewPolicy.js?v=study-canvas-public-v1","./js/aiReviewResources.js":"./js/aiReviewResources.js?v=study-canvas-public-v1","./js/app.js":"./js/app.js?v=study-canvas-public-v1","./js/backupEngine.js":"./js/backupEngine.js?v=study-canvas-public-v1","./js/canvasEngine.js":"./js/canvasEngine.js?v=study-canvas-public-v1","./js/canvasSceneGeometry.js":"./js/canvasSceneGeometry.js?v=study-canvas-public-v1","./js/compactExactAiReviewPolicy.js":"./js/compactExactAiReviewPolicy.js?v=study-canvas-public-v1","./js/confetti.js":"./js/confetti.js?v=study-canvas-public-v1","./js/contentEligibility.js":"./js/contentEligibility.js?v=study-canvas-public-v1","./js/contentPackageLoader.js":"./js/contentPackageLoader.js?v=study-canvas-public-v1","./js/contentRotationAdapters.js":"./js/contentRotationAdapters.js?v=study-canvas-public-v1","./js/contentRotationRuntime.js":"./js/contentRotationRuntime.js?v=study-canvas-public-v1","./js/curriculumRegistry.js":"./js/curriculumRegistry.js?v=study-canvas-public-v1","./js/data/learningCommands.js":"./js/data/learningCommands.js?v=study-canvas-public-v1","./js/data/learningQueries.js":"./js/data/learningQueries.js?v=study-canvas-public-v1","./js/decimalDomain.js":"./js/decimalDomain.js?v=study-canvas-public-v1","./js/decimalGenerator.js":"./js/decimalGenerator.js?v=study-canvas-public-v1","./js/decimalRepresentationView.js":"./js/decimalRepresentationView.js?v=study-canvas-public-v1","./js/displayLabels.js":"./js/displayLabels.js?v=study-canvas-public-v1","./js/draftEngine.js":"./js/draftEngine.js?v=study-canvas-public-v1","./js/englishActivitySelector.js":"./js/englishActivitySelector.js?v=study-canvas-public-v1","./js/englishCoreV2Loader.js":"./js/englishCoreV2Loader.js?v=study-canvas-public-v1","./js/englishCoreV2Runtime.js":"./js/englishCoreV2Runtime.js?v=study-canvas-public-v1","./js/englishCoreV2Session.js":"./js/englishCoreV2Session.js?v=study-canvas-public-v1","./js/englishVocabularyStudy.js":"./js/englishVocabularyStudy.js?v=study-canvas-public-v1","./js/englishVocabularyView.js":"./js/englishVocabularyView.js?v=study-canvas-public-v1","./js/exactAiReviewPolicy.js":"./js/exactAiReviewPolicy.js?v=study-canvas-public-v1","./js/explainer.js":"./js/explainer.js?v=study-canvas-public-v1","./js/exposureSelector.js":"./js/exposureSelector.js?v=study-canvas-public-v1","./js/f16dReviewEvidence.js":"./js/f16dReviewEvidence.js?v=study-canvas-public-v1","./js/fractionConcepts.js":"./js/fractionConcepts.js?v=study-canvas-public-v1","./js/fractionOperationGenerator.js":"./js/fractionOperationGenerator.js?v=study-canvas-public-v1","./js/fractionOperations.js":"./js/fractionOperations.js?v=study-canvas-public-v1","./js/fractionRepresentationView.js":"./js/fractionRepresentationView.js?v=study-canvas-public-v1","./js/guardianFeedbackPresets.js":"./js/guardianFeedbackPresets.js?v=study-canvas-public-v1","./js/historicalGradingReference.js":"./js/historicalGradingReference.js?v=study-canvas-public-v1","./js/interactionGuard.js":"./js/interactionGuard.js?v=study-canvas-public-v1","./js/koreanActivitySelector.js":"./js/koreanActivitySelector.js?v=study-canvas-public-v1","./js/languageCandidateProgress.js":"./js/languageCandidateProgress.js?v=study-canvas-public-v1","./js/languageCandidateVisibility.js":"./js/languageCandidateVisibility.js?v=study-canvas-public-v1","./js/learners/learnerCommands.js":"./js/learners/learnerCommands.js?v=study-canvas-public-v1","./js/learners/learnerQueries.js":"./js/learners/learnerQueries.js?v=study-canvas-public-v1","./js/learners/learnerView.js":"./js/learners/learnerView.js?v=study-canvas-public-v1","./js/learningActivity.js":"./js/learningActivity.js?v=study-canvas-public-v1","./js/learningRouteResolver.js":"./js/learningRouteResolver.js?v=study-canvas-public-v1","./js/masteryEngine.js":"./js/masteryEngine.js?v=study-canvas-public-v1","./js/mathArithmeticAdapter.js":"./js/mathArithmeticAdapter.js?v=study-canvas-public-v1","./js/mathF16dCoverage.js":"./js/mathF16dCoverage.js?v=study-canvas-public-v1","./js/mathF16dGenerator.js":"./js/mathF16dGenerator.js?v=study-canvas-public-v1","./js/mathF16dRepresentation.js":"./js/mathF16dRepresentation.js?v=study-canvas-public-v1","./js/mathF16dRuntime.js":"./js/mathF16dRuntime.js?v=study-canvas-public-v1","./js/mathF16dSelection.js":"./js/mathF16dSelection.js?v=study-canvas-public-v1","./js/mathF16dSpec.js":"./js/mathF16dSpec.js?v=study-canvas-public-v1","./js/mathGen.js":"./js/mathGen.js?v=study-canvas-public-v1","./js/measurementUnitCatalog.js":"./js/measurementUnitCatalog.js?v=study-canvas-public-v1","./js/measurementUnitGenerator.js":"./js/measurementUnitGenerator.js?v=study-canvas-public-v1","./js/migrationEngine.js":"./js/migrationEngine.js?v=study-canvas-public-v1","./js/modalEngine.js":"./js/modalEngine.js?v=study-canvas-public-v1","./js/navigationHierarchy.js":"./js/navigationHierarchy.js?v=study-canvas-public-v1","./js/parentGrading.js":"./js/parentGrading.js?v=study-canvas-public-v1","./js/platform/appBootstrap.js":"./js/platform/appBootstrap.js?v=study-canvas-public-v1","./js/platform/appRouter.js":"./js/platform/appRouter.js?v=study-canvas-public-v1","./js/platform/appShell.js":"./js/platform/appShell.js?v=study-canvas-public-v1","./js/platform/subjectRegistry.js":"./js/platform/subjectRegistry.js?v=study-canvas-public-v1","./js/practiceInteractionGuard.js":"./js/practiceInteractionGuard.js?v=study-canvas-public-v1","./js/publicReleasePolicy.js":"./js/publicReleasePolicy.js?v=study-canvas-public-v1","./js/questionAnswerDisplay.js":"./js/questionAnswerDisplay.js?v=study-canvas-public-v1","./js/questionIdentity.js":"./js/questionIdentity.js?v=study-canvas-public-v1","./js/recommendations/recommendationEngine.js":"./js/recommendations/recommendationEngine.js?v=study-canvas-public-v1","./js/responseEngine.js":"./js/responseEngine.js?v=study-canvas-public-v1","./js/reviewRetryPresentation.js":"./js/reviewRetryPresentation.js?v=study-canvas-public-v1","./js/sessionEngine.js":"./js/sessionEngine.js?v=study-canvas-public-v1","./js/sessionHistoryLabel.js":"./js/sessionHistoryLabel.js?v=study-canvas-public-v1","./js/shortcuts.js":"./js/shortcuts.js?v=study-canvas-public-v1","./js/sound.js":"./js/sound.js?v=study-canvas-public-v1","./js/storage.js":"./js/storage.js?v=study-canvas-public-v1","./js/submissionLifecycle.js":"./js/submissionLifecycle.js?v=study-canvas-public-v1","./js/theme.js":"./js/theme.js?v=study-canvas-public-v1","./js/timer.js":"./js/timer.js?v=study-canvas-public-v1","./js/typedInteractionSurface.js":"./js/typedInteractionSurface.js?v=study-canvas-public-v1","./js/unifiedCurriculumRegistry.js":"./js/unifiedCurriculumRegistry.js?v=study-canvas-public-v1","./js/updateEngine.js":"./js/updateEngine.js?v=study-canvas-public-v1","./js/viewportEngine.js":"./js/viewportEngine.js?v=study-canvas-public-v1","./js/workbookCatalog.js":"./js/workbookCatalog.js?v=study-canvas-public-v1","./js/workbookEngine.js":"./js/workbookEngine.js?v=study-canvas-public-v1","./js/workbookView.js":"./js/workbookView.js?v=study-canvas-public-v1"}}</script>
+    <script type="module" src="./js/app.js?v=study-canvas-public-v1"></script>
+  </body>
+</html>
