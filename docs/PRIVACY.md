@@ -6,16 +6,16 @@
 
 ## 제외
 
-- 과거 Git 이력, 중간 개발 문서·로그·시연 캡처·인증 파일
+- 비공개 원본 Git 이력 전체, 개인·회사 정보가 있는 개발 기록, 로그·시연 캡처·인증 파일
 - 학습자의 IndexedDB/localStorage, 실제 이름·필기·채점 이력·JSON 백업
 - API 키·토큰·환경 파일, 배포 프로젝트·팀 연결 파일, 개인 PC의 절대 경로
 - 미확정 후보 은행, 과거 승인 패키지, 원천 전체 압축 파일, 생성된 ZIP·빌드 산출물
 
-개인 비공개 저장소의 Git 이력을 rewrite하거나 승인 기록을 지우는 대신, 공개용 파일을 새 저장소의 첫 commit 하나로 구성했습니다. 공개 commit에는 계정의 GitHub noreply 주소를 사용합니다.
+첫 공개본은 공개용 파일만 포함한 단일 커밋으로 구성했습니다. 이후 이력 검토본에는 과거 앱 코드, 합성 테스트와 기술 문서 일부를 추가했습니다. 비공개 문항, 원천 자료, 학습자 데이터와 원시 검증 자료를 제외했습니다. 작성자 메타데이터에는 공개 계정의 GitHub noreply 주소를 사용합니다.
 
 ## 점검
 
-`npm run privacy:check`는 작업 소스의 알려진 개인 식별 문자열·로컬 경로·credential 패턴·위험 파일명을 검사합니다. `.git`, `node_modules`, `dist`, `exports`, `backups`는 검사 대상에서 제외되므로 이 폴더를 따로 공개할 때는 별도 확인이 필요합니다. `.gitignore`로 공개에서 제외하며, 계정의 public noreply 주소만 commit metadata에 사용합니다.
+`npm run privacy:check`는 작업 소스의 로컬 경로·credential 패턴·위험 파일명을 검사합니다. `.git`, `node_modules`, `dist`, `exports`, `backups`는 검사 대상에서 제외되므로 이 폴더를 따로 공개할 때는 별도 확인이 필요합니다. `.gitignore`로 공개에서 제외하며, 계정의 public noreply 주소만 commit metadata에 사용합니다.
 
 이 검사는 자동 개인정보 인증이 아닙니다. 새 파일·이미지·예제를 추가할 때 사람이 공개 범위를 확인해야 합니다. 백업 기능으로 내보낸 JSON은 정적 문제은행이 아니라 개인 학습 데이터일 수 있으므로 issue·PR·LLM 대화에 붙이지 마세요.
 
