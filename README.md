@@ -1,6 +1,6 @@
 # Study Canvas
 
-수학·국어·영어를 필기·선택·서술형으로 풀고, 보호자가 채점한 뒤 오답을 다시 푸는 정적 웹앱(PWA)입니다. 최종 앱 소스와 출처가 포함된 문제은행을 공개합니다. 과거 개발 기록·개인 학습 기록·이전 Git 이력은 포함하지 않습니다.
+수학·국어·영어를 필기·선택·서술형으로 풀고, 보호자가 채점한 뒤 오답을 다시 푸는 정적 웹앱(PWA)입니다. 앱 소스와 공개용으로 정리한 개발 이력, 출처가 포함된 문제은행을 공개합니다.
 
 **Open source learning workspace and reusable question bank.** Application code is MIT; dictionary content keeps its per-item third-party terms. See [license scope](LICENSES/README.md).
 
@@ -17,6 +17,12 @@
 **[Study Canvas 실제 서비스 바로가기](https://math-canvas-pro.vercel.app/)** — 브라우저에서 수학·국어·영어 학습을 시작할 수 있습니다. 학습 기록은 사용하는 브라우저에 저장됩니다.
 
 소스·문제은행·이용 조건을 한 번에 받으려면 **[전체 저장소 ZIP 다운로드](https://github.com/nothing2that-sys/study-canvas/archive/refs/heads/main.zip)**를 이용하세요.
+
+## 학습하고 오답 다시 풀기
+
+1. 홈에서 수학·국어·영어 중 과목과 활동을 골라 시작합니다.
+2. 문제에 따라 화면에 필기하거나, 답을 선택하거나, 서술형 응답을 입력하고 풀이를 마칩니다.
+3. 보호자가 채점하고 피드백을 남긴 뒤, 홈의 **오답 함께 보기 → 바로 다시 풀기**에서 해당 문제를 다시 풉니다.
 
 ## 내 컴퓨터에서 실행
 
